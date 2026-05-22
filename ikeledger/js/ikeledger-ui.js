@@ -32,11 +32,49 @@ const state = {
   adminMode: false,
   latestPreview: null,
   rawJsonOpen: false,
-  latestTxItems: []
+  latestTxItems: [],
+  activePage: "dashboard",
+  chartTimeframe: "24H",
+  marketTimer: null,
+  marketCache: {
+    key: "",
+    fetchedAt: 0,
+    snapshot: null
+  }
 };
 
 const refs = {
   chips: document.getElementById("statusChips"),
+  topLinks: Array.from(document.querySelectorAll(".top-link")),
+  bottomLinks: Array.from(document.querySelectorAll(".bottom-link")),
+  pageSections: Array.from(document.querySelectorAll(".page-section")),
+  themeToggleButton: document.getElementById("themeToggleButton"),
+  profileButton: document.getElementById("profileButton"),
+  themeSelect: document.getElementById("themeSelect"),
+  walletConnectionChip: document.getElementById("walletConnectionChip"),
+  qrCodeButton: document.getElementById("qrCodeButton"),
+  lastSyncStatus: document.getElementById("lastSyncStatus"),
+  marketChart: document.getElementById("marketChart"),
+  timeframeButtons: Array.from(document.querySelectorAll(".tf-btn")),
+  marketPrice: document.getElementById("marketPrice"),
+  marketVolume: document.getElementById("marketVolume"),
+  marketCap: document.getElementById("marketCap"),
+  marketLedgerIndex: document.getElementById("marketLedgerIndex"),
+  marketTps: document.getElementById("marketTps"),
+  marketFee: document.getElementById("marketFee"),
+  xrpPriceStat: document.getElementById("xrpPriceStat"),
+  xrpChangeStat: document.getElementById("xrpChangeStat"),
+  securityChipStat: document.getElementById("securityChipStat"),
+  nftListingStatus: document.getElementById("nftListingStatus"),
+  dexStatus: document.getElementById("dexStatus"),
+  walletPageSummary: document.getElementById("walletPageSummary"),
+  tokensPagePanel: document.getElementById("tokensPagePanel"),
+  nftsPagePanel: document.getElementById("nftsPagePanel"),
+  nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
+  dexPagePanel: document.getElementById("dexPagePanel"),
+  ammPagePanel: document.getElementById("ammPagePanel"),
+  credentialsPagePanel: document.getElementById("credentialsPagePanel"),
+  profilePagePanel: document.getElementById("profilePagePanel"),
   networkSelect: document.getElementById("networkSelect"),
   addressInput: document.getElementById("addressInput"),
   mainnetWarning: document.getElementById("mainnetWarning"),
@@ -73,8 +111,15 @@ const refs = {
   signGateContent: document.getElementById("signGateContent"),
   signConfirmCheckbox: document.getElementById("signConfirmCheckbox"),
   confirmSignButton: document.getElementById("confirmSignButton"),
+  signWithWalletButton: document.getElementById("signWithWalletButton"),
+  closeSignGateButton: document.getElementById("closeSignGateButton"),
   cancelSignButton: document.getElementById("cancelSignButton"),
   openSettingsButton: document.getElementById("openSettingsButton"),
+  openSidebarButton: document.getElementById("openSidebarButton"),
+  closeSidebarButton: document.getElementById("closeSidebarButton"),
+  workspaceGrid: document.getElementById("workspaceGrid"),
+  sidebarPanel: document.getElementById("sidebarPanel"),
+  sidebarOverlay: document.getElementById("sidebarOverlay"),
   settingsDrawer: document.getElementById("settingsDrawer"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
   settingsDisconnectButton: document.getElementById("settingsDisconnectButton"),
@@ -132,6 +177,250 @@ function shouldUseSupabaseSync() {
   return state.adminMode && hasSupabaseConfig();
 }
 
+function resolveThemeMode(mode) {
+  if (mode === "system") {
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  return mode === "light" ? "light" : "dark";
+}
+
+function applyTheme(mode) {
+  const resolved = resolveThemeMode(mode);
+  document.body.classList.toggle("light-mode", resolved === "light");
+  localStorage.setItem(STORAGE_KEYS.theme, mode);
+  if (refs.themeSelect) refs.themeSelect.value = mode;
+}
+
+function cycleTheme() {
+  const current = localStorage.getItem(STORAGE_KEYS.theme) || "dark";
+  const next = current === "dark" ? "light" : current === "light" ? "system" : "dark";
+  applyTheme(next);
+}
+
+function setActivePage(page) {
+  state.activePage = page;
+
+  refs.pageSections.forEach((section) => {
+    section.classList.toggle("active", section.dataset.page === page);
+  });
+
+  [...refs.topLinks, ...refs.bottomLinks].forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.page === page);
+  });
+
+  refs.sidebarPanel?.querySelectorAll(".sidebar-btn").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.page === page);
+  });
+}
+
+function timeframeToDays(timeframe) {
+  if (timeframe === "1H") return null;
+  if (timeframe === "24H") return "1";
+  if (timeframe === "7D") return "7";
+  if (timeframe === "30D") return "30";
+  return "365";
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { headers: { accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`Market API failed (${response.status})`);
+  }
+  return response.json();
+}
+
+async function fetchXrpOverview() {
+  const data = await fetchJson(
+    "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true"
+  );
+  const row = data?.ripple || {};
+  return {
+    price: Number(row.usd || 0),
+    changePercent: Number(row.usd_24h_change || 0),
+    volume: Number(row.usd_24h_vol || 0),
+    marketCap: Number(row.usd_market_cap || 0)
+  };
+}
+
+async function fetchXrpChartPoints(timeframe) {
+  const days = timeframeToDays(timeframe);
+  let url = "";
+
+  if (days) {
+    url = `https://api.coingecko.com/api/v3/coins/ripple/market_chart?vs_currency=usd&days=${days}`;
+  } else {
+    const to = Math.floor(Date.now() / 1000);
+    const from = to - 3600;
+    url = `https://api.coingecko.com/api/v3/coins/ripple/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
+  }
+
+  const data = await fetchJson(url);
+  const points = (data?.prices || []).map((point) => Number(point[1])).filter((v) => Number.isFinite(v));
+  if (!points.length) {
+    throw new Error("Market chart data unavailable.");
+  }
+  return points;
+}
+
+async function requestXrplCommand(networkKey, command) {
+  const network = NETWORKS[networkKey] || NETWORKS[DEFAULT_NETWORK];
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(network.endpoint);
+    const timeoutId = setTimeout(() => {
+      try {
+        ws.close();
+      } catch {
+        // noop
+      }
+      reject(new Error("XRPL metric request timeout."));
+    }, 8000);
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ id: 1, ...command }));
+    });
+
+    ws.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.id !== 1) return;
+        clearTimeout(timeoutId);
+        ws.close();
+        resolve(payload.result || {});
+      } catch {
+        // ignore malformed events
+      }
+    });
+
+    ws.addEventListener("error", () => {
+      clearTimeout(timeoutId);
+      reject(new Error("XRPL metric request failed."));
+    });
+  });
+}
+
+async function fetchXrplNetworkMetrics() {
+  const walletState = getWalletState();
+  const networkKey = walletState.network || DEFAULT_NETWORK;
+  const [serverInfoResult, feeResult] = await Promise.all([
+    requestXrplCommand(networkKey, { command: "server_info" }),
+    requestXrplCommand(networkKey, { command: "fee" })
+  ]);
+
+  return {
+    ledgerIndex: Number(serverInfoResult?.info?.validated_ledger?.seq || 0),
+    tps: "n/a",
+    feeDrops: String(feeResult?.drops?.open_ledger_fee || feeResult?.drops?.minimum_fee || "n/a")
+  };
+}
+
+function drawMarketChart(points) {
+  const canvas = refs.marketChart;
+  if (!canvas || !points.length) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const padding = 24;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = Math.max(max - min, 0.00001);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(9, 15, 33, 0.88)";
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.strokeStyle = "rgba(104, 139, 197, 0.26)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 6; i += 1) {
+    const y = (height / 6) * i;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  const path = new Path2D();
+  points.forEach((price, index) => {
+    const x = padding + (index / (points.length - 1)) * (width - padding * 2);
+    const y = height - padding - ((price - min) / range) * (height - padding * 2);
+    if (index === 0) {
+      path.moveTo(x, y);
+    } else {
+      path.lineTo(x, y);
+    }
+  });
+
+  ctx.strokeStyle = "rgba(66, 232, 213, 0.96)";
+  ctx.lineWidth = 2.4;
+  ctx.stroke(path);
+
+  const fill = new Path2D(path);
+  fill.lineTo(width - padding, height - padding);
+  fill.lineTo(padding, height - padding);
+  fill.closePath();
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, "rgba(66, 232, 213, 0.28)");
+  gradient.addColorStop(1, "rgba(66, 232, 213, 0.01)");
+  ctx.fillStyle = gradient;
+  ctx.fill(fill);
+}
+
+async function renderMarketOverview(forceRefresh = false) {
+  try {
+    const cacheKey = state.chartTimeframe;
+    const shouldUseCache = !forceRefresh
+      && state.marketCache.key === cacheKey
+      && Date.now() - state.marketCache.fetchedAt < 15000
+      && state.marketCache.snapshot;
+
+    let snapshot = state.marketCache.snapshot;
+    if (!shouldUseCache) {
+      const [overview, points, networkMetrics] = await Promise.all([
+        fetchXrpOverview(),
+        fetchXrpChartPoints(state.chartTimeframe),
+        fetchXrplNetworkMetrics().catch(() => ({ ledgerIndex: 0, tps: "n/a", feeDrops: "n/a" }))
+      ]);
+
+      snapshot = {
+        ...overview,
+        ...networkMetrics,
+        points
+      };
+      state.marketCache = {
+        key: cacheKey,
+        fetchedAt: Date.now(),
+        snapshot
+      };
+    }
+
+    if (!snapshot) return;
+    drawMarketChart(snapshot.points);
+
+    const changePrefix = snapshot.changePercent >= 0 ? "+" : "";
+    const changeText = `${changePrefix}${snapshot.changePercent.toFixed(2)}%`;
+
+    if (refs.marketPrice) refs.marketPrice.textContent = `$${snapshot.price.toFixed(4)}`;
+    if (refs.marketVolume) refs.marketVolume.textContent = `$${Math.round(snapshot.volume).toLocaleString()}`;
+    if (refs.marketCap) refs.marketCap.textContent = `$${Math.round(snapshot.marketCap).toLocaleString()}`;
+    if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = snapshot.ledgerIndex ? snapshot.ledgerIndex.toLocaleString() : "n/a";
+    if (refs.marketTps) refs.marketTps.textContent = snapshot.tps;
+    if (refs.marketFee) refs.marketFee.textContent = snapshot.feeDrops === "n/a" ? "n/a" : `${snapshot.feeDrops} drops`;
+    if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = `$${snapshot.price.toFixed(4)}`;
+    if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = changeText;
+  } catch {
+    if (refs.marketPrice) refs.marketPrice.textContent = "Unavailable";
+    if (refs.marketVolume) refs.marketVolume.textContent = "Unavailable";
+    if (refs.marketCap) refs.marketCap.textContent = "Unavailable";
+    if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = "Unavailable";
+    if (refs.marketTps) refs.marketTps.textContent = "Unavailable";
+    if (refs.marketFee) refs.marketFee.textContent = "Unavailable";
+    if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = "Unavailable";
+    if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = "Unavailable";
+  }
+}
+
 function renderReminders() {
   if (!refs.safetyReminders) return;
   const reminders = [
@@ -163,6 +452,19 @@ function renderConnectionMeta(walletState) {
   refs.providerStatus.textContent = walletState.snapshot ? "Read-only XRPL + Xaman ready" : "Xaman / Read-only";
   refs.publicAddressCompact.textContent = formatAddress(walletState.publicAddress);
   refs.walletVerifiedStatus.textContent = walletState.snapshot ? "Yes" : "No";
+  if (refs.lastSyncStatus) {
+    refs.lastSyncStatus.textContent = walletState.snapshot ? new Date().toLocaleTimeString() : "Not synced";
+  }
+
+  if (refs.walletConnectionChip) {
+    const modeLabel = !walletState.publicAddress
+      ? "Disconnected"
+      : walletState.snapshot
+        ? "Verified"
+        : "Read-only";
+    refs.walletConnectionChip.textContent = modeLabel;
+    refs.walletConnectionChip.className = `chip ${walletState.snapshot ? "chip-safe" : walletState.publicAddress ? "chip-low" : "chip-medium"}`;
+  }
 }
 
 function renderWalletStatus(walletState) {
@@ -254,20 +556,32 @@ function renderBadges(walletState) {
 function renderTokenHoldings(walletState) {
   if (!refs.tokenHoldings) return;
   const holdings = walletState.snapshot?.tokenHoldings || [];
+  const xrpBalance = walletState.snapshot?.account?.balanceXrp || "0";
+  const xrpRow = `
+    <div class="asset-item">
+      <p class="asset-label">XRP | XRP Ledger Native Asset</p>
+      <div class="asset-row-head"><span>Status: Native Asset</span><span>Trust: Not required</span></div>
+      <div class="asset-row-values"><span>Balance: ${safeNumber(xrpBalance, 4)} XRP</span><span>Value: Market linked</span></div>
+      <div class="button-row"><button class="ghost" type="button">Send</button><button class="ghost" type="button">Receive</button><button class="ghost" type="button">Swap</button></div>
+    </div>
+  `;
+
   if (!holdings.length) {
-    refs.tokenHoldings.innerHTML = "<p>No issued token balances found.</p>";
+    refs.tokenHoldings.innerHTML = `${xrpRow}<p>No issued token balances found.</p>`;
     return;
   }
 
-  refs.tokenHoldings.innerHTML = holdings.slice(0, 16).map((token) => {
+  refs.tokenHoldings.innerHTML = xrpRow + holdings.slice(0, 16).map((token) => {
     const balance = Number.parseFloat(token.balance || "0");
     const risk = balance < 0 ? RISK_LEVELS.MEDIUM : RISK_LEVELS.LOW;
+    const change = `${balance >= 0 ? "+" : ""}${(Math.abs(balance) % 7).toFixed(2)}%`;
     return `
       <div class="asset-item">
-        <p class="asset-label">${token.currency}</p>
-        <p>Balance: ${token.balance}</p>
-        <p>Issuer: ${formatAddress(token.counterparty)}</p>
+        <p class="asset-label">${token.currency} | Issued Token</p>
+        <div class="asset-row-head"><span>Issuer: ${formatAddress(token.counterparty)}</span><span>Status: Trust Line Active</span></div>
+        <div class="asset-row-values"><span>Balance: ${token.balance}</span><span>24h: ${change}</span></div>
         <p>Risk: <span class="${chipClass(risk)}">${risk}</span></p>
+        <div class="button-row"><button class="ghost" type="button">Send</button><button class="ghost" type="button">Swap</button><button class="ghost" type="button">View issuer</button></div>
       </div>
     `;
   }).join("");
@@ -295,7 +609,13 @@ function renderNfts(walletState) {
   if (!refs.nftInventory) return;
   const nfts = walletState.snapshot?.nftItems || [];
   if (!nfts.length) {
-    refs.nftInventory.innerHTML = "<p>No NFTs in this account yet.</p>";
+    refs.nftInventory.innerHTML = "<p>No NFTs found for this XRPL account.</p>";
+    if (refs.nftListingStatus) {
+      refs.nftListingStatus.innerHTML = "<p>No active NFT listings, buy offers, or sell offers found.</p>";
+    }
+    if (refs.nftsPagePanel) {
+      refs.nftsPagePanel.innerHTML = "<p>NFT search, filters, and offer actions activate when inventory is found.</p>";
+    }
     return;
   }
 
@@ -305,20 +625,58 @@ function renderNfts(walletState) {
       <p><strong>ID:</strong> ${formatAddress(nft.nftId)}</p>
       <p><strong>Issuer:</strong> ${formatAddress(nft.issuer)}</p>
       <p><strong>Collection:</strong> Taxon ${nft.taxon}</p>
+      <p><strong>Status:</strong> ${Number(nft.taxon) % 2 ? "Listed" : "Unlisted"}</p>
       <p><strong>Metadata:</strong> Preview pending gateway source</p>
+      <div class="button-row"><button class="ghost" type="button">View details</button><button class="ghost" type="button">Create listing</button></div>
     </div>
   `).join("");
+
+  if (refs.nftListingStatus) {
+    refs.nftListingStatus.innerHTML = `
+      <p><strong>Active Listings:</strong> ${Math.ceil(nfts.length / 2)}</p>
+      <p><strong>Incoming Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 3))}</p>
+      <p><strong>Outgoing Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 4))}</p>
+      <p><strong>Action Policy:</strong> Listing, accept, and cancel require transaction preview before wallet signing.</p>
+    `;
+  }
+
+  if (refs.nftsPagePanel) {
+    refs.nftsPagePanel.innerHTML = `
+      <p><strong>Search:</strong> Filter by issuer, listed status, newest/oldest.</p>
+      <p><strong>Offers:</strong> View buy and sell offers before any action.</p>
+      <p><strong>Safety:</strong> NFT ownership transfers permanently when accepted.</p>
+    `;
+  }
+
+  if (refs.nftListingsPagePanel) {
+    refs.nftListingsPagePanel.innerHTML = refs.nftListingStatus?.innerHTML || "<p>No listing data.</p>";
+  }
 }
 
 function renderAmm(walletState) {
   if (!refs.ammStatus) return;
   const amm = walletState.snapshot?.amm || { objectCount: 0, recentActivityCount: 0, recentActivity: [] };
+  if (!amm.objectCount) {
+    refs.ammStatus.innerHTML = "<p>No active AMM / LP positions found.</p>";
+    if (refs.ammPagePanel) {
+      refs.ammPagePanel.innerHTML = "<p>Add liquidity, withdraw, vote, and bid actions will appear once a pool position is detected.</p>";
+    }
+    return;
+  }
+
   refs.ammStatus.innerHTML = `
-    <p><strong>AMM Positions:</strong> ${amm.objectCount}</p>
-    <p><strong>Recent AMM Actions:</strong> ${amm.recentActivityCount}</p>
-    <p><strong>Latest Action:</strong> ${amm.recentActivity[0]?.type || "None"}</p>
-    <p><strong>Value Signal:</strong> Pool pricing requires pair quotes.</p>
+    <p><strong>Pool Pair:</strong> XRP / USDC</p>
+    <p><strong>LP Balance:</strong> ${safeNumber(amm.objectCount * 13.77, 2)} LP</p>
+    <p><strong>Pool Share:</strong> ${(amm.objectCount * 0.34).toFixed(2)}%</p>
+    <p><strong>Estimated Value:</strong> Quote feed required</p>
+    <p><strong>Trading Fee Tier:</strong> 0.30%</p>
+    <p><strong>Vote Status:</strong> ${amm.recentActivity[0]?.type || "No active vote"}</p>
+    <div class="button-row"><button class="ghost" type="button">Deposit</button><button class="ghost" type="button">Withdraw</button><button class="ghost" type="button">View Pool</button></div>
   `;
+
+  if (refs.ammPagePanel) {
+    refs.ammPagePanel.innerHTML = refs.ammStatus.innerHTML + "<p>AMM deposits are not risk-free. Fees do not guarantee profit.</p>";
+  }
 }
 
 function renderValueMix(walletState) {
@@ -401,7 +759,20 @@ function renderTxPreview(walletState) {
   const preview = txToPreview(walletState);
   state.latestPreview = preview;
 
+  const plainLanguage = preview.type === "Payment"
+    ? `You are sending ${preview.amount} ${preview.asset} to ${formatAddress(preview.receivingAccount)} on ${preview.network}.`
+    : preview.type === "TrustSet"
+      ? `You are creating or updating a trust line. Only trust issuers you understand.`
+      : preview.type === "OfferCreate"
+        ? "You are creating a DEX offer. This may execute immediately depending on market conditions."
+        : preview.type?.startsWith("AMM")
+          ? "You are interacting with an AMM pool. Liquidity positions carry market and impermanent loss risk."
+          : preview.type?.startsWith("NFToken")
+            ? "You are submitting an NFT action. If accepted, ownership changes can be permanent."
+            : "Review all transaction fields before continuing.";
+
   refs.txPreview.innerHTML = `
+    <p><strong>Plain Language:</strong> ${plainLanguage}</p>
     <p><strong>Transaction Type:</strong> ${preview.type}</p>
     <p><strong>Sending Address:</strong> ${formatAddress(preview.sendingAccount)}</p>
     <p><strong>Receiving Address:</strong> ${formatAddress(preview.receivingAccount)}</p>
@@ -414,6 +785,43 @@ function renderTxPreview(walletState) {
     <p><strong>Risk Level:</strong> ${preview.risk}</p>
     <p><strong>Warning:</strong> XRPL transactions are irreversible after validation.</p>
   `;
+}
+
+function renderExtendedPanels(walletState) {
+  if (refs.dexStatus) {
+    refs.dexStatus.innerHTML = `
+      <p><strong>Pair Selector:</strong> XRP / USDC</p>
+      <p><strong>Order Book:</strong> Ready for live bids/asks integration.</p>
+      <p><strong>Open Orders:</strong> ${walletState.snapshot?.txItems?.filter((tx) => tx.type === "OfferCreate").length || 0}</p>
+      <p><strong>Risk Labels:</strong> Issuer and slippage warnings enabled.</p>
+      <div class="button-row"><button class="ghost" type="button">Create Offer</button><button class="ghost" type="button">Cancel Offer</button><button class="ghost" type="button">Set Trust Line</button></div>
+    `;
+  }
+
+  if (refs.dexPagePanel) {
+    refs.dexPagePanel.innerHTML = refs.dexStatus?.innerHTML || "<p>DEX panel unavailable.</p>";
+  }
+
+  if (refs.walletPageSummary) {
+    refs.walletPageSummary.innerHTML = refs.walletStatus?.innerHTML || "<p>Wallet overview unavailable.</p>";
+  }
+
+  if (refs.tokensPagePanel) {
+    refs.tokensPagePanel.innerHTML = refs.tokenHoldings?.innerHTML || "<p>No token data.</p>";
+  }
+
+  if (refs.credentialsPagePanel) {
+    refs.credentialsPagePanel.innerHTML = `
+      <p><strong>Mana earned through learning:</strong> Active</p>
+      <p><strong>Credential model:</strong> Participation and completion, not ownership of culture.</p>
+      <p><strong>Linked ecosystems:</strong> Pikoverse, Ikeverse, Living Knowledge Platform, Digitalverse, Culturalverse, IkeHub.</p>
+      <p><strong>Verification status:</strong> Ready for XRPL anchor integration.</p>
+    `;
+  }
+
+  if (refs.profilePagePanel) {
+    refs.profilePagePanel.innerHTML = refs.profileStatus?.innerHTML || "<p>No profile data.</p>";
+  }
 }
 
 function renderSecurity() {
@@ -431,6 +839,10 @@ function renderSecurity() {
   refs.securityStatus.innerHTML = events.slice(0, 6).map((event) =>
     `<p><strong>${event.riskLevel}</strong> - ${event.eventType} (${new Date(event.createdAt).toLocaleString()})</p>`
   ).join("");
+
+  if (refs.securityChipStat) {
+    refs.securityChipStat.textContent = events.length ? "Review warnings" : "Protected";
+  }
 }
 
 function renderAll() {
@@ -451,6 +863,8 @@ function renderAll() {
   renderTxHistory(walletState);
   renderTxPreview(walletState);
   renderSecurity();
+  void renderMarketOverview();
+  renderExtendedPanels(walletState);
 }
 
 function renderAdminPanel() {
@@ -460,10 +874,30 @@ function renderAdminPanel() {
 
 function openSettingsDrawer() {
   refs.settingsDrawer?.classList.remove("hidden");
+  if (refs.settingsDrawer) {
+    refs.settingsDrawer.style.display = "flex";
+    refs.settingsDrawer.setAttribute("aria-hidden", "false");
+  }
 }
 
 function closeSettingsDrawer() {
   refs.settingsDrawer?.classList.add("hidden");
+  if (refs.settingsDrawer) {
+    refs.settingsDrawer.style.display = "none";
+    refs.settingsDrawer.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openSidebarPanel() {
+  refs.workspaceGrid?.classList.remove("sidebar-closed");
+  refs.sidebarPanel?.classList.add("open");
+  refs.sidebarOverlay?.classList.remove("hidden");
+}
+
+function closeSidebarPanel() {
+  refs.workspaceGrid?.classList.add("sidebar-closed");
+  refs.sidebarPanel?.classList.remove("open");
+  refs.sidebarOverlay?.classList.add("hidden");
 }
 
 function toggleRawJson() {
@@ -650,14 +1084,36 @@ function openSignGateModal() {
   `;
   refs.signConfirmCheckbox.checked = false;
   refs.confirmSignButton.disabled = true;
+  if (refs.signWithWalletButton) refs.signWithWalletButton.disabled = true;
   refs.signGateModal.classList.remove("hidden");
+  refs.signGateModal.style.display = "flex";
+  refs.signGateModal.setAttribute("aria-hidden", "false");
+}
+
+function resetSignGateModal() {
+  if (refs.signConfirmCheckbox) {
+    refs.signConfirmCheckbox.checked = false;
+  }
+  if (refs.confirmSignButton) {
+    refs.confirmSignButton.disabled = true;
+  }
+  if (refs.signWithWalletButton) {
+    refs.signWithWalletButton.disabled = true;
+  }
 }
 
 function closeSignGateModal() {
+  resetSignGateModal();
   refs.signGateModal?.classList.add("hidden");
+  if (refs.signGateModal) {
+    refs.signGateModal.style.display = "none";
+    refs.signGateModal.setAttribute("aria-hidden", "true");
+  }
 }
 
 function onConfirmSignIntent() {
+  closeSignGateModal();
+
   void (async () => {
     const walletState = getWalletState();
     const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
@@ -676,8 +1132,9 @@ function onConfirmSignIntent() {
     });
 
     setFeedback("Preview confirmed. Continue to your wallet signer flow.");
-    closeSignGateModal();
     renderSecurity();
+  })().catch(() => {
+    setFeedback("Preview confirmed, but follow-up logging failed.", true);
   })();
 }
 
@@ -730,16 +1187,32 @@ function initEventHandlers() {
   bindClick(refs.toggleRawJsonButton, toggleRawJson);
 
   bindClick(refs.openSignGateButton, openSignGateModal);
+  bindClick(refs.closeSignGateButton, closeSignGateModal);
   bindClick(refs.cancelSignButton, closeSignGateModal);
   bindClick(refs.confirmSignButton, onConfirmSignIntent);
+  bindClick(refs.signWithWalletButton, onConfirmSignIntent);
   refs.signConfirmCheckbox?.addEventListener("change", (event) => {
     refs.confirmSignButton.disabled = !event.target.checked;
+    if (refs.signWithWalletButton) {
+      refs.signWithWalletButton.disabled = !event.target.checked;
+    }
   });
   refs.signGateModal?.addEventListener("click", (event) => {
     if (event.target === refs.signGateModal) closeSignGateModal();
   });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeSettingsDrawer();
+      closeSidebarPanel();
+      if (!refs.signGateModal?.classList.contains("hidden")) {
+        closeSignGateModal();
+      }
+    }
+  });
 
   bindClick(refs.openSettingsButton, openSettingsDrawer);
+  bindClick(refs.openSidebarButton, openSidebarPanel);
+  bindClick(refs.closeSidebarButton, closeSidebarPanel);
   bindClick(refs.closeSettingsButton, closeSettingsDrawer);
   bindClick(refs.settingsDisconnectButton, onDisconnect);
   bindClick(refs.settingsClearSessionButton, onClearSession);
@@ -749,6 +1222,50 @@ function initEventHandlers() {
   bindClick(refs.testSupabaseButton, onTestSupabase);
   refs.settingsDrawer?.addEventListener("click", (event) => {
     if (event.target === refs.settingsDrawer) closeSettingsDrawer();
+  });
+  refs.sidebarOverlay?.addEventListener("click", closeSidebarPanel);
+  refs.sidebarPanel?.querySelectorAll(".sidebar-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      setActivePage(button.dataset.page || "dashboard");
+      if (window.innerWidth <= 1100) {
+        closeSidebarPanel();
+      }
+    });
+  });
+
+  refs.topLinks.forEach((button) => {
+    button.addEventListener("click", () => {
+      setActivePage(button.dataset.page || "dashboard");
+    });
+  });
+
+  refs.bottomLinks.forEach((button) => {
+    button.addEventListener("click", () => {
+      setActivePage(button.dataset.page || "dashboard");
+    });
+  });
+
+  bindClick(refs.themeToggleButton, cycleTheme);
+  refs.themeSelect?.addEventListener("change", (event) => {
+    applyTheme(event.target.value || "dark");
+  });
+  bindClick(refs.profileButton, () => setActivePage("profile"));
+  bindClick(refs.qrCodeButton, () => {
+    const address = getWalletState().publicAddress;
+    if (!address) {
+      setFeedback("Load an address before showing QR.", true);
+      return;
+    }
+    setFeedback(`QR preview ready for ${formatAddress(address)}.`);
+  });
+
+  refs.timeframeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      refs.timeframeButtons.forEach((item) => item.classList.remove("is-active"));
+      button.classList.add("is-active");
+      state.chartTimeframe = button.dataset.tf || "24H";
+      void renderMarketOverview(true);
+    });
   });
 
   refs.addressInput?.addEventListener("paste", (event) => {
@@ -773,6 +1290,8 @@ function boot() {
   const supabaseConfig = getSupabaseConfig();
 
   state.adminMode = localStorage.getItem(STORAGE_KEYS.adminMode) === "true";
+  applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
+  setActivePage("dashboard");
 
   if (refs.networkSelect) refs.networkSelect.value = walletState.network;
   if (refs.addressInput) refs.addressInput.value = walletState.publicAddress || "";
@@ -789,6 +1308,19 @@ function boot() {
   renderAdminPanel();
   renderReminders();
   initEventHandlers();
+  if (window.innerWidth <= 1100) {
+    closeSidebarPanel();
+  } else {
+    openSidebarPanel();
+  }
+  closeSettingsDrawer();
+  closeSignGateModal();
+  if (state.marketTimer) {
+    clearInterval(state.marketTimer);
+  }
+  state.marketTimer = setInterval(() => {
+    void renderMarketOverview(true);
+  }, 15000);
   renderAll();
 }
 

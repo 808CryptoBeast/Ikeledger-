@@ -8,109 +8,258 @@
   </head>
   <body>
     <div class="cosmic-bg" aria-hidden="true"></div>
-    <main class="ledger-app">
-      <header class="hero-shell">
+    <header class="top-nav">
+      <div class="brand-block">
+        <button id="openSidebarButton" type="button" class="ghost icon-btn" aria-label="Open navigation">☰</button>
         <div>
           <p class="eyebrow">IkeLedger</p>
+          <img class="brand-banner" src="./ikeledger/assets/images/ikeledger_separated_icons/ikeledger_wordmark_banner.png" alt="IkeLedger wordmark" />
           <h1>Where ancestral knowledge meets verifiable value.</h1>
-          <p class="hero-copy">Living knowledge ledger for XRPL identity, verifiable learning, Mana rewards, and protected wallet wayfinding.</p>
         </div>
-        <div class="hero-actions">
-          <div id="statusChips" class="chip-row" aria-live="polite"></div>
-          <div class="button-row">
-            <button id="connectXamanButton" type="button" aria-label="Connect wallet with Xaman">Connect Wallet</button>
-            <button id="disconnectButton" type="button" class="ghost" aria-label="Disconnect wallet">Disconnect</button>
-          </div>
-        </div>
-      </header>
+      </div>
 
-      <section class="workspace-grid">
-        <aside class="sidebar-panel glass-card">
-          <h2>Wayfinding</h2>
-          <nav class="sidebar-nav" aria-label="Main navigation">
-            <button class="sidebar-btn is-active" type="button">Dashboard</button>
-            <button class="sidebar-btn" type="button">Assets</button>
-            <button class="sidebar-btn" type="button">Credentials</button>
-            <button class="sidebar-btn" type="button">Security Center</button>
-          </nav>
-          <div class="sidebar-footer">
-            <button id="openSettingsButton" type="button" class="ghost">User Settings</button>
+      <nav class="top-links" aria-label="Primary navigation">
+        <button class="top-link is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Dashboard</button>
+        <button class="top-link" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet</button>
+        <button class="top-link" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /></span>DEX</button>
+        <button class="top-link" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /></span>AMM / LP</button>
+        <button class="top-link" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFTs</button>
+        <button class="top-link" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/tokens.png" alt="" /></span>Tokens</button>
+        <button class="top-link" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/credentials.png" alt="" /></span>Credentials</button>
+        <button class="top-link" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/activity.png" alt="" /></span>Activity</button>
+        <button class="top-link" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/security.png" alt="" /></span>Security</button>
+        <button class="top-link" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/settings.png" alt="" /></span>Settings</button>
+      </nav>
+
+      <div class="top-controls">
+        <label class="inline-control">
+          <span>Network</span>
+          <select id="networkSelect" aria-label="Select XRPL network"></select>
+        </label>
+        <span id="walletConnectionChip" class="chip chip-low">Read-only</span>
+        <button id="themeToggleButton" type="button" class="ghost">Theme</button>
+        <button id="profileButton" type="button" class="ghost icon-btn" aria-label="Profile">◉</button>
+        <button id="openSettingsButton" type="button" class="ghost">Settings</button>
+        <button id="connectXamanButton" type="button" aria-label="Connect wallet with Xaman">Connect</button>
+        <button id="disconnectButton" type="button" class="ghost" aria-label="Disconnect wallet">Disconnect</button>
+      </div>
+    </header>
+
+    <main class="ledger-app">
+      <section id="workspaceGrid" class="workspace-grid">
+        <aside id="sidebarPanel" class="sidebar-panel glass-card">
+          <div class="section-top">
+            <h2>Wayfinding</h2>
+            <button id="closeSidebarButton" type="button" class="ghost" aria-label="Close navigation">Close</button>
           </div>
+          <nav class="sidebar-nav" aria-label="Section navigation">
+            <button class="sidebar-btn is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Command Center</button>
+            <button class="sidebar-btn" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet Status</button>
+            <button class="sidebar-btn" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/tokens.png" alt="" /></span>Tokens</button>
+            <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFT Viewer</button>
+            <button class="sidebar-btn" data-page="nft-listings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFT Listings</button>
+            <button class="sidebar-btn" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /></span>DEX Access</button>
+            <button class="sidebar-btn" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /></span>AMM / LP</button>
+            <button class="sidebar-btn" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/activity.png" alt="" /></span>Activity</button>
+            <button class="sidebar-btn" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/credentials.png" alt="" /></span>Credentials & Mana</button>
+            <button class="sidebar-btn" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/security.png" alt="" /></span>Security Center</button>
+            <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/profile.png" alt="" /></span>Profile</button>
+            <button class="sidebar-btn" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/settings.png" alt="" /></span>Settings</button>
+          </nav>
+          <div id="statusChips" class="chip-row" aria-live="polite"></div>
         </aside>
 
         <section class="dashboard-column">
-          <section class="glass-card wallet-connection">
-            <div class="section-top">
-              <h2>Wallet Connection</h2>
-              <span class="mode-pill">Read-Only Mode</span>
-            </div>
-            <p class="muted">Read-only exploration is available before any signing flow. Protocol-first wallet design with consent gates.</p>
-            <div class="control-grid two-col">
-              <label>
-                XRPL Network
-                <select id="networkSelect" aria-label="Select XRPL network"></select>
-              </label>
-              <label>
-                Public XRPL Address
-                <input id="addressInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" inputmode="text" aria-label="Public XRPL address" />
-              </label>
-            </div>
-            <p id="mainnetWarning" class="warning hidden" role="alert">You are on XRPL Mainnet. Real assets may be involved.</p>
-            <div class="button-row">
-              <button id="lookupButton" type="button">Read-Only Lookup</button>
-              <button id="demoButton" type="button" class="ghost">Load Demo</button>
-              <button id="copyAddressButton" type="button" class="ghost">Copy Address</button>
-              <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
-            </div>
-            <div class="wallet-meta">
-              <p><strong>Provider:</strong> <span id="providerStatus">Xaman / Read-only</span></p>
-              <p><strong>Address:</strong> <span id="publicAddressCompact">-</span></p>
-              <p><strong>Verified:</strong> <span id="walletVerifiedStatus">No</span></p>
-            </div>
-            <p id="xamanStatus" class="feedback" aria-live="polite"></p>
-            <p id="feedback" class="feedback" aria-live="polite"></p>
+          <section class="page-section active" data-page="dashboard">
+            <article class="glass-card account-hero">
+              <div class="account-hero-left">
+                <div class="avatar-pill">WV</div>
+                <div>
+                  <p class="eyebrow">Protected connection</p>
+                  <h2>Wallet-linked learning journey</h2>
+                  <p id="profileStatus" class="card-content"></p>
+                </div>
+              </div>
+              <div class="account-hero-main">
+                <label>
+                  Public XRPL Address
+                  <input id="addressInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" inputmode="text" aria-label="Public XRPL address" />
+                </label>
+                <div class="button-row">
+                  <button id="lookupButton" type="button">Refresh Account</button>
+                  <button id="demoButton" type="button" class="ghost">Load Demo</button>
+                  <button id="copyAddressButton" type="button" class="ghost">Copy Address</button>
+                  <button id="qrCodeButton" type="button" class="ghost">QR Code</button>
+                  <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
+                </div>
+                <p id="mainnetWarning" class="warning hidden" role="alert">You are on XRPL Mainnet. Real assets may be involved.</p>
+                <div class="wallet-meta">
+                  <p><strong>Provider:</strong> <span id="providerStatus">Xaman / Read-only</span></p>
+                  <p><strong>Address:</strong> <span id="publicAddressCompact">-</span></p>
+                  <p><strong>Verified:</strong> <span id="walletVerifiedStatus">No</span></p>
+                  <p><strong>Last Sync:</strong> <span id="lastSyncStatus">-</span></p>
+                </div>
+                <p id="xamanStatus" class="feedback" aria-live="polite"></p>
+                <p id="feedback" class="feedback" aria-live="polite"></p>
+              </div>
+              <div class="account-hero-right">
+                <h3>Portfolio Intelligence</h3>
+                <div id="portfolioSummary" class="card-content"></div>
+                <div class="market-kpis">
+                  <div><span>XRP Price</span><strong id="xrpPriceStat">-</strong></div>
+                  <div><span>24h Change</span><strong id="xrpChangeStat">-</strong></div>
+                  <div><span>Security</span><strong id="securityChipStat">Protected</strong></div>
+                </div>
+              </div>
+            </article>
+
+            <section class="card-grid overview-grid">
+              <article class="glass-card"><h3>Wallet Status</h3><div id="walletStatus" class="card-content"></div></article>
+              <article class="glass-card"><h3>Mana Balance</h3><div id="manaStatus" class="card-content"></div></article>
+              <article class="glass-card"><h3>Proof-of-Learning</h3><div id="proofLearning" class="card-content"></div></article>
+              <article class="glass-card"><h3>Badges and Credentials</h3><div id="badgeCredentials" class="card-content"></div></article>
+              <article class="glass-card"><h3>Security Center</h3><div id="securityStatus" class="card-content"></div></article>
+              <article class="glass-card"><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
+            </section>
+
+            <section class="card-grid structured-grid">
+              <article class="glass-card asset-card wide">
+                <div class="section-top">
+                  <h3>Assets and Issued Tokens</h3>
+                  <span class="mode-pill">Verifiable value</span>
+                </div>
+                <div class="assets-split">
+                  <div>
+                    <h4>Account Assets</h4>
+                    <div id="tokenHoldings" class="card-content scroll"></div>
+                  </div>
+                  <div>
+                    <h4>Issued Tokens</h4>
+                    <div id="issuedTokens" class="card-content scroll"></div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="glass-card market-card wide">
+                <div class="section-top">
+                  <h3>XRP Market Overview</h3>
+                  <div class="button-row timeframe-row">
+                    <button class="ghost tf-btn is-active" data-tf="1H" type="button">1H</button>
+                    <button class="ghost tf-btn" data-tf="24H" type="button">24H</button>
+                    <button class="ghost tf-btn" data-tf="7D" type="button">7D</button>
+                    <button class="ghost tf-btn" data-tf="30D" type="button">30D</button>
+                    <button class="ghost tf-btn" data-tf="1Y" type="button">1Y</button>
+                  </div>
+                </div>
+                <div class="network-icon-strip" aria-label="Network and market shortcuts">
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/network.png" alt="Network" /><span>Network</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/mainnet.png" alt="Mainnet" /><span>Mainnet</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/testnet.png" alt="Testnet" /><span>Testnet</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/devnet.png" alt="Devnet" /><span>Devnet</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/chart.png" alt="Chart" /><span>Chart</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/market.png" alt="Market" /><span>Market</span></span>
+                  <span class="network-icon-chip"><img src="./ikeledger/assets/images/ikeledger_separated_icons/explorer.png" alt="Explorer" /><span>Explorer</span></span>
+                </div>
+                <div class="market-stats-grid">
+                  <p><strong>Price:</strong> <span id="marketPrice">-</span></p>
+                  <p><strong>24h Volume:</strong> <span id="marketVolume">-</span></p>
+                  <p><strong>Market Cap:</strong> <span id="marketCap">-</span></p>
+                  <p><strong>Ledger Index:</strong> <span id="marketLedgerIndex">-</span></p>
+                  <p><strong>TPS:</strong> <span id="marketTps">-</span></p>
+                  <p><strong>Average Fee:</strong> <span id="marketFee">-</span></p>
+                </div>
+                <div class="chart-shell">
+                  <canvas id="marketChart" width="1200" height="360" aria-label="XRP market chart"></canvas>
+                </div>
+              </article>
+
+              <article class="glass-card nft-card">
+                <div class="section-top">
+                  <h3>NFT Viewer</h3>
+                  <div class="button-row">
+                    <button id="nftFilterListed" class="ghost" type="button">Listed</button>
+                    <button id="nftFilterUnlisted" class="ghost" type="button">Unlisted</button>
+                  </div>
+                </div>
+                <div id="nftInventory" class="card-content nft-grid"></div>
+              </article>
+
+              <article class="glass-card listing-card">
+                <h3>Current NFT Listings and Offers</h3>
+                <div id="nftListingStatus" class="card-content"></div>
+              </article>
+
+              <article class="glass-card amm-card">
+                <h3>AMM / LP Position Viewer</h3>
+                <div id="ammStatus" class="card-content"></div>
+                <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
+              </article>
+
+              <article class="glass-card dex-card">
+                <div class="section-top">
+                  <h3>DEX Access</h3>
+                  <span class="mode-pill">OfferCreate / OfferCancel</span>
+                </div>
+                <div id="dexStatus" class="card-content"></div>
+                <div class="section-top">
+                  <h4>Transaction Preview</h4>
+                  <button id="openSignGateButton" type="button">Preview Before Signing</button>
+                </div>
+                <div id="txPreview" class="card-content"></div>
+              </article>
+            </section>
           </section>
 
-          <section class="card-grid overview-grid">
-            <article class="glass-card"><h3>Portfolio Summary</h3><div id="portfolioSummary" class="card-content"></div></article>
-            <article class="glass-card"><h3>Wallet Overview</h3><div id="walletStatus" class="card-content"></div></article>
-            <article class="glass-card"><h3>Mana and Rewards</h3><div id="manaStatus" class="card-content"></div></article>
-            <article class="glass-card"><h3>User Profile</h3><div id="profileStatus" class="card-content"></div></article>
-            <article class="glass-card"><h3>Proof-of-Learning</h3><div id="proofLearning" class="card-content"></div></article>
-            <article class="glass-card"><h3>Badges and Credentials</h3><div id="badgeCredentials" class="card-content"></div></article>
-            <article class="glass-card"><h3>Security Center</h3><div id="securityStatus" class="card-content"></div></article>
+          <section class="page-section" data-page="wallet">
+            <article class="glass-card">
+              <h2>Wallet</h2>
+              <p class="muted">Protected XRPL account dashboard with connection state, balances, reserve tracking, and wayfinding controls.</p>
+              <div id="walletPageSummary" class="card-content"></div>
+            </article>
           </section>
 
-          <section class="card-grid asset-grid">
-            <article class="glass-card"><h3>Assets and Trust Lines</h3><div id="tokenHoldings" class="card-content scroll"></div></article>
-            <article class="glass-card"><h3>Issued Tokens</h3><div id="issuedTokens" class="card-content scroll"></div></article>
-            <article class="glass-card"><h3>NFT Gallery</h3><div id="nftInventory" class="card-content scroll nft-grid"></div></article>
-            <article class="glass-card"><h3>AMM Exposure</h3><div id="ammStatus" class="card-content"></div></article>
-            <article class="glass-card"><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
-          </section>
+          <section class="page-section" data-page="tokens"><article class="glass-card"><h2>Tokens</h2><div class="card-content" id="tokensPagePanel"></div></article></section>
+          <section class="page-section" data-page="nfts"><article class="glass-card"><h2>NFTs</h2><div class="card-content" id="nftsPagePanel"></div></article></section>
+          <section class="page-section" data-page="nft-listings"><article class="glass-card"><h2>NFT Listings</h2><div class="card-content" id="nftListingsPagePanel"></div></article></section>
+          <section class="page-section" data-page="dex"><article class="glass-card"><h2>DEX</h2><div class="card-content" id="dexPagePanel"></div></article></section>
+          <section class="page-section" data-page="amm"><article class="glass-card"><h2>AMM / LP</h2><div class="card-content" id="ammPagePanel"></div></article></section>
 
-          <section class="card-grid activity-grid">
+          <section class="page-section" data-page="activity">
             <article class="glass-card">
               <div class="section-top">
-                <h3>Ledger Activity</h3>
+                <h2>Activity</h2>
                 <button id="toggleRawJsonButton" type="button" class="ghost">Show Raw JSON</button>
               </div>
               <div id="txHistory" class="card-content scroll"></div>
               <pre id="txRawJson" class="raw-json hidden" aria-label="Raw transaction JSON"></pre>
             </article>
-            <article class="glass-card">
-              <h3>Transaction Preview</h3>
-              <div id="txPreview" class="card-content"></div>
-              <div class="button-row"><button id="openSignGateButton" type="button">Preview Before Signing</button></div>
-            </article>
+          </section>
+
+          <section class="page-section" data-page="credentials"><article class="glass-card"><h2>Credentials</h2><div class="card-content" id="credentialsPagePanel"></div></article></section>
+
+          <section class="page-section" data-page="security">
             <article class="glass-card safety-panel">
-              <h3>Protection Banners</h3>
+              <h2>Security Center</h2>
               <ul id="safetyReminders"></ul>
             </article>
           </section>
+
+          <section class="page-section" data-page="profile"><article class="glass-card"><h2>Profile</h2><div class="card-content" id="profilePagePanel"></div></article></section>
+          <section class="page-section" data-page="settings"><article class="glass-card"><h2>Settings</h2><p class="muted">Use drawer for detailed settings and builder admin controls.</p></article></section>
         </section>
       </section>
     </main>
+
+    <div id="sidebarOverlay" class="sidebar-overlay hidden" aria-hidden="true"></div>
+
+    <nav class="bottom-nav" aria-label="Mobile navigation">
+      <button class="bottom-link is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Home</button>
+      <button class="bottom-link" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet</button>
+      <button class="bottom-link" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /></span>DEX</button>
+      <button class="bottom-link" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFTs</button>
+      <button class="bottom-link" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /></span>AMM</button>
+      <button class="bottom-link" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/profile.png" alt="" /></span>Profile</button>
+    </nav>
 
     <aside id="settingsDrawer" class="settings-drawer hidden" aria-label="User settings">
       <div class="settings-card">
@@ -124,6 +273,24 @@
           <div class="button-row">
             <button id="settingsDisconnectButton" type="button" class="ghost">Disconnect Wallet</button>
             <button id="settingsClearSessionButton" type="button" class="ghost">Clear Session</button>
+          </div>
+          <div class="control-grid two-col">
+            <label>
+              Theme
+              <select id="themeSelect">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="system">System</option>
+              </select>
+            </label>
+            <label>
+              Accent
+              <select id="accentSelect">
+                <option value="aqua">XRP Blue</option>
+                <option value="gold">Mana Gold</option>
+                <option value="emerald">Emerald</option>
+              </select>
+            </label>
           </div>
         </section>
 
@@ -163,14 +330,18 @@
 
     <div id="signGateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signGateTitle">
       <div class="modal-card">
+        <div class="section-top">
         <h2 id="signGateTitle">Transaction Consent Preview</h2>
+          <button id="closeSignGateButton" type="button" class="ghost" aria-label="Close transaction preview">Close</button>
+        </div>
         <div id="signGateContent" class="modal-content"></div>
         <label class="confirm-row">
           <input id="signConfirmCheckbox" type="checkbox" />
           I understand XRPL transactions are irreversible after validation.
         </label>
         <div class="button-row">
-          <button id="confirmSignButton" type="button" disabled>Confirm and Continue</button>
+          <button id="confirmSignButton" type="button" disabled>Review in Wallet</button>
+          <button id="signWithWalletButton" type="button" disabled>Sign with Wallet</button>
           <button id="cancelSignButton" type="button" class="ghost">Cancel</button>
         </div>
       </div>

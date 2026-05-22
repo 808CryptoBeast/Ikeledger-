@@ -1,6 +1,141 @@
 import { NETWORKS } from "./ikeledger-config.js";
 
-let xrplModule;
+const WS_TIMEOUT_MS = 15000;
+
+class XrplWsClient {
+  constructor(endpoint) {
+    this.endpoint = endpoint;
+    this.ws = null;
+    this.nextId = 1;
+    this.pending = new Map();
+  }
+
+  connect() {
+    if (this.isConnected()) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.endpoint);
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            ws.close();
+          } catch {
+            // noop
+          }
+          reject(new Error(`XRPL websocket connect timeout: ${this.endpoint}`));
+        }
+      }, WS_TIMEOUT_MS);
+
+      ws.addEventListener("open", () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        this.ws = ws;
+        resolve();
+      });
+
+      ws.addEventListener("message", (event) => {
+        this.onMessage(event);
+      });
+
+      ws.addEventListener("error", () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(new Error(`XRPL websocket failed: ${this.endpoint}`));
+        }
+      });
+
+      ws.addEventListener("close", () => {
+        const message = "XRPL websocket connection closed.";
+        for (const pending of this.pending.values()) {
+          pending.reject(new Error(message));
+        }
+        this.pending.clear();
+
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(new Error(message));
+        }
+
+        this.ws = null;
+      });
+    });
+  }
+
+  onMessage(event) {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    const pending = this.pending.get(payload.id);
+    if (!pending) return;
+
+    this.pending.delete(payload.id);
+    if (payload.status === "error" || payload.error) {
+      const message = payload.error_message || payload.error || "XRPL request failed.";
+      pending.reject(new Error(message));
+      return;
+    }
+
+    pending.resolve(payload);
+  }
+
+  request(body) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("XRPL websocket is not connected."));
+    }
+
+    const id = this.nextId++;
+    const requestBody = { ...body, id };
+
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`XRPL request timeout for command: ${body.command || "unknown"}`));
+      }, WS_TIMEOUT_MS);
+
+      this.pending.set(id, {
+        resolve: (payload) => {
+          clearTimeout(timeoutId);
+          resolve(payload);
+        },
+        reject: (error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        }
+      });
+
+      try {
+        this.ws.send(JSON.stringify(requestBody));
+      } catch (error) {
+        clearTimeout(timeoutId);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  isConnected() {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  disconnect() {
+    if (this.ws && this.ws.readyState < WebSocket.CLOSING) {
+      this.ws.close();
+    }
+    this.ws = null;
+    return Promise.resolve();
+  }
+}
 
 function getNetwork(networkKey) {
   const network = NETWORKS[networkKey];
@@ -10,17 +145,14 @@ function getNetwork(networkKey) {
   return network;
 }
 
-async function loadXrpl() {
-  if (!xrplModule) {
-    xrplModule = await import("https://esm.sh/xrpl@4.2.5?bundle");
-  }
-  return xrplModule;
+function dropsToXrp(drops) {
+  const value = toNumber(drops);
+  return (value / 1000000).toString();
 }
 
 async function withClient(networkKey, callback) {
-  const { Client } = await loadXrpl();
   const network = getNetwork(networkKey);
-  const client = new Client(network.endpoint);
+  const client = new XrplWsClient(network.endpoint);
 
   await client.connect();
   try {
@@ -78,13 +210,13 @@ function classifyTransaction(tx) {
   return type;
 }
 
-function normalizeAmount(xrpl, amount) {
+function normalizeAmount(amount) {
   if (!amount) {
     return { value: "-", asset: "XRP" };
   }
 
   if (typeof amount === "string") {
-    return { value: xrpl.dropsToXrp(amount), asset: "XRP" };
+    return { value: dropsToXrp(amount), asset: "XRP" };
   }
 
   return {
@@ -180,11 +312,10 @@ export async function fetchAccountSnapshot(address, networkKey) {
     }).catch(() => ({ result: { info: {} } }));
 
     const balanceDrops = accountInfo.result.account_data.Balance;
-    const xrpl = await loadXrpl();
 
     const txItems = (txResponse.result.transactions || []).map((item) => {
       const txJson = item.tx_json || {};
-      const normalizedAmount = normalizeAmount(xrpl, txJson.Amount);
+      const normalizedAmount = normalizeAmount(txJson.Amount);
       const memoHex = txJson.Memos?.[0]?.Memo?.MemoData;
 
       return {
@@ -236,7 +367,7 @@ export async function fetchAccountSnapshot(address, networkKey) {
       ["AMMDeposit", "AMMWithdraw", "AMMVote", "AMMBid", "AMMCreate", "AMMDelete"].includes(tx.type)
     );
 
-    const balanceXrp = xrpl.dropsToXrp(balanceDrops);
+    const balanceXrp = dropsToXrp(balanceDrops);
     const reserveBaseDrops = serverInfoResponse.result?.info?.validated_ledger?.reserve_base_xrp
       ? String(Math.round(Number.parseFloat(serverInfoResponse.result.info.validated_ledger.reserve_base_xrp) * 1000000))
       : "10000000";
@@ -256,8 +387,8 @@ export async function fetchAccountSnapshot(address, networkKey) {
         address,
         sequence: accountInfo.result.account_data.Sequence,
         balanceXrp,
-        availableXrp: xrpl.dropsToXrp(availableDrops),
-        ownerReserveXrp: xrpl.dropsToXrp(ownerReserveDrops),
+        availableXrp: dropsToXrp(availableDrops),
+        ownerReserveXrp: dropsToXrp(ownerReserveDrops),
         ownerCount: accountInfo.result.account_data.OwnerCount,
         flags: accountInfo.result.account_data.Flags,
         trustLines: linesResponse.result.lines?.length || 0,

@@ -1,7 +1,13 @@
 import { STORAGE_KEYS } from "./ikeledger-config.js";
+import { importFromCdn } from "./ikeledger-cdn.js";
 
 let clientCache = null;
 let cacheKey = "";
+
+const SUPABASE_CDN_URLS = [
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/+esm",
+  "https://esm.sh/@supabase/supabase-js@2.49.8?bundle"
+];
 
 function normalize(value) {
   return (value || "").trim();
@@ -41,7 +47,7 @@ async function getSupabaseClient() {
     return clientCache;
   }
 
-  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.49.8?bundle");
+  const { createClient } = await importFromCdn(SUPABASE_CDN_URLS, "@supabase/supabase-js@2.49.8");
   clientCache = createClient(url, anonKey, {
     auth: {
       persistSession: true,
