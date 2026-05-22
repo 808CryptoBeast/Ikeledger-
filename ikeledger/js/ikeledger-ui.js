@@ -16,9 +16,11 @@ import {
   setPublicAddress
 } from "./ikeledger-wallet.js";
 import { getManaSummary } from "./ikeledger-rewards.js";
+import { openXamanConnect } from "./ikeledger-xaman.js";
 
 const state = {
-  isLoading: false
+  isLoading: false,
+  latestPreview: null
 };
 
 const refs = {
@@ -29,8 +31,16 @@ const refs = {
   mainnetWarning: document.getElementById("mainnetWarning"),
   lookupButton: document.getElementById("lookupButton"),
   demoButton: document.getElementById("demoButton"),
+  connectXamanButton: document.getElementById("connectXamanButton"),
   disconnectButton: document.getElementById("disconnectButton"),
   clearSessionButton: document.getElementById("clearSessionButton"),
+  xamanStatus: document.getElementById("xamanStatus"),
+  openSignGateButton: document.getElementById("openSignGateButton"),
+  signGateModal: document.getElementById("signGateModal"),
+  signGateContent: document.getElementById("signGateContent"),
+  signConfirmCheckbox: document.getElementById("signConfirmCheckbox"),
+  confirmSignButton: document.getElementById("confirmSignButton"),
+  cancelSignButton: document.getElementById("cancelSignButton"),
   feedback: document.getElementById("feedback"),
   walletStatus: document.getElementById("walletStatus"),
   manaStatus: document.getElementById("manaStatus"),
@@ -63,16 +73,30 @@ function txToPreview(tx, networkLabel) {
     return {
       type: "None",
       summary: "No transaction selected yet.",
+      sendingAccount: "-",
+      receivingAccount: "-",
+      amount: "-",
+      asset: "XRP",
+      destinationTag: "-",
+      memo: "-",
+      fee: "0",
       risk: RISK_LEVELS.SAFE,
+      networkLabel,
       irreversible: false
     };
   }
 
-  const risk = tx.type === "Payment" ? RISK_LEVELS.HIGH : RISK_LEVELS.LOW;
+  const risk = tx.type === "Payment" ? RISK_LEVELS.HIGH : RISK_LEVELS.MEDIUM;
 
   return {
     type: tx.type,
     summary: tx.label,
+    sendingAccount: tx.sendingAccount,
+    receivingAccount: tx.receivingAccount,
+    amount: tx.amount,
+    asset: tx.asset,
+    destinationTag: tx.destinationTag ?? "-",
+    memo: tx.memo ?? "-",
     fee: tx.fee,
     risk,
     networkLabel,
@@ -148,15 +172,67 @@ function renderTxPreview(walletState) {
   const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
   const firstTx = walletState.snapshot?.txItems?.[0];
   const preview = txToPreview(firstTx, network.label);
+  state.latestPreview = preview;
 
   refs.txPreview.innerHTML = `
     <p><strong>Transaction Type:</strong> ${preview.type}</p>
-    <p><strong>Summary:</strong> ${preview.summary}</p>
+    <p><strong>Summary:</strong> ${preview.summary || "-"}</p>
+    <p><strong>From:</strong> ${formatAddress(preview.sendingAccount)}</p>
+    <p><strong>To:</strong> ${formatAddress(preview.receivingAccount)}</p>
+    <p><strong>Asset:</strong> ${preview.amount} ${preview.asset}</p>
     <p><strong>Network:</strong> ${preview.networkLabel || "-"}</p>
     <p><strong>Estimated Fee:</strong> ${preview.fee || "0"} drops</p>
+    <p><strong>Destination Tag:</strong> ${preview.destinationTag}</p>
+    <p><strong>Memo:</strong> ${preview.memo}</p>
     <p><strong>Risk Level:</strong> ${preview.risk}</p>
     <p><strong>Finality:</strong> ${preview.irreversible ? "Final once validated" : "Varies by action"}</p>
   `;
+}
+
+function openSignGateModal() {
+  const walletState = getWalletState();
+  const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+  const preview = state.latestPreview || txToPreview(null, network.label);
+  const actionRisk = preview.type === "Unknown"
+    ? RISK_LEVELS.BLOCKED
+    : assessRisk("transaction_submit", { isMainnet: network.isMainnet });
+
+  refs.signGateContent.innerHTML = `
+    <p><strong>Transaction Type:</strong> ${preview.type}</p>
+    <p><strong>From:</strong> ${formatAddress(preview.sendingAccount)}</p>
+    <p><strong>To:</strong> ${formatAddress(preview.receivingAccount)}</p>
+    <p><strong>Asset:</strong> ${preview.amount} ${preview.asset}</p>
+    <p><strong>Network:</strong> ${network.label}</p>
+    <p><strong>Estimated Fee:</strong> ${preview.fee} drops</p>
+    <p><strong>Destination Tag:</strong> ${preview.destinationTag}</p>
+    <p><strong>Memo:</strong> ${preview.memo}</p>
+    <p><strong>Risk:</strong> ${preview.risk === RISK_LEVELS.SAFE ? actionRisk : preview.risk}</p>
+    <p><strong>Warning:</strong> XRPL transactions are final once validated.</p>
+  `;
+
+  refs.signConfirmCheckbox.checked = false;
+  refs.confirmSignButton.disabled = true;
+  refs.signGateModal.classList.remove("hidden");
+}
+
+function closeSignGateModal() {
+  refs.signGateModal.classList.add("hidden");
+}
+
+function onConfirmSignIntent() {
+  const walletState = getWalletState();
+  const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+  const risk = assessRisk("transaction_submit", { isMainnet: network.isMainnet });
+
+  logSecurityEvent("sign_request_prepared", risk, {
+    context: "sign_gate_confirmed",
+    network: network.key,
+    addressHint: formatAddress(walletState.publicAddress)
+  });
+
+  setFeedback("Signing request prepared. Next: use Xaman payload endpoint to submit the request.");
+  closeSignGateModal();
+  renderSecurity();
 }
 
 function renderSecurity() {
@@ -260,6 +336,18 @@ function onLoadDemo() {
   setFeedback("Demo address loaded. Click Lookup Address.");
 }
 
+function onConnectXaman() {
+  const walletState = getWalletState();
+  const context = openXamanConnect(walletState.network, walletState.publicAddress);
+  refs.xamanStatus.textContent = `${context.provider} opened for ${context.network}. ${context.note}`;
+  logSecurityEvent("xaman_connect_started", RISK_LEVELS.LOW, {
+    context: "provider_connect",
+    network: walletState.network,
+    addressHint: formatAddress(walletState.publicAddress)
+  });
+  renderSecurity();
+}
+
 function initNetworkOptions() {
   refs.networkSelect.innerHTML = Object.values(NETWORKS)
     .map((network) => `<option value="${network.key}">${network.label}</option>`)
@@ -272,6 +360,18 @@ function initEventHandlers() {
   refs.disconnectButton.addEventListener("click", onDisconnect);
   refs.clearSessionButton.addEventListener("click", onClearSession);
   refs.demoButton.addEventListener("click", onLoadDemo);
+  refs.connectXamanButton.addEventListener("click", onConnectXaman);
+  refs.openSignGateButton.addEventListener("click", openSignGateModal);
+  refs.cancelSignButton.addEventListener("click", closeSignGateModal);
+  refs.confirmSignButton.addEventListener("click", onConfirmSignIntent);
+  refs.signConfirmCheckbox.addEventListener("change", (event) => {
+    refs.confirmSignButton.disabled = !event.target.checked;
+  });
+  refs.signGateModal.addEventListener("click", (event) => {
+    if (event.target === refs.signGateModal) {
+      closeSignGateModal();
+    }
+  });
 
   refs.addressInput.addEventListener("paste", (event) => {
     const pastedText = event.clipboardData?.getData("text") || "";

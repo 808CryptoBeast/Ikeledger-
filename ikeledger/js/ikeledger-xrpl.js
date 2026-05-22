@@ -58,6 +58,21 @@ function classifyTransaction(tx) {
   return type;
 }
 
+function normalizeAmount(xrpl, amount) {
+  if (!amount) {
+    return { value: "-", asset: "XRP" };
+  }
+
+  if (typeof amount === "string") {
+    return { value: xrpl.dropsToXrp(amount), asset: "XRP" };
+  }
+
+  return {
+    value: amount.value || "-",
+    asset: amount.currency || "Issued Asset"
+  };
+}
+
 export async function fetchAccountSnapshot(address, networkKey) {
   return withClient(networkKey, async (client, network) => {
     const accountInfo = await client.request({
@@ -91,14 +106,26 @@ export async function fetchAccountSnapshot(address, networkKey) {
     const balanceDrops = accountInfo.result.account_data.Balance;
     const xrpl = await loadXrpl();
 
-    const txItems = (txResponse.result.transactions || []).map((item) => ({
-      hash: item.tx_json?.hash || "Unknown",
-      type: item.tx_json?.TransactionType || "Unknown",
-      label: classifyTransaction(item),
-      date: item.tx_json?.date || null,
-      fee: item.tx_json?.Fee || "0",
-      validated: Boolean(item.validated)
-    }));
+    const txItems = (txResponse.result.transactions || []).map((item) => {
+      const txJson = item.tx_json || {};
+      const normalizedAmount = normalizeAmount(xrpl, txJson.Amount);
+      const memoHex = txJson.Memos?.[0]?.Memo?.MemoData;
+
+      return {
+        hash: txJson.hash || "Unknown",
+        type: txJson.TransactionType || "Unknown",
+        label: classifyTransaction(item),
+        date: txJson.date || null,
+        fee: txJson.Fee || "0",
+        sendingAccount: txJson.Account || "-",
+        receivingAccount: txJson.Destination || "-",
+        amount: normalizedAmount.value,
+        asset: normalizedAmount.asset,
+        destinationTag: txJson.DestinationTag ?? null,
+        memo: memoHex || null,
+        validated: Boolean(item.validated)
+      };
+    });
 
     return {
       network,

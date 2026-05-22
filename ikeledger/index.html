@@ -9,79 +9,109 @@
   <body>
     <div class="bg-gradient" aria-hidden="true"></div>
     <main class="app-shell">
-      <header class="hero">
-        <p class="eyebrow">IkeLedger</p>
-        <h1>Where ancestral knowledge meets verifiable value.</h1>
-        <p class="hero-copy">
-          Trusted XRPL wallet and connection layer for learning records, Mana rewards,
-          badges, and future credentials.
-        </p>
-        <div id="statusChips" class="chip-row" aria-live="polite"></div>
+      <header class="app-top">
+        <section class="brand-wrap">
+          <p class="eyebrow">IkeLedger</p>
+          <h1>Ancestral Trust Wallet</h1>
+          <p class="hero-copy">
+            XRPL connection layer for protected learning records, Mana rewards, badges,
+            and verified cultural-education activity.
+          </p>
+        </section>
+        <section class="top-chip-wrap">
+          <div id="statusChips" class="chip-row" aria-live="polite"></div>
+        </section>
       </header>
 
-      <section class="panel safety-panel">
-        <h2>Safety First</h2>
-        <ul id="safetyReminders"></ul>
-      </section>
+      <section class="wallet-layout">
+        <aside class="panel wallet-rail">
+          <h2>Connection Hub</h2>
+          <p class="muted">Start in read-only mode and escalate permissions only with consent.</p>
+          <div class="control-grid">
+            <label>
+              XRPL Network
+              <select id="networkSelect"></select>
+            </label>
+            <label>
+              Public XRPL Address
+              <input
+                id="addressInput"
+                type="text"
+                placeholder="r..."
+                autocomplete="off"
+                spellcheck="false"
+                inputmode="text"
+              />
+            </label>
+          </div>
+          <p id="mainnetWarning" class="warning hidden" role="alert">
+            You are connected to XRPL Mainnet. Real assets may be involved.
+          </p>
+          <div class="button-column">
+            <button id="lookupButton" type="button">Lookup Address</button>
+            <button id="connectXamanButton" type="button">Connect with Xaman</button>
+            <button id="demoButton" type="button" class="ghost">Load Demo Address</button>
+            <button id="disconnectButton" type="button" class="ghost">Disconnect</button>
+            <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
+          </div>
+          <p id="xamanStatus" class="feedback" aria-live="polite"></p>
+          <p id="feedback" class="feedback" aria-live="polite"></p>
+        </aside>
 
-      <section class="panel controls">
-        <h2>Read-only Wallet Lookup</h2>
-        <p class="muted">
-          Start in read-only mode. Explore account status before enabling any signing or
-          transaction workflows.
-        </p>
-        <div class="control-grid">
-          <label>
-            XRPL Network
-            <select id="networkSelect"></select>
-          </label>
-          <label>
-            Public XRPL Address
-            <input
-              id="addressInput"
-              type="text"
-              placeholder="r..."
-              autocomplete="off"
-              spellcheck="false"
-              inputmode="text"
-            />
-          </label>
-        </div>
-        <p id="mainnetWarning" class="warning hidden" role="alert">
-          You are connected to XRPL Mainnet. Real assets may be involved.
-        </p>
-        <div class="button-row">
-          <button id="lookupButton" type="button">Lookup Address</button>
-          <button id="demoButton" type="button" class="ghost">Load Demo Address</button>
-          <button id="disconnectButton" type="button" class="ghost">Disconnect</button>
-          <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
-        </div>
-        <p id="feedback" class="feedback" aria-live="polite"></p>
-      </section>
+        <section class="wallet-main">
+          <section class="panel quick-cards">
+            <article>
+              <h3>Wallet Status</h3>
+              <div id="walletStatus" class="card"></div>
+            </article>
+            <article>
+              <h3>Mana and Learning</h3>
+              <div id="manaStatus" class="card"></div>
+            </article>
+          </section>
 
-      <section class="panel dashboard-grid">
-        <article>
-          <h3>Wallet Status</h3>
-          <div id="walletStatus" class="card"></div>
-        </article>
-        <article>
-          <h3>Mana and Learning</h3>
-          <div id="manaStatus" class="card"></div>
-        </article>
-        <article>
-          <h3>Recent Ledger Activity</h3>
-          <div id="txHistory" class="card scroll"></div>
-        </article>
-        <article>
-          <h3>Transaction Preview</h3>
-          <div id="txPreview" class="card"></div>
-        </article>
-        <article>
-          <h3>Security Status</h3>
-          <div id="securityStatus" class="card"></div>
-        </article>
+          <section class="panel action-panel">
+            <article>
+              <h3>Transaction Preview</h3>
+              <div id="txPreview" class="card"></div>
+              <div class="button-row">
+                <button id="openSignGateButton" type="button">Prepare Sign Request</button>
+              </div>
+            </article>
+            <article>
+              <h3>Security Status</h3>
+              <div id="securityStatus" class="card"></div>
+            </article>
+          </section>
+
+          <section class="panel activity-panel">
+            <article>
+              <h3>Recent Ledger Activity</h3>
+              <div id="txHistory" class="card scroll"></div>
+            </article>
+            <article class="safety-panel">
+              <h3>Protection Reminders</h3>
+              <ul id="safetyReminders"></ul>
+            </article>
+          </section>
+        </section>
       </section>
     </main>
+
+    <div id="signGateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signGateTitle">
+      <div class="modal-card">
+        <h2 id="signGateTitle">Transaction Consent Preview</h2>
+        <div id="signGateContent" class="modal-content"></div>
+        <label class="confirm-row">
+          <input id="signConfirmCheckbox" type="checkbox" />
+          I understand this action may be final once validated on XRPL.
+        </label>
+        <div class="button-row">
+          <button id="confirmSignButton" type="button" disabled>Confirm and Continue</button>
+          <button id="cancelSignButton" type="button" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="./js/ikeledger-ui.js"></script>
   </body>
