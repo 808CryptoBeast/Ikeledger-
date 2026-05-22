@@ -30,6 +30,9 @@ export const STORAGE_KEYS = {
   network: "ikeledger.network",
   publicAddress: "ikeledger.publicAddress",
   connectionPreference: "ikeledger.connectionPreference",
+  supabaseUrl: "ikeledger.supabaseUrl",
+  supabaseAnonKey: "ikeledger.supabaseAnonKey",
+  adminMode: "ikeledger.adminMode",
   theme: "ikeledger.theme",
   completedLessons: "ikeledger.completedLessons"
 };

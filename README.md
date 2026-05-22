@@ -14,6 +14,13 @@ The repository now includes a working Phase 1 foundation in [ikeledger](ikeledge
 - Mana, badge, and activity preview panels
 - Security and wallet-flow documentation
 
+## Architecture note
+
+Supabase is optional for the core wallet UI.
+
+- XRPL wallet lookup, balances, assets, NFTs, AMM views, and transaction history work without Supabase.
+- Supabase is only needed for ecosystem persistence such as profiles, wallet linkage records, Mana, badges, credentials, and security logs.
+
 ## Quick start
 
-Open [ikeledger/index.html](ikeledger/index.html) in a browser to run the static prototype.
+Open [index.html](index.html) in a browser to run IkeLedger.

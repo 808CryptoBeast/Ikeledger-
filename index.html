@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IkeLedger - Where ancestral knowledge meets verifiable value.</title>
+    <link rel="stylesheet" href="./ikeledger/css/ikeledger.css" />
+  </head>
+  <body>
+    <div class="cosmic-bg" aria-hidden="true"></div>
+    <main class="ledger-app">
+      <header class="hero-shell">
+        <div>
+          <p class="eyebrow">IkeLedger</p>
+          <h1>Where ancestral knowledge meets verifiable value.</h1>
+          <p class="hero-copy">Living knowledge ledger for XRPL identity, verifiable learning, Mana rewards, and protected wallet wayfinding.</p>
+        </div>
+        <div class="hero-actions">
+          <div id="statusChips" class="chip-row" aria-live="polite"></div>
+          <div class="button-row">
+            <button id="connectXamanButton" type="button" aria-label="Connect wallet with Xaman">Connect Wallet</button>
+            <button id="disconnectButton" type="button" class="ghost" aria-label="Disconnect wallet">Disconnect</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace-grid">
+        <aside class="sidebar-panel glass-card">
+          <h2>Wayfinding</h2>
+          <nav class="sidebar-nav" aria-label="Main navigation">
+            <button class="sidebar-btn is-active" type="button">Dashboard</button>
+            <button class="sidebar-btn" type="button">Assets</button>
+            <button class="sidebar-btn" type="button">Credentials</button>
+            <button class="sidebar-btn" type="button">Security Center</button>
+          </nav>
+          <div class="sidebar-footer">
+            <button id="openSettingsButton" type="button" class="ghost">User Settings</button>
+          </div>
+        </aside>
+
+        <section class="dashboard-column">
+          <section class="glass-card wallet-connection">
+            <div class="section-top">
+              <h2>Wallet Connection</h2>
+              <span class="mode-pill">Read-Only Mode</span>
+            </div>
+            <p class="muted">Read-only exploration is available before any signing flow. Protocol-first wallet design with consent gates.</p>
+            <div class="control-grid two-col">
+              <label>
+                XRPL Network
+                <select id="networkSelect" aria-label="Select XRPL network"></select>
+              </label>
+              <label>
+                Public XRPL Address
+                <input id="addressInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" inputmode="text" aria-label="Public XRPL address" />
+              </label>
+            </div>
+            <p id="mainnetWarning" class="warning hidden" role="alert">You are on XRPL Mainnet. Real assets may be involved.</p>
+            <div class="button-row">
+              <button id="lookupButton" type="button">Read-Only Lookup</button>
+              <button id="demoButton" type="button" class="ghost">Load Demo</button>
+              <button id="copyAddressButton" type="button" class="ghost">Copy Address</button>
+              <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
+            </div>
+            <div class="wallet-meta">
+              <p><strong>Provider:</strong> <span id="providerStatus">Xaman / Read-only</span></p>
+              <p><strong>Address:</strong> <span id="publicAddressCompact">-</span></p>
+              <p><strong>Verified:</strong> <span id="walletVerifiedStatus">No</span></p>
+            </div>
+            <p id="xamanStatus" class="feedback" aria-live="polite"></p>
+            <p id="feedback" class="feedback" aria-live="polite"></p>
+          </section>
+
+          <section class="card-grid overview-grid">
+            <article class="glass-card"><h3>Portfolio Summary</h3><div id="portfolioSummary" class="card-content"></div></article>
+            <article class="glass-card"><h3>Wallet Overview</h3><div id="walletStatus" class="card-content"></div></article>
+            <article class="glass-card"><h3>Mana and Rewards</h3><div id="manaStatus" class="card-content"></div></article>
+            <article class="glass-card"><h3>User Profile</h3><div id="profileStatus" class="card-content"></div></article>
+            <article class="glass-card"><h3>Proof-of-Learning</h3><div id="proofLearning" class="card-content"></div></article>
+            <article class="glass-card"><h3>Badges and Credentials</h3><div id="badgeCredentials" class="card-content"></div></article>
+            <article class="glass-card"><h3>Security Center</h3><div id="securityStatus" class="card-content"></div></article>
+          </section>
+
+          <section class="card-grid asset-grid">
+            <article class="glass-card"><h3>Assets and Trust Lines</h3><div id="tokenHoldings" class="card-content scroll"></div></article>
+            <article class="glass-card"><h3>Issued Tokens</h3><div id="issuedTokens" class="card-content scroll"></div></article>
+            <article class="glass-card"><h3>NFT Gallery</h3><div id="nftInventory" class="card-content scroll nft-grid"></div></article>
+            <article class="glass-card"><h3>AMM Exposure</h3><div id="ammStatus" class="card-content"></div></article>
+            <article class="glass-card"><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
+          </section>
+
+          <section class="card-grid activity-grid">
+            <article class="glass-card">
+              <div class="section-top">
+                <h3>Ledger Activity</h3>
+                <button id="toggleRawJsonButton" type="button" class="ghost">Show Raw JSON</button>
+              </div>
+              <div id="txHistory" class="card-content scroll"></div>
+              <pre id="txRawJson" class="raw-json hidden" aria-label="Raw transaction JSON"></pre>
+            </article>
+            <article class="glass-card">
+              <h3>Transaction Preview</h3>
+              <div id="txPreview" class="card-content"></div>
+              <div class="button-row"><button id="openSignGateButton" type="button">Preview Before Signing</button></div>
+            </article>
+            <article class="glass-card safety-panel">
+              <h3>Protection Banners</h3>
+              <ul id="safetyReminders"></ul>
+            </article>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <aside id="settingsDrawer" class="settings-drawer hidden" aria-label="User settings">
+      <div class="settings-card">
+        <div class="settings-header">
+          <h2>Settings</h2>
+          <button id="closeSettingsButton" type="button" class="ghost">Close</button>
+        </div>
+
+        <section class="settings-section">
+          <h3>User Controls</h3>
+          <div class="button-row">
+            <button id="settingsDisconnectButton" type="button" class="ghost">Disconnect Wallet</button>
+            <button id="settingsClearSessionButton" type="button" class="ghost">Clear Session</button>
+          </div>
+        </section>
+
+        <section class="settings-section admin-gate">
+          <h3>Builder Admin</h3>
+          <label>
+            Admin Access Code
+            <input id="adminUnlockInput" type="password" placeholder="Enter builder code" autocomplete="off" />
+          </label>
+          <div class="button-row">
+            <button id="adminUnlockButton" type="button">Unlock Admin</button>
+            <button id="adminLockButton" type="button" class="ghost">Lock Admin</button>
+          </div>
+          <p id="adminUnlockStatus" class="feedback" aria-live="polite"></p>
+        </section>
+
+        <section id="adminPanel" class="settings-section supabase-box hidden">
+          <h3>Supabase Builder Sync</h3>
+          <div class="control-grid">
+            <label>
+              Supabase URL
+              <input id="supabaseUrlInput" type="text" placeholder="https://your-project.supabase.co" autocomplete="off" />
+            </label>
+            <label>
+              Supabase Anon Key
+              <input id="supabaseAnonKeyInput" type="password" placeholder="eyJ..." autocomplete="off" />
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="saveSupabaseButton" type="button">Save Supabase</button>
+            <button id="testSupabaseButton" type="button" class="ghost">Test Supabase</button>
+          </div>
+          <p id="supabaseStatus" class="feedback" aria-live="polite"></p>
+        </section>
+      </div>
+    </aside>
+
+    <div id="signGateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signGateTitle">
+      <div class="modal-card">
+        <h2 id="signGateTitle">Transaction Consent Preview</h2>
+        <div id="signGateContent" class="modal-content"></div>
+        <label class="confirm-row">
+          <input id="signConfirmCheckbox" type="checkbox" />
+          I understand XRPL transactions are irreversible after validation.
+        </label>
+        <div class="button-row">
+          <button id="confirmSignButton" type="button" disabled>Confirm and Continue</button>
+          <button id="cancelSignButton" type="button" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./ikeledger/js/ikeledger-ui.js"></script>
+  </body>
+</html>

@@ -16,6 +16,8 @@ Where ancestral knowledge meets verifiable value.
 - Transaction consent modal before signing flow continuation
 - Xaman connection handoff entry point
 - Supabase migration scripts with RLS and reward guardrails
+- Supabase client config panel (URL + anon key) for live RPC sync
+- RPC-backed wallet linkage and security event sync hooks
 
 ## Run locally
 
