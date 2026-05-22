@@ -1,0 +1,257 @@
+:root {
+  --bg-0: #f5efe0;
+  --bg-1: #efe4cd;
+  --ink-0: #1b2a1d;
+  --ink-1: #2d3f30;
+  --ink-2: #55665a;
+  --accent: #205b3d;
+  --accent-soft: #d7ebdd;
+  --danger: #a33d2d;
+  --warn: #9e6f19;
+  --safe: #2f7d47;
+  --panel: rgba(255, 252, 245, 0.88);
+  --border: rgba(32, 91, 61, 0.2);
+  --shadow: 0 16px 40px rgba(27, 42, 29, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--ink-0);
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+  background: linear-gradient(130deg, var(--bg-0), var(--bg-1));
+}
+
+.bg-gradient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(32, 91, 61, 0.18), transparent 30%),
+    radial-gradient(circle at 84% 16%, rgba(163, 61, 45, 0.13), transparent 26%),
+    radial-gradient(circle at 72% 82%, rgba(158, 111, 25, 0.1), transparent 28%);
+}
+
+.app-shell {
+  width: min(1100px, 92vw);
+  margin: 2rem auto 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 1rem 1.25rem;
+}
+
+.hero {
+  animation: rise 0.55s ease-out;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+h1 {
+  margin: 0.35rem 0;
+  font-size: clamp(1.4rem, 2.8vw, 2.25rem);
+  color: var(--ink-1);
+}
+
+h2,
+h3 {
+  margin: 0 0 0.6rem;
+  color: var(--ink-1);
+}
+
+.hero-copy,
+.muted {
+  margin: 0.3rem 0 0.7rem;
+  color: var(--ink-2);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chip {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chip-safe {
+  background: #e7f5eb;
+  border-color: #b8e0c5;
+  color: #1f6a39;
+}
+
+.chip-low {
+  background: #edf4ff;
+  border-color: #c6d8ff;
+  color: #294c8f;
+}
+
+.chip-medium {
+  background: #fff6e7;
+  border-color: #eed29a;
+  color: #7d5b08;
+}
+
+.chip-high,
+.chip-blocked {
+  background: #ffe9e5;
+  border-color: #f0b7ab;
+  color: #922d1f;
+}
+
+.safety-panel ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--ink-1);
+  display: grid;
+  gap: 0.25rem;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+input,
+select,
+button {
+  border-radius: 10px;
+  border: 1px solid #c3d2c3;
+  padding: 0.62rem 0.7rem;
+  font: inherit;
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 2px solid #9fc4aa;
+  outline-offset: 1px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+button {
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid #1f5136;
+  font-weight: 600;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--ink-1);
+}
+
+.warning {
+  margin: 0.6rem 0 0;
+  color: #8f2c20;
+  font-weight: 600;
+}
+
+.warning.hidden {
+  display: none;
+}
+
+.feedback {
+  min-height: 1.3rem;
+  margin: 0.55rem 0 0;
+  color: var(--ink-2);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: #fffdf8;
+  min-height: 120px;
+  color: var(--ink-1);
+}
+
+.card.scroll {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.card p,
+.card ul {
+  margin: 0.25rem 0;
+}
+
+.tx-item {
+  border-bottom: 1px solid #e5ecd9;
+  padding: 0.45rem 0;
+}
+
+.tx-item:last-child {
+  border-bottom: 0;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 860px) {
+  .control-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}

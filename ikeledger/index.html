@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IkeLedger - XRPL Wallet and Connection Layer</title>
+    <link rel="stylesheet" href="./css/ikeledger.css" />
+  </head>
+  <body>
+    <div class="bg-gradient" aria-hidden="true"></div>
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">IkeLedger</p>
+        <h1>Where ancestral knowledge meets verifiable value.</h1>
+        <p class="hero-copy">
+          Trusted XRPL wallet and connection layer for learning records, Mana rewards,
+          badges, and future credentials.
+        </p>
+        <div id="statusChips" class="chip-row" aria-live="polite"></div>
+      </header>
+
+      <section class="panel safety-panel">
+        <h2>Safety First</h2>
+        <ul id="safetyReminders"></ul>
+      </section>
+
+      <section class="panel controls">
+        <h2>Read-only Wallet Lookup</h2>
+        <p class="muted">
+          Start in read-only mode. Explore account status before enabling any signing or
+          transaction workflows.
+        </p>
+        <div class="control-grid">
+          <label>
+            XRPL Network
+            <select id="networkSelect"></select>
+          </label>
+          <label>
+            Public XRPL Address
+            <input
+              id="addressInput"
+              type="text"
+              placeholder="r..."
+              autocomplete="off"
+              spellcheck="false"
+              inputmode="text"
+            />
+          </label>
+        </div>
+        <p id="mainnetWarning" class="warning hidden" role="alert">
+          You are connected to XRPL Mainnet. Real assets may be involved.
+        </p>
+        <div class="button-row">
+          <button id="lookupButton" type="button">Lookup Address</button>
+          <button id="demoButton" type="button" class="ghost">Load Demo Address</button>
+          <button id="disconnectButton" type="button" class="ghost">Disconnect</button>
+          <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
+        </div>
+        <p id="feedback" class="feedback" aria-live="polite"></p>
+      </section>
+
+      <section class="panel dashboard-grid">
+        <article>
+          <h3>Wallet Status</h3>
+          <div id="walletStatus" class="card"></div>
+        </article>
+        <article>
+          <h3>Mana and Learning</h3>
+          <div id="manaStatus" class="card"></div>
+        </article>
+        <article>
+          <h3>Recent Ledger Activity</h3>
+          <div id="txHistory" class="card scroll"></div>
+        </article>
+        <article>
+          <h3>Transaction Preview</h3>
+          <div id="txPreview" class="card"></div>
+        </article>
+        <article>
+          <h3>Security Status</h3>
+          <div id="securityStatus" class="card"></div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./js/ikeledger-ui.js"></script>
+  </body>
+</html>
