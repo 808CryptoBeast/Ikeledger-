@@ -30,11 +30,22 @@ export const STORAGE_KEYS = {
   network: "ikeledger.network",
   publicAddress: "ikeledger.publicAddress",
   connectionPreference: "ikeledger.connectionPreference",
+  profileDisplayName: "ikeledger.profileDisplayName",
+  profileHandle: "ikeledger.profileHandle",
+  profileBio: "ikeledger.profileBio",
+  profileRealm: "ikeledger.profileRealm",
+  profileInitials: "ikeledger.profileInitials",
   supabaseUrl: "ikeledger.supabaseUrl",
   supabaseAnonKey: "ikeledger.supabaseAnonKey",
   adminMode: "ikeledger.adminMode",
   theme: "ikeledger.theme",
-  completedLessons: "ikeledger.completedLessons"
+  completedLessons: "ikeledger.completedLessons",
+  profilePhoto: "ikeledger.profilePhoto",
+  avatarGlowColor: "ikeledger.avatarGlowColor",
+  avatarGlowIntensity: "ikeledger.avatarGlowIntensity",
+  avatarBorderColor: "ikeledger.avatarBorderColor",
+  avatarBorderShape: "ikeledger.avatarBorderShape",
+  avatarBorderWidth: "ikeledger.avatarBorderWidth"
 };
 
 export const RISK_LEVELS = {

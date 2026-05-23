@@ -9,39 +9,26 @@
   <body>
     <div class="cosmic-bg" aria-hidden="true"></div>
     <header class="top-nav">
-      <div class="brand-block">
-        <button id="openSidebarButton" type="button" class="ghost icon-btn" aria-label="Open navigation">☰</button>
-        <div>
-          <p class="eyebrow">IkeLedger</p>
-          <img class="brand-banner" src="./ikeledger/assets/images/ikeledger_separated_icons/ikeledger_wordmark_banner.png" alt="IkeLedger wordmark" />
-          <h1>Where ancestral knowledge meets verifiable value.</h1>
-        </div>
+      <button id="openSidebarButton" type="button" class="nav-logo-btn" aria-label="Open navigation menu">
+        <img src="./ikeledger/assets/images/Ikeledger.png" alt="IkeLedger" />
+      </button>
+
+      <div class="nav-wordmark">
+        <img src="./ikeledger/assets/images/ikeledger_separated_icons/ikeledger_wordmark_banner.png" alt="IkeLedger" />
       </div>
 
-      <nav class="top-links" aria-label="Primary navigation">
-        <button class="top-link is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Dashboard</button>
-        <button class="top-link" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet</button>
-        <button class="top-link" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /></span>DEX</button>
-        <button class="top-link" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /></span>AMM / LP</button>
-        <button class="top-link" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFTs</button>
-        <button class="top-link" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/tokens.png" alt="" /></span>Tokens</button>
-        <button class="top-link" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/credentials.png" alt="" /></span>Credentials</button>
-        <button class="top-link" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/activity.png" alt="" /></span>Activity</button>
-        <button class="top-link" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/security.png" alt="" /></span>Security</button>
-        <button class="top-link" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/settings.png" alt="" /></span>Settings</button>
-      </nav>
-
       <div class="top-controls">
+        <div class="xrp-price-chip" title="XRP live price (updates every 15s)">
+          <span class="xrp-price-label">XRP</span>
+          <strong id="xrpNavPrice">—</strong>
+        </div>
         <label class="inline-control">
           <span>Network</span>
           <select id="networkSelect" aria-label="Select XRPL network"></select>
         </label>
-        <span id="walletConnectionChip" class="chip chip-low">Read-only</span>
-        <button id="themeToggleButton" type="button" class="ghost">Theme</button>
-        <button id="profileButton" type="button" class="ghost icon-btn" aria-label="Profile">◉</button>
-        <button id="openSettingsButton" type="button" class="ghost">Settings</button>
-        <button id="connectXamanButton" type="button" aria-label="Connect wallet with Xaman">Connect</button>
-        <button id="disconnectButton" type="button" class="ghost" aria-label="Disconnect wallet">Disconnect</button>
+        <button id="profileButton" type="button" class="ghost icon-btn icon-only" aria-label="Open profile">
+          <img src="./ikeledger/assets/images/ikeprofile.png" alt="Profile" />
+        </button>
       </div>
     </header>
 
@@ -54,7 +41,7 @@
           </div>
           <nav class="sidebar-nav" aria-label="Section navigation">
             <button class="sidebar-btn is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Command Center</button>
-            <button class="sidebar-btn" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet Status</button>
+            <button class="sidebar-btn" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikewallet.png" alt="" /></span>Wallet Status</button>
             <button class="sidebar-btn" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/tokens.png" alt="" /></span>Tokens</button>
             <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFT Viewer</button>
             <button class="sidebar-btn" data-page="nft-listings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFT Listings</button>
@@ -63,22 +50,35 @@
             <button class="sidebar-btn" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/activity.png" alt="" /></span>Activity</button>
             <button class="sidebar-btn" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/credentials.png" alt="" /></span>Credentials & Mana</button>
             <button class="sidebar-btn" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/security.png" alt="" /></span>Security Center</button>
-            <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/profile.png" alt="" /></span>Profile</button>
+            <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeprofile.png" alt="" /></span>Profile</button>
+            <button class="sidebar-btn" data-page="create-wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Create Wallet</button>
             <button class="sidebar-btn" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/settings.png" alt="" /></span>Settings</button>
           </nav>
-          <div id="statusChips" class="chip-row" aria-live="polite"></div>
+          <div class="sidebar-footer">
+            <div id="statusChips" class="chip-row" aria-live="polite"></div>
+            <span id="walletConnectionChip" class="chip chip-low">Read-only</span>
+            <button id="connectXamanButton" type="button" class="sidebar-connect-btn" aria-label="Connect wallet with Xaman">Connect Wallet</button>
+            <button id="disconnectButton" type="button" class="ghost sidebar-action-btn" aria-label="Disconnect wallet">Disconnect</button>
+            <div class="sidebar-meta-row">
+              <button id="themeToggleButton" type="button" class="ghost">Theme</button>
+              <button id="openSettingsButton" type="button" class="ghost">Settings</button>
+            </div>
+          </div>
         </aside>
 
         <section class="dashboard-column">
           <section class="page-section active" data-page="dashboard">
             <article class="glass-card account-hero">
               <div class="account-hero-left">
-                <div class="avatar-pill">WV</div>
-                <div>
-                  <p class="eyebrow">Protected connection</p>
-                  <h2>Wallet-linked learning journey</h2>
-                  <p id="profileStatus" class="card-content"></p>
+                <div class="hero-avatar-zone">
+                  <div class="avatar-glow-wrap" id="heroAvatarGlowWrap">
+                    <span class="avatar-status-ring status-disconnected" id="heroAvatarStatusRing" aria-hidden="true"></span>
+                    <button id="heroAvatarPill" class="avatar-pill avatar-hero avatar-clickable" type="button" aria-label="Change profile photo" title="Click to change photo">WV</button>
+                  </div>
+                  <span class="avatar-status-label" id="heroAvatarStatusLabel">Not connected</span>
+                  <span class="avatar-upload-hint">tap to change</span>
                 </div>
+                <div id="profileStatus" class="profile-status-block"></div>
               </div>
               <div class="account-hero-main">
                 <label>
@@ -87,17 +87,33 @@
                 </label>
                 <div class="button-row">
                   <button id="lookupButton" type="button">Refresh Account</button>
+                  <button id="sendButton" type="button" class="ghost">Send</button>
+                  <button id="qrCodeButton" type="button" class="ghost">Receive</button>
                   <button id="demoButton" type="button" class="ghost">Load Demo</button>
                   <button id="copyAddressButton" type="button" class="ghost">Copy Address</button>
-                  <button id="qrCodeButton" type="button" class="ghost">QR Code</button>
                   <button id="clearSessionButton" type="button" class="ghost">Clear Session</button>
                 </div>
-                <p id="mainnetWarning" class="warning hidden" role="alert">You are on XRPL Mainnet. Real assets may be involved.</p>
-                <div class="wallet-meta">
-                  <p><strong>Provider:</strong> <span id="providerStatus">Xaman / Read-only</span></p>
-                  <p><strong>Address:</strong> <span id="publicAddressCompact">-</span></p>
-                  <p><strong>Verified:</strong> <span id="walletVerifiedStatus">No</span></p>
-                  <p><strong>Last Sync:</strong> <span id="lastSyncStatus">-</span></p>
+                <div id="mainnetWarning" class="mainnet-alert hidden" role="alert">
+                  <span class="mainnet-alert-icon">⚠</span>
+                  <span>XRPL Mainnet — real assets may be involved. Verify every transaction before signing.</span>
+                </div>
+                <div class="wallet-meta-grid">
+                  <div class="wallet-meta-tile">
+                    <span class="meta-label">Provider</span>
+                    <span id="providerStatus" class="meta-value">Xaman / Read-only</span>
+                  </div>
+                  <div class="wallet-meta-tile">
+                    <span class="meta-label">Address</span>
+                    <span id="publicAddressCompact" class="meta-value meta-mono">—</span>
+                  </div>
+                  <div class="wallet-meta-tile">
+                    <span class="meta-label">Verified</span>
+                    <span id="walletVerifiedStatus" class="meta-value">No</span>
+                  </div>
+                  <div class="wallet-meta-tile">
+                    <span class="meta-label">Last Sync</span>
+                    <span id="lastSyncStatus" class="meta-value">Not synced</span>
+                  </div>
                 </div>
                 <p id="xamanStatus" class="feedback" aria-live="polite"></p>
                 <p id="feedback" class="feedback" aria-live="polite"></p>
@@ -211,18 +227,141 @@
           </section>
 
           <section class="page-section" data-page="wallet">
+            <div class="page-hero">
+              <h2>Wallet Status</h2>
+              <p class="muted">Protected XRPL account with read-only exploration and Xaman signing.</p>
+            </div>
+            <div class="card-grid overview-grid">
+              <article class="glass-card">
+                <h3>Account Overview</h3>
+                <div id="walletPageSummary" class="card-content"></div>
+              </article>
+              <article class="glass-card">
+                <h3>XRPL Reserve System</h3>
+                <div class="card-content">
+                  <p><strong>Base Reserve:</strong> 1 XRP <span class="muted">(lowered Dec 2024)</span></p>
+                  <p><strong>Owner Reserve:</strong> 0.2 XRP per ledger object</p>
+                  <p><strong>Objects counted:</strong> Trust lines, NFTs, DEX offers, escrows, payment channels, checks</p>
+                  <p><strong>Why reserves?</strong> Prevents ledger spam and keeps accounts viable on-chain.</p>
+                  <p class="muted">Owner reserve is returned when the object is deleted. Base reserve is only recovered by deleting the account.</p>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>Connection Mode</h3>
+                <div class="card-content">
+                  <p><strong>Provider:</strong> Xaman / Read-only</p>
+                  <p><strong>Signing:</strong> Xaman deep link — no keys held locally.</p>
+                  <p><strong>Privacy:</strong> Public wallet view, private profile layer.</p>
+                  <p><strong>Mode:</strong> Read-only exploration by default.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page-section" data-page="tokens">
+            <div class="page-hero">
+              <h2>Tokens</h2>
+              <p class="muted">Issued tokens, trust lines, and XRP balance on the XRPL.</p>
+            </div>
+            <div class="card-grid structured-grid">
+              <article class="glass-card wide">
+                <div class="section-top">
+                  <h3>Token Holdings</h3>
+                  <span class="mode-pill">Trust line based</span>
+                </div>
+                <div id="tokensPagePanel" class="card-content scroll"></div>
+              </article>
+              <article class="glass-card">
+                <h3>Trust Line Safety</h3>
+                <div class="card-content">
+                  <p><strong>What is a trust line?</strong> A voluntary agreement to hold a token issued by another XRPL account.</p>
+                  <p><strong>Issuer risk:</strong> Issuers can freeze or modify tokens. Only trust known issuers.</p>
+                  <p><strong>No rippling:</strong> Recommended for wallets not acting as market makers.</p>
+                  <p><strong>Reserve cost:</strong> Each trust line reserves 2 XRP from your balance.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page-section" data-page="nfts">
+            <div class="page-hero">
+              <h2>NFT Viewer</h2>
+              <p class="muted">Non-fungible tokens held by this account on the XRP Ledger (XLS-20).</p>
+            </div>
             <article class="glass-card">
-              <h2>Wallet</h2>
-              <p class="muted">Protected XRPL account dashboard with connection state, balances, reserve tracking, and wayfinding controls.</p>
-              <div id="walletPageSummary" class="card-content"></div>
+              <div class="section-top">
+                <h3>NFT Inventory</h3>
+                <span class="mode-pill">XLS-20 Standard</span>
+              </div>
+              <div id="nftsPagePanel" class="card-content scroll"></div>
             </article>
           </section>
 
-          <section class="page-section" data-page="tokens"><article class="glass-card"><h2>Tokens</h2><div class="card-content" id="tokensPagePanel"></div></article></section>
-          <section class="page-section" data-page="nfts"><article class="glass-card"><h2>NFTs</h2><div class="card-content" id="nftsPagePanel"></div></article></section>
-          <section class="page-section" data-page="nft-listings"><article class="glass-card"><h2>NFT Listings</h2><div class="card-content" id="nftListingsPagePanel"></div></article></section>
-          <section class="page-section" data-page="dex"><article class="glass-card"><h2>DEX</h2><div class="card-content" id="dexPagePanel"></div></article></section>
-          <section class="page-section" data-page="amm"><article class="glass-card"><h2>AMM / LP</h2><div class="card-content" id="ammPagePanel"></div></article></section>
+          <section class="page-section" data-page="nft-listings">
+            <div class="page-hero">
+              <h2>NFT Listings</h2>
+              <p class="muted">Active listings, buy offers, and sell offers on the XRP Ledger.</p>
+            </div>
+            <article class="glass-card">
+              <div class="section-top">
+                <h3>Active Offers</h3>
+                <span class="mode-pill">Live from XRPL</span>
+              </div>
+              <div id="nftListingsPagePanel" class="card-content scroll"></div>
+            </article>
+          </section>
+
+          <section class="page-section" data-page="dex">
+            <div class="page-hero">
+              <h2>DEX Access</h2>
+              <p class="muted">On-chain order book trading via the XRPL native decentralized exchange.</p>
+            </div>
+            <div class="card-grid structured-grid">
+              <article class="glass-card wide">
+                <div class="section-top">
+                  <h3>Order Book</h3>
+                  <span class="mode-pill">OfferCreate / OfferCancel</span>
+                </div>
+                <div id="dexPagePanel" class="card-content scroll"></div>
+              </article>
+              <article class="glass-card">
+                <h3>DEX Safety</h3>
+                <div class="card-content">
+                  <p><strong>Slippage:</strong> Market orders may execute at different prices than shown.</p>
+                  <p><strong>Issuer risk:</strong> Always verify token issuers before trading.</p>
+                  <p><strong>Partial fills:</strong> XRPL orders may partially fill across multiple ledgers.</p>
+                  <p><strong>Fees:</strong> Each transaction costs drops. Review before submitting.</p>
+                  <p class="warning-inline">All DEX actions require transaction preview and wallet signing.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page-section" data-page="amm">
+            <div class="page-hero">
+              <h2>AMM / LP</h2>
+              <p class="muted">Automated market maker pools and liquidity provider positions on XRPL.</p>
+            </div>
+            <div class="card-grid structured-grid">
+              <article class="glass-card wide">
+                <div class="section-top">
+                  <h3>Pool Positions</h3>
+                  <span class="mode-pill">XLS-30 Standard</span>
+                </div>
+                <div id="ammPagePanel" class="card-content scroll"></div>
+                <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
+              </article>
+              <article class="glass-card">
+                <h3>AMM Risk Notice</h3>
+                <div class="card-content">
+                  <p><strong>Impermanent loss:</strong> Your position value may diverge from holding assets separately.</p>
+                  <p><strong>Trading fees:</strong> Earned continuously but do not guarantee profit.</p>
+                  <p><strong>Governance:</strong> LP token holders can vote on pool trading fees.</p>
+                  <p><strong>Withdrawal:</strong> You can always exit a pool — LP tokens are redeemable.</p>
+                </div>
+              </article>
+            </div>
+          </section>
 
           <section class="page-section" data-page="activity">
             <article class="glass-card">
@@ -235,17 +374,328 @@
             </article>
           </section>
 
-          <section class="page-section" data-page="credentials"><article class="glass-card"><h2>Credentials</h2><div class="card-content" id="credentialsPagePanel"></div></article></section>
-
-          <section class="page-section" data-page="security">
-            <article class="glass-card safety-panel">
-              <h2>Security Center</h2>
-              <ul id="safetyReminders"></ul>
-            </article>
+          <section class="page-section" data-page="credentials">
+            <div class="page-hero">
+              <h2>Credentials &amp; Mana</h2>
+              <p class="muted">Earn learning credentials and Mana tokens through the Pikoverse and Ikeverse ecosystems.</p>
+            </div>
+            <div class="card-grid overview-grid">
+              <article class="glass-card">
+                <h3>Earned Credentials</h3>
+                <div id="credentialsPagePanel" class="card-content"></div>
+              </article>
+              <article class="glass-card">
+                <h3>About Mana</h3>
+                <div class="card-content">
+                  <p><strong>What is Mana?</strong> A non-monetary participation token earned through verified learning milestones.</p>
+                  <p><strong>Ecosystems:</strong> Pikoverse · Ikeverse · Living Knowledge Platform · Digitalverse · Culturalverse · IkeHub</p>
+                  <p><strong>Anchoring:</strong> Ready for XRPL credential anchor integration.</p>
+                  <p class="muted">Mana represents participation and learning — not investment value.</p>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>Privacy Controls</h3>
+                <div class="card-content">
+                  <p><strong>Model:</strong> Participation and completion — not ownership of culture.</p>
+                  <p><strong>Public data:</strong> Wallet balances visible on-chain.</p>
+                  <p><strong>Private data:</strong> Profile, realm, and credential details stay local.</p>
+                  <p><strong>Verification:</strong> Public proofs, private context.</p>
+                </div>
+              </article>
+            </div>
           </section>
 
-          <section class="page-section" data-page="profile"><article class="glass-card"><h2>Profile</h2><div class="card-content" id="profilePagePanel"></div></article></section>
-          <section class="page-section" data-page="settings"><article class="glass-card"><h2>Settings</h2><p class="muted">Use drawer for detailed settings and builder admin controls.</p></article></section>
+          <section class="page-section" data-page="security">
+            <div class="page-hero">
+              <h2>Security Center</h2>
+              <p class="muted">Real-time protection, event logging, and anti-abuse guardrails for your XRPL session.</p>
+            </div>
+            <div class="card-grid structured-grid">
+              <article class="glass-card safety-panel">
+                <h3>Security Checklist</h3>
+                <ul id="safetyReminders"></ul>
+              </article>
+              <article class="glass-card">
+                <h3>Session Events</h3>
+                <div id="securityEventLog" class="card-content scroll"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page-section" data-page="profile">
+            <article class="glass-card profile-card">
+              <div class="section-top">
+                <h2>Profile</h2>
+                <button id="saveProfileButton" type="button">Save Profile</button>
+              </div>
+              <div class="profile-layout">
+                <div class="profile-summary">
+                  <div class="profile-photo-zone" id="profileUploadZone" role="region" aria-label="Profile photo upload">
+                    <button id="profileAvatarPill" class="avatar-pill avatar-xl avatar-clickable" type="button" aria-label="Change profile photo" title="Click to upload or drop photo">WV</button>
+                    <p class="photo-drop-hint muted">Drop photo here</p>
+                    <div class="photo-upload-controls">
+                      <input id="avatarPhotoInput" type="file" accept="image/*" class="hidden" aria-label="Upload profile photo" />
+                      <button id="uploadPhotoButton" type="button" class="ghost photo-action-btn">Upload</button>
+                      <button id="cameraPhotoButton" type="button" class="ghost photo-action-btn">
+                        <input id="avatarCameraInput" type="file" accept="image/*" capture="user" class="hidden" aria-label="Take photo" />
+                        Camera
+                      </button>
+                      <button id="clearPhotoButton" type="button" class="ghost photo-action-btn">Remove</button>
+                    </div>
+                  </div>
+                  <div id="profilePagePanel" class="card-content"></div>
+                </div>
+                <div class="profile-editor control-grid">
+                  <label>
+                    Display Name
+                    <input id="profileDisplayNameInput" type="text" maxlength="40" autocomplete="off" />
+                  </label>
+                  <label>
+                    Handle
+                    <input id="profileHandleInput" type="text" maxlength="32" autocomplete="off" />
+                  </label>
+                  <label>
+                    Home Realm
+                    <input id="profileRealmInput" type="text" maxlength="40" autocomplete="off" />
+                  </label>
+                  <label>
+                    Bio
+                    <textarea id="profileBioInput" rows="5" maxlength="280" placeholder="Tell the wallet what this profile represents."></textarea>
+                  </label>
+                  <label>
+                    Avatar Initials <span class="muted">(shown when no photo)</span>
+                    <input id="profileInitialsInput" type="text" maxlength="3" autocomplete="off" />
+                  </label>
+
+                  <div class="avatar-customizer">
+                    <h4 class="customizer-heading">Avatar Glow &amp; Style</h4>
+                    <div class="customizer-grid">
+                      <label class="customizer-label">
+                        Glow Color
+                        <div class="color-picker-row">
+                          <input type="color" id="avatarGlowColorInput" value="#46bcff" />
+                          <span class="color-picker-swatch" id="avatarGlowSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Glow Intensity
+                        <input type="range" id="avatarGlowIntensityInput" min="0" max="100" value="55" class="style-range" />
+                      </label>
+                      <label class="customizer-label">
+                        Border Color
+                        <div class="color-picker-row">
+                          <input type="color" id="avatarBorderColorInput" value="#e9c77a" />
+                          <span class="color-picker-swatch" id="avatarBorderSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Border Width
+                        <input type="range" id="avatarBorderWidthInput" min="0" max="8" value="2" class="style-range" />
+                      </label>
+                      <label class="customizer-label">
+                        Shape
+                        <select id="avatarBorderShapeInput">
+                          <option value="circle">Circle</option>
+                          <option value="rounded">Rounded</option>
+                          <option value="square">Square</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="glass-card" id="profileWalletCard">
+              <div class="section-top">
+                <h3>Linked XRPL Wallet</h3>
+                <span id="profileWalletNetworkBadge" class="mode-pill"></span>
+              </div>
+              <div id="profileWalletPanel" class="card-content"></div>
+            </article>
+
+            <article class="glass-card hidden" id="fundWalletCard">
+              <div class="section-top">
+                <h3>Fund This Wallet</h3>
+                <span id="fundWalletStatusBadge" class="mode-pill"></span>
+              </div>
+              <div id="fundWalletPanel" class="card-content"></div>
+            </article>
+          </section>
+          <section class="page-section" data-page="create-wallet">
+            <div class="page-hero">
+              <h2>Create a New XRPL Wallet</h2>
+              <p class="muted">Generate a fresh Ed25519 keypair directly in your browser — no servers, no network calls, no uploads.</p>
+            </div>
+
+            <!-- Step 1: Security gate -->
+            <article class="glass-card keygen-gate" id="keygenGate">
+              <div class="keygen-warning-banner">
+                <span class="keygen-warning-icon">⚠</span>
+                <div>
+                  <strong>Stop — read every line before continuing.</strong>
+                  <p>Your private key is the only proof of ownership of this wallet. Anyone who obtains it can take everything inside — permanently. IkeLedger will display it once and never save it. You are solely responsible for storing it safely.</p>
+                </div>
+              </div>
+
+              <div class="keygen-steps-guide">
+                <div class="keygen-step-row">
+                  <span class="keygen-step-num">1</span>
+                  <span>Keys are generated inside your browser using the Web Crypto API — nothing ever leaves your device.</span>
+                </div>
+                <div class="keygen-step-row">
+                  <span class="keygen-step-num">2</span>
+                  <span>Your private key is shown once. <strong>Write it down on paper immediately</strong> — do not rely on screenshots or cloud notes.</span>
+                </div>
+                <div class="keygen-step-row">
+                  <span class="keygen-step-num">3</span>
+                  <span>Store your written key somewhere safe and offline — a fireproof safe or secure lockbox is recommended.</span>
+                </div>
+                <div class="keygen-step-row">
+                  <span class="keygen-step-num">4</span>
+                  <span>After generating, send at least <strong>2 XRP</strong> to your new address from an exchange or existing wallet to activate it on the XRPL (1 XRP reserve + 1 XRP spendable).</span>
+                </div>
+                <div class="keygen-step-row">
+                  <span class="keygen-step-num">5</span>
+                  <span>Use Xaman to sign future transactions — never enter your private key into any website or app.</span>
+                </div>
+              </div>
+
+              <ul class="keygen-checklist" id="keygenChecklist">
+                <li><label><input type="checkbox" class="keygen-check" data-idx="0" /> I am on a private device with no one watching my screen.</label></li>
+                <li><label><input type="checkbox" class="keygen-check" data-idx="1" /> I understand IkeLedger will show my private key once and never store or transmit it.</label></li>
+                <li><label><input type="checkbox" class="keygen-check" data-idx="2" /> I will write down my private key by hand on paper and store it offline in a safe place.</label></li>
+                <li><label><input type="checkbox" class="keygen-check" data-idx="3" /> I understand that losing my private key means permanently losing access to this wallet and everything in it.</label></li>
+                <li><label><input type="checkbox" class="keygen-check" data-idx="4" /> I will never enter or share my private key with any website, app, support team, or person — ever.</label></li>
+                <li><label><input type="checkbox" class="keygen-check" data-idx="5" /> I understand I need to send at least 2 XRP to my new address to activate it on the XRPL.</label></li>
+              </ul>
+              <div class="button-row">
+                <button id="keygenGenerateButton" type="button" class="keygen-generate-btn" disabled>Generate Wallet</button>
+              </div>
+              <p id="keygenGateStatus" class="feedback" aria-live="polite"></p>
+            </article>
+
+            <!-- Step 2: Key display (hidden until generated) -->
+            <article class="glass-card keygen-result hidden" id="keygenResult">
+              <div class="keygen-show-once-banner">
+                <span class="keygen-warning-icon">👁</span>
+                <div>
+                  <strong>Shown once only — save your private key right now.</strong>
+                  <p>Navigating away from this page will permanently clear your keys from memory. There is no recovery — not even IkeLedger can retrieve them.</p>
+                </div>
+              </div>
+
+              <div class="keygen-key-grid">
+                <div class="keygen-key-card keygen-address">
+                  <div class="keygen-key-label">Classic Address <span class="keygen-key-badge safe">Safe to share</span></div>
+                  <p class="keygen-key-hint">This is your public XRPL address. Share it freely to receive XRP or tokens.</p>
+                  <code id="keygenAddress" class="keygen-key-value"></code>
+                  <button type="button" class="ghost keygen-copy-btn" data-target="keygenAddress">Copy Address</button>
+                </div>
+
+                <div class="keygen-key-card keygen-pubkey">
+                  <div class="keygen-key-label">Public Key <span class="keygen-key-badge safe">Safe to share</span></div>
+                  <p class="keygen-key-hint">Your Ed25519 public key (33 bytes, ED-prefixed). Used to verify signatures on-chain.</p>
+                  <code id="keygenPublicKey" class="keygen-key-value"></code>
+                  <button type="button" class="ghost keygen-copy-btn" data-target="keygenPublicKey">Copy Public Key</button>
+                </div>
+
+                <div class="keygen-key-card keygen-privkey danger-card">
+                  <div class="keygen-key-label">Private Key <span class="keygen-key-badge danger">Never share — ever</span></div>
+                  <p class="keygen-key-hint keygen-danger-hint">Write this down on paper right now. Do not screenshot it — screenshot apps on your device may back up automatically to the cloud.</p>
+                  <div class="keygen-privkey-shield" id="keygenPrivShield">
+                    <button type="button" id="keygenRevealButton" class="keygen-reveal-btn">Tap to Reveal Private Key</button>
+                  </div>
+                  <code id="keygenPrivateKey" class="keygen-key-value hidden"></code>
+                  <button type="button" class="ghost keygen-copy-btn hidden" id="keygenCopyPrivButton">Copy Private Key</button>
+                </div>
+              </div>
+
+              <div class="keygen-activate-note">
+                <span class="keygen-warning-icon" style="font-size:1rem">💡</span>
+                <div>
+                  <strong>Next step: Activate your wallet.</strong>
+                  Send at least <strong>2 XRP</strong> to your new Classic Address from an exchange (Coinbase, Kraken, Binance) or an existing XRPL wallet. The XRPL requires a <strong>1 XRP base reserve</strong> to activate a new account — the second XRP gives you spending room.
+                </div>
+              </div>
+
+              <div class="keygen-actions">
+                <button id="keygenLoadAddressButton" type="button">Load This Address Into Wallet</button>
+                <button id="keygenClearButton" type="button" class="ghost keygen-clear-btn">Clear Keys &amp; Start Over</button>
+              </div>
+              <p id="keygenResultStatus" class="feedback" aria-live="polite"></p>
+            </article>
+
+            <div class="card-grid overview-grid">
+              <article class="glass-card">
+                <h3>How Key Generation Works</h3>
+                <div class="card-content">
+                  <p><strong>Ed25519 keypair</strong> — generated using your browser's built-in <code>crypto.subtle.generateKey</code> API. No external library, no network requests, no servers involved.</p>
+                  <p><strong>XRPL address derivation:</strong> SHA-256 → RIPEMD-160 of your public key, then Base58Check encoded with a version byte of 0x00. Same algorithm the XRPL uses natively.</p>
+                  <p><strong>Private key format:</strong> 64-character hex (32 raw bytes) — compatible with xrpl.js and other XRPL tools.</p>
+                  <p class="muted">Keys are held only in browser memory and cleared the moment you leave this page.</p>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>XRPL Reserve Requirements</h3>
+                <div class="card-content">
+                  <p><strong>Base reserve:</strong> 1 XRP — required to activate any new XRPL account. Cannot be spent; only recovered by deleting the account.</p>
+                  <p><strong>Owner reserve:</strong> 0.2 XRP per ledger object you own (trust lines, NFTs, DEX offers, escrows, payment channels).</p>
+                  <p><strong>Recommended first deposit:</strong> Send at least <strong>2 XRP</strong> — 1 XRP reserve + 1 XRP you can actually spend.</p>
+                  <p class="muted">Reserves were lowered from 10 XRP / 2 XRP in December 2024 via validator vote.</p>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>Security Best Practices</h3>
+                <div class="card-content">
+                  <p><strong>Write it down:</strong> Paper and pen, stored offline. Fireproof safe or safety deposit box are ideal locations.</p>
+                  <p><strong>No screenshots:</strong> Many phones auto-back up photos to the cloud — this can expose your key.</p>
+                  <p><strong>No password managers for keys:</strong> Keep your XRPL private key separate from your regular passwords.</p>
+                  <p><strong>Use Xaman to sign:</strong> Import your address into Xaman — never paste your private key into websites.</p>
+                  <p class="muted">No legitimate support team, wallet app, or project will ever ask for your private key.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page-section" data-page="settings">
+            <div class="page-hero">
+              <h2>Settings</h2>
+              <p class="muted">Customize your IkeLedger experience — appearance, privacy, and network preferences.</p>
+            </div>
+            <div class="card-grid overview-grid">
+              <article class="glass-card">
+                <h3>Appearance</h3>
+                <div class="card-content">
+                  <p>Change theme, accent color, and display preferences in the settings drawer.</p>
+                  <div class="button-row">
+                    <button id="settingsPageOpenDrawerButton" type="button">Open Settings Drawer</button>
+                  </div>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>Privacy &amp; Security</h3>
+                <div class="card-content">
+                  <p><strong>No private keys:</strong> IkeLedger never requests or stores your seed phrase or secret key.</p>
+                  <p><strong>Local storage only:</strong> Session data lives in your browser — not on any server.</p>
+                  <p><strong>Clear session:</strong> Remove all stored wallet and profile data at any time.</p>
+                  <div class="button-row">
+                    <button id="settingsPageClearButton" type="button" class="ghost">Clear Session</button>
+                    <button id="settingsPageDisconnectButton" type="button" class="ghost">Disconnect</button>
+                  </div>
+                </div>
+              </article>
+              <article class="glass-card">
+                <h3>Network Info</h3>
+                <div class="card-content">
+                  <p><strong>Mainnet:</strong> Real XRP, real assets. Use with care.</p>
+                  <p><strong>Testnet:</strong> Safe environment for learning and testing.</p>
+                  <p><strong>Devnet:</strong> Development and protocol exploration.</p>
+                  <p class="muted">Switch networks via the selector in the top navigation bar.</p>
+                </div>
+              </article>
+            </div>
+          </section>
         </section>
       </section>
     </main>
@@ -253,12 +703,12 @@
     <div id="sidebarOverlay" class="sidebar-overlay hidden" aria-hidden="true"></div>
 
     <nav class="bottom-nav" aria-label="Mobile navigation">
-      <button class="bottom-link is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /></span>Home</button>
-      <button class="bottom-link" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/wallet.png" alt="" /></span>Wallet</button>
-      <button class="bottom-link" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /></span>DEX</button>
-      <button class="bottom-link" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /></span>NFTs</button>
-      <button class="bottom-link" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /></span>AMM</button>
-      <button class="bottom-link" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger_separated_icons/profile.png" alt="" /></span>Profile</button>
+      <button class="bottom-link is-active" data-page="dashboard" type="button" aria-label="Home"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeledger_separated_icons/dashboard.png" alt="" /><span class="bottom-link-label">Home</span></button>
+      <button class="bottom-link" data-page="wallet" type="button" aria-label="Wallet"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikewallet.png" alt="" /><span class="bottom-link-label">Wallet</span></button>
+      <button class="bottom-link" data-page="dex" type="button" aria-label="DEX"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeledger_separated_icons/dex.png" alt="" /><span class="bottom-link-label">DEX</span></button>
+      <button class="bottom-link" data-page="nfts" type="button" aria-label="NFTs"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeledger_separated_icons/nfts.png" alt="" /><span class="bottom-link-label">NFTs</span></button>
+      <button class="bottom-link" data-page="amm" type="button" aria-label="AMM"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeledger_separated_icons/amm_lp.png" alt="" /><span class="bottom-link-label">AMM</span></button>
+      <button class="bottom-link" data-page="profile" type="button" aria-label="Profile"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeprofile.png" alt="" /><span class="bottom-link-label">Profile</span></button>
     </nav>
 
     <aside id="settingsDrawer" class="settings-drawer hidden" aria-label="User settings">
@@ -344,6 +794,71 @@
           <button id="signWithWalletButton" type="button" disabled>Sign with Wallet</button>
           <button id="cancelSignButton" type="button" class="ghost">Cancel</button>
         </div>
+      </div>
+    </div>
+
+    <div id="sendModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="sendModalTitle">
+      <div class="modal-card">
+        <div class="section-top">
+          <h2 id="sendModalTitle">Send XRP</h2>
+          <button id="closeSendModalButton" type="button" class="ghost" aria-label="Close send dialog">Close</button>
+        </div>
+        <div id="sendStep1" class="send-step">
+          <div class="control-grid">
+            <label>
+              Destination Address
+              <input id="sendDestInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
+            </label>
+            <label>
+              Amount (XRP)
+              <input id="sendAmountInput" type="number" min="0.000001" step="0.000001" placeholder="0.00" />
+            </label>
+            <label>
+              Destination Tag <span class="muted">(optional — required by some exchanges)</span>
+              <input id="sendTagInput" type="number" min="0" step="1" placeholder="Leave blank for self-custody wallets" />
+            </label>
+            <label>
+              Memo <span class="muted">(optional)</span>
+              <input id="sendMemoInput" type="text" maxlength="100" placeholder="Optional on-chain note" autocomplete="off" />
+            </label>
+          </div>
+          <p id="sendStep1Status" class="feedback" aria-live="polite"></p>
+          <div class="button-row">
+            <button id="sendPreviewButton" type="button">Preview Transaction</button>
+            <button id="cancelSendButton" type="button" class="ghost">Cancel</button>
+          </div>
+        </div>
+        <div id="sendStep2" class="send-step hidden">
+          <div id="sendTxSummary" class="send-tx-summary"></div>
+          <p class="muted" style="font-size:0.82rem;margin:0.5rem 0">Scan this QR with Xaman on your phone, or tap <strong>Open in Xaman</strong> if you are on mobile.</p>
+          <div id="sendQrContainer" class="qr-container"></div>
+          <label class="confirm-row">
+            <input id="sendConfirmCheckbox" type="checkbox" />
+            I have reviewed the transaction details. XRPL transactions are irreversible after validation.
+          </label>
+          <div class="button-row">
+            <button id="sendOpenXamanButton" type="button" disabled>Open in Xaman</button>
+            <button id="sendBackButton" type="button" class="ghost">Back</button>
+            <button id="cancelSendButton2" type="button" class="ghost">Cancel</button>
+          </div>
+          <p id="sendStep2Status" class="feedback" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="receiveModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="receiveModalTitle">
+      <div class="modal-card">
+        <div class="section-top">
+          <h2 id="receiveModalTitle">Receive XRP</h2>
+          <button id="closeReceiveModalButton" type="button" class="ghost" aria-label="Close receive dialog">Close</button>
+        </div>
+        <p class="muted" style="margin-bottom:0.5rem">Share this QR code or address to receive XRP and tokens.</p>
+        <div id="receiveQrContainer" class="qr-container"></div>
+        <div class="receive-address-block">
+          <code id="receiveAddressDisplay" class="receive-address-code"></code>
+          <button id="copyReceiveAddressButton" type="button" class="ghost">Copy Address</button>
+        </div>
+        <p class="muted" style="font-size:0.78rem;margin-top:0.75rem">This is your public XRPL address — always safe to share. Never share your private key or seed phrase.</p>
       </div>
     </div>
 

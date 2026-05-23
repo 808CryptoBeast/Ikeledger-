@@ -9,14 +9,17 @@ import {
 import {
   clearSessionStorage,
   disconnectWallet,
+  getProfileState,
   getWalletState,
   hydrateWalletState,
   lookupReadOnlyAddress,
   setNetwork,
-  setPublicAddress
+  setPublicAddress,
+  updateProfileState
 } from "./ikeledger-wallet.js";
 import { getManaSummary } from "./ikeledger-rewards.js";
-import { openXamanConnect } from "./ikeledger-xaman.js";
+import { openXamanConnect, buildPaymentTx, buildXamanSignUrl } from "./ikeledger-xaman.js";
+import { generateXrplWallet, isKeygenSupported } from "./ikeledger-keygen.js";
 import {
   getSupabaseConfig,
   hasSupabaseConfig,
@@ -27,6 +30,8 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
+
+let sendXamanUrl = "";
 
 const state = {
   adminMode: false,
@@ -50,6 +55,7 @@ const refs = {
   pageSections: Array.from(document.querySelectorAll(".page-section")),
   themeToggleButton: document.getElementById("themeToggleButton"),
   profileButton: document.getElementById("profileButton"),
+  saveProfileButton: document.getElementById("saveProfileButton"),
   themeSelect: document.getElementById("themeSelect"),
   walletConnectionChip: document.getElementById("walletConnectionChip"),
   qrCodeButton: document.getElementById("qrCodeButton"),
@@ -62,6 +68,7 @@ const refs = {
   marketLedgerIndex: document.getElementById("marketLedgerIndex"),
   marketTps: document.getElementById("marketTps"),
   marketFee: document.getElementById("marketFee"),
+  xrpNavPrice: document.getElementById("xrpNavPrice"),
   xrpPriceStat: document.getElementById("xrpPriceStat"),
   xrpChangeStat: document.getElementById("xrpChangeStat"),
   securityChipStat: document.getElementById("securityChipStat"),
@@ -75,6 +82,12 @@ const refs = {
   ammPagePanel: document.getElementById("ammPagePanel"),
   credentialsPagePanel: document.getElementById("credentialsPagePanel"),
   profilePagePanel: document.getElementById("profilePagePanel"),
+  profileAvatarPill: document.getElementById("profileAvatarPill"),
+  profileDisplayNameInput: document.getElementById("profileDisplayNameInput"),
+  profileHandleInput: document.getElementById("profileHandleInput"),
+  profileRealmInput: document.getElementById("profileRealmInput"),
+  profileBioInput: document.getElementById("profileBioInput"),
+  profileInitialsInput: document.getElementById("profileInitialsInput"),
   networkSelect: document.getElementById("networkSelect"),
   addressInput: document.getElementById("addressInput"),
   mainnetWarning: document.getElementById("mainnetWarning"),
@@ -133,7 +146,70 @@ const refs = {
   supabaseAnonKeyInput: document.getElementById("supabaseAnonKeyInput"),
   saveSupabaseButton: document.getElementById("saveSupabaseButton"),
   testSupabaseButton: document.getElementById("testSupabaseButton"),
-  supabaseStatus: document.getElementById("supabaseStatus")
+  supabaseStatus: document.getElementById("supabaseStatus"),
+  securityEventLog: document.getElementById("securityEventLog"),
+  settingsPageOpenDrawerButton: document.getElementById("settingsPageOpenDrawerButton"),
+  settingsPageClearButton: document.getElementById("settingsPageClearButton"),
+  settingsPageDisconnectButton: document.getElementById("settingsPageDisconnectButton"),
+  heroAvatarPill: document.getElementById("heroAvatarPill"),
+  avatarPhotoInput: document.getElementById("avatarPhotoInput"),
+  avatarCameraInput: document.getElementById("avatarCameraInput"),
+  profileUploadZone: document.getElementById("profileUploadZone"),
+  uploadPhotoButton: document.getElementById("uploadPhotoButton"),
+  cameraPhotoButton: document.getElementById("cameraPhotoButton"),
+  clearPhotoButton: document.getElementById("clearPhotoButton"),
+  profileWalletPanel: document.getElementById("profileWalletPanel"),
+  profileWalletNetworkBadge: document.getElementById("profileWalletNetworkBadge"),
+  heroAvatarGlowWrap: document.getElementById("heroAvatarGlowWrap"),
+  heroAvatarStatusRing: document.getElementById("heroAvatarStatusRing"),
+  heroAvatarStatusLabel: document.getElementById("heroAvatarStatusLabel"),
+  avatarGlowColorInput: document.getElementById("avatarGlowColorInput"),
+  avatarGlowIntensityInput: document.getElementById("avatarGlowIntensityInput"),
+  avatarBorderColorInput: document.getElementById("avatarBorderColorInput"),
+  avatarBorderWidthInput: document.getElementById("avatarBorderWidthInput"),
+  avatarBorderShapeInput: document.getElementById("avatarBorderShapeInput"),
+  avatarGlowSwatch: document.getElementById("avatarGlowSwatch"),
+  avatarBorderSwatch: document.getElementById("avatarBorderSwatch"),
+  fundWalletPanel: document.getElementById("fundWalletPanel"),
+  fundWalletCard: document.getElementById("fundWalletCard"),
+  fundWalletStatusBadge: document.getElementById("fundWalletStatusBadge"),
+  keygenGate: document.getElementById("keygenGate"),
+  keygenResult: document.getElementById("keygenResult"),
+  keygenChecks: Array.from(document.querySelectorAll(".keygen-check")),
+  keygenGenerateButton: document.getElementById("keygenGenerateButton"),
+  keygenGateStatus: document.getElementById("keygenGateStatus"),
+  keygenAddress: document.getElementById("keygenAddress"),
+  keygenPublicKey: document.getElementById("keygenPublicKey"),
+  keygenPrivateKey: document.getElementById("keygenPrivateKey"),
+  keygenPrivShield: document.getElementById("keygenPrivShield"),
+  keygenRevealButton: document.getElementById("keygenRevealButton"),
+  keygenCopyPrivButton: document.getElementById("keygenCopyPrivButton"),
+  keygenLoadAddressButton: document.getElementById("keygenLoadAddressButton"),
+  keygenClearButton: document.getElementById("keygenClearButton"),
+  keygenResultStatus: document.getElementById("keygenResultStatus"),
+  sendButton: document.getElementById("sendButton"),
+  sendModal: document.getElementById("sendModal"),
+  closeSendModalButton: document.getElementById("closeSendModalButton"),
+  sendStep1: document.getElementById("sendStep1"),
+  sendStep2: document.getElementById("sendStep2"),
+  sendDestInput: document.getElementById("sendDestInput"),
+  sendAmountInput: document.getElementById("sendAmountInput"),
+  sendTagInput: document.getElementById("sendTagInput"),
+  sendMemoInput: document.getElementById("sendMemoInput"),
+  sendStep1Status: document.getElementById("sendStep1Status"),
+  sendTxSummary: document.getElementById("sendTxSummary"),
+  sendQrContainer: document.getElementById("sendQrContainer"),
+  sendConfirmCheckbox: document.getElementById("sendConfirmCheckbox"),
+  sendOpenXamanButton: document.getElementById("sendOpenXamanButton"),
+  sendPreviewButton: document.getElementById("sendPreviewButton"),
+  sendBackButton: document.getElementById("sendBackButton"),
+  cancelSendButton: document.getElementById("cancelSendButton"),
+  cancelSendButton2: document.getElementById("cancelSendButton2"),
+  receiveModal: document.getElementById("receiveModal"),
+  closeReceiveModalButton: document.getElementById("closeReceiveModalButton"),
+  receiveQrContainer: document.getElementById("receiveQrContainer"),
+  receiveAddressDisplay: document.getElementById("receiveAddressDisplay"),
+  copyReceiveAddressButton: document.getElementById("copyReceiveAddressButton")
 };
 
 function chipClass(level) {
@@ -168,6 +244,35 @@ function formatAddress(address = "") {
   return `${address.slice(0, 8)}...${address.slice(-8)}`;
 }
 
+function getProfileFields() {
+  const profile = getProfileState();
+  return {
+    displayName: profile.displayName || "Wayfinder Scholar",
+    handle: profile.handle || "@ike-journey",
+    bio: profile.bio || "Protecting a public XRPL address while keeping the profile layer private.",
+    realm: profile.realm || "Dreamtime",
+    initials: (profile.initials || "WV").slice(0, 3).toUpperCase()
+  };
+}
+
+function syncProfileEditor(profile = getProfileFields()) {
+  if (refs.profileDisplayNameInput) refs.profileDisplayNameInput.value = profile.displayName;
+  if (refs.profileHandleInput) refs.profileHandleInput.value = profile.handle;
+  if (refs.profileRealmInput) refs.profileRealmInput.value = profile.realm;
+  if (refs.profileBioInput) refs.profileBioInput.value = profile.bio;
+  if (refs.profileInitialsInput) refs.profileInitialsInput.value = profile.initials;
+}
+
+function getProfileEditorValues() {
+  return {
+    displayName: (refs.profileDisplayNameInput?.value || "").trim() || "Wayfinder Scholar",
+    handle: (refs.profileHandleInput?.value || "").trim() || "@ike-journey",
+    bio: (refs.profileBioInput?.value || "").trim() || "Protecting a public XRPL address while keeping the profile layer private.",
+    realm: (refs.profileRealmInput?.value || "").trim() || "Dreamtime",
+    initials: (refs.profileInitialsInput?.value || "WV").trim().slice(0, 3).toUpperCase() || "WV"
+  };
+}
+
 function safeNumber(value, decimals = 6) {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n.toFixed(decimals) : "0";
@@ -198,6 +303,11 @@ function cycleTheme() {
 }
 
 function setActivePage(page) {
+  // Clear generated keys whenever leaving the create-wallet page
+  if (state.activePage === "create-wallet" && page !== "create-wallet") {
+    clearCreateWalletKeys();
+  }
+
   state.activePage = page;
 
   refs.pageSections.forEach((section) => {
@@ -409,6 +519,11 @@ async function renderMarketOverview(forceRefresh = false) {
     if (refs.marketFee) refs.marketFee.textContent = snapshot.feeDrops === "n/a" ? "n/a" : `${snapshot.feeDrops} drops`;
     if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = `$${snapshot.price.toFixed(4)}`;
     if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = changeText;
+    if (refs.xrpNavPrice) {
+      const sign = snapshot.changePercent >= 0 ? "+" : "";
+      refs.xrpNavPrice.textContent = `$${snapshot.price.toFixed(4)} ${sign}${snapshot.changePercent.toFixed(2)}%`;
+      refs.xrpNavPrice.style.color = snapshot.changePercent >= 0 ? "var(--emerald)" : "var(--danger)";
+    }
   } catch {
     if (refs.marketPrice) refs.marketPrice.textContent = "Unavailable";
     if (refs.marketVolume) refs.marketVolume.textContent = "Unavailable";
@@ -418,6 +533,7 @@ async function renderMarketOverview(forceRefresh = false) {
     if (refs.marketFee) refs.marketFee.textContent = "Unavailable";
     if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = "Unavailable";
     if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = "Unavailable";
+    if (refs.xrpNavPrice) refs.xrpNavPrice.textContent = "—";
   }
 }
 
@@ -449,11 +565,16 @@ function renderChips(walletState) {
 
 function renderConnectionMeta(walletState) {
   if (!refs.providerStatus) return;
-  refs.providerStatus.textContent = walletState.snapshot ? "Read-only XRPL + Xaman ready" : "Xaman / Read-only";
+  refs.providerStatus.textContent = walletState.snapshot ? "XRPL + Xaman ready" : "Xaman / Read-only";
   refs.publicAddressCompact.textContent = formatAddress(walletState.publicAddress);
-  refs.walletVerifiedStatus.textContent = walletState.snapshot ? "Yes" : "No";
+
+  const verified = walletState.snapshot;
+  refs.walletVerifiedStatus.textContent = verified ? "Yes" : "No";
+  refs.walletVerifiedStatus.style.color = verified ? "var(--emerald)" : "var(--warn)";
+
   if (refs.lastSyncStatus) {
-    refs.lastSyncStatus.textContent = walletState.snapshot ? new Date().toLocaleTimeString() : "Not synced";
+    refs.lastSyncStatus.textContent = verified ? new Date().toLocaleTimeString() : "Not synced";
+    refs.lastSyncStatus.style.color = verified ? "var(--ink-1)" : "var(--ink-2)";
   }
 
   if (refs.walletConnectionChip) {
@@ -484,15 +605,25 @@ function renderWalletStatus(walletState) {
 
 function renderPortfolioSummary(walletState) {
   if (!refs.portfolioSummary) return;
-  const snapshot = walletState.snapshot;
+  const snap = walletState.snapshot;
+  const kpis = [
+    { label: "Total XRP",  value: snap?.account?.balanceXrp    || "0",  unit: "XRP",       color: "gold"      },
+    { label: "Available",  value: snap?.account?.availableXrp  || "0",  unit: "XRP",       color: "gold"      },
+    { label: "Assets",     value: snap?.tokenHoldings?.length  || 0,    unit: "tokens",    color: "cyan"      },
+    { label: "Issued",     value: snap?.issuedTokenEntries?.length || 0, unit: "projects", color: "cyan"      },
+    { label: "NFTs",       value: snap?.nftItems?.length        || 0,    unit: "items",     color: "violet"    },
+    { label: "AMM",        value: snap?.amm?.objectCount        || 0,    unit: "positions", color: "turquoise" }
+  ];
   refs.portfolioSummary.innerHTML = `
-    <p><strong>Total XRP Held:</strong> ${snapshot?.account?.balanceXrp || "0"} XRP</p>
-    <p><strong>Available XRP:</strong> ${snapshot?.account?.availableXrp || "0"} XRP</p>
-    <p><strong>Tracked Assets:</strong> ${snapshot?.tokenHoldings?.length || 0}</p>
-    <p><strong>Issued Projects:</strong> ${snapshot?.issuedTokenEntries?.length || 0}</p>
-    <p><strong>NFT Items:</strong> ${snapshot?.nftItems?.length || 0}</p>
-    <p><strong>AMM Positions:</strong> ${snapshot?.amm?.objectCount || 0}</p>
-    <p><strong>Valuation Mode:</strong> Native XRPL read-only summary</p>
+    <div class="portfolio-kpi-grid">
+      ${kpis.map((k) => `
+        <div class="portfolio-kpi portfolio-kpi--${k.color}">
+          <span class="portfolio-kpi-label">${k.label}</span>
+          <span class="portfolio-kpi-value">${k.value}</span>
+          <span class="portfolio-kpi-unit">${k.unit}</span>
+        </div>`).join("")}
+    </div>
+    <p class="portfolio-mode-note muted">Native XRPL read-only · load address to refresh</p>
   `;
 }
 
@@ -510,18 +641,416 @@ function renderMana(walletState) {
   `;
 }
 
-function renderProfile(walletState) {
-  if (!refs.profileStatus) return;
+function buildProfileIdentityHTML(walletState) {
   const address = walletState.publicAddress;
-  refs.profileStatus.innerHTML = `
-    <p><strong>Display Name:</strong> Wayfinder Scholar</p>
-    <p><strong>Handle:</strong> @ike-journey</p>
-    <p><strong>Home Realm:</strong> Dreamtime</p>
-    <p><strong>Linked Wallet:</strong> ${formatAddress(address)}</p>
-    <p><strong>Connection Status:</strong> ${walletState.snapshot ? "Linked" : "Not linked"}</p>
-    <p><strong>Privacy Controls:</strong> Public wallet view / private profile controls.</p>
-    <p><strong>Unlink Wallet:</strong> Use Disconnect in wallet controls.</p>
+  const profile = walletState.profile || getProfileFields();
+  const statusLabel = walletState.snapshot ? "Linked" : "Read-only";
+  const statusClass = walletState.snapshot ? "chip-safe" : "chip-low";
+  return `
+    <div class="profile-identity">
+      <div class="profile-nameline">
+        <span class="profile-display-name">${profile.displayName}</span>
+        <span class="profile-handle">${profile.handle}</span>
+      </div>
+      <p class="profile-realm"><span class="eyebrow">Realm</span> ${profile.realm}</p>
+      <p class="profile-bio">${profile.bio}</p>
+      <div class="profile-stat-row">
+        <div class="profile-stat">
+          <span class="profile-stat-label">Wallet</span>
+          <span class="profile-stat-value">${address ? formatAddress(address) : "Not connected"}</span>
+        </div>
+        <div class="profile-stat">
+          <span class="profile-stat-label">Status</span>
+          <span class="chip ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="profile-stat">
+          <span class="profile-stat-label">Privacy</span>
+          <span class="profile-stat-value">Public view · Private profile</span>
+        </div>
+      </div>
+    </div>
   `;
+}
+
+function applyProfilePhoto() {
+  const photo = localStorage.getItem(STORAGE_KEYS.profilePhoto);
+  const profile = getProfileFields();
+  const avatarEls = [refs.heroAvatarPill, refs.profileAvatarPill].filter(Boolean);
+  avatarEls.forEach((el) => {
+    if (photo) {
+      el.innerHTML = `<img src="${photo}" alt="Profile photo" />`;
+    } else {
+      el.textContent = profile.initials;
+    }
+  });
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16)
+  };
+}
+
+function applyAvatarStyle() {
+  const glowColor    = localStorage.getItem(STORAGE_KEYS.avatarGlowColor)     || "#46bcff";
+  const glowIntensity = parseInt(localStorage.getItem(STORAGE_KEYS.avatarGlowIntensity) ?? "55", 10);
+  const borderColor  = localStorage.getItem(STORAGE_KEYS.avatarBorderColor)   || "#e9c77a";
+  const borderShape  = localStorage.getItem(STORAGE_KEYS.avatarBorderShape)   || "circle";
+  const borderWidth  = parseInt(localStorage.getItem(STORAGE_KEYS.avatarBorderWidth) ?? "2", 10);
+
+  const pill = refs.heroAvatarPill;
+  if (!pill) return;
+
+  // Glow box-shadow from color + intensity
+  const { r, g, b } = hexToRgb(glowColor);
+  const alpha1 = (glowIntensity / 100) * 0.75;
+  const alpha2 = (glowIntensity / 100) * 0.35;
+  const spread1 = 16 + Math.round((glowIntensity / 100) * 36);
+  const spread2 = spread1 * 2;
+  const glowShadow = glowIntensity === 0
+    ? "none"
+    : `0 0 ${spread1}px rgba(${r},${g},${b},${alpha1.toFixed(2)}), 0 0 ${spread2}px rgba(${r},${g},${b},${alpha2.toFixed(2)})`;
+
+  // Sync border-radius between ring and pill/image via CSS var on wrap
+  const radii = { circle: "50%", rounded: "20px", square: "6px" };
+  const radius = radii[borderShape] || "50%";
+
+  pill.style.setProperty("--avatar-glow", glowShadow);
+  pill.style.setProperty("--avatar-border-color", borderColor);
+  pill.style.setProperty("--avatar-border-radius", radius);
+  pill.style.setProperty("--avatar-border-width", `${borderWidth}px`);
+
+  // Also apply shape class for img child border-radius
+  pill.classList.remove("avatar-shape-circle", "avatar-shape-rounded", "avatar-shape-square");
+  pill.classList.add(`avatar-shape-${borderShape}`);
+
+  // Keep status ring shape in sync
+  if (refs.heroAvatarStatusRing) {
+    refs.heroAvatarStatusRing.style.borderRadius = radius;
+  }
+
+  // Sync swatches and inputs
+  if (refs.avatarGlowColorInput)     refs.avatarGlowColorInput.value     = glowColor;
+  if (refs.avatarGlowIntensityInput) refs.avatarGlowIntensityInput.value = String(glowIntensity);
+  if (refs.avatarBorderColorInput)   refs.avatarBorderColorInput.value   = borderColor;
+  if (refs.avatarBorderWidthInput)   refs.avatarBorderWidthInput.value   = String(borderWidth);
+  if (refs.avatarBorderShapeInput)   refs.avatarBorderShapeInput.value   = borderShape;
+  if (refs.avatarGlowSwatch)         refs.avatarGlowSwatch.style.background  = glowColor;
+  if (refs.avatarBorderSwatch)       refs.avatarBorderSwatch.style.background = borderColor;
+}
+
+function saveAvatarStyle() {
+  localStorage.setItem(STORAGE_KEYS.avatarGlowColor,     refs.avatarGlowColorInput?.value     || "#46bcff");
+  localStorage.setItem(STORAGE_KEYS.avatarGlowIntensity, refs.avatarGlowIntensityInput?.value  || "55");
+  localStorage.setItem(STORAGE_KEYS.avatarBorderColor,   refs.avatarBorderColorInput?.value    || "#e9c77a");
+  localStorage.setItem(STORAGE_KEYS.avatarBorderShape,   refs.avatarBorderShapeInput?.value    || "circle");
+  localStorage.setItem(STORAGE_KEYS.avatarBorderWidth,   refs.avatarBorderWidthInput?.value    || "2");
+  applyAvatarStyle();
+}
+
+function getAvatarStatusClass(walletState) {
+  if (!walletState.publicAddress) return "status-disconnected";
+  if (!walletState.snapshot) return "status-loaded";
+  const bal = parseFloat(walletState.snapshot.account?.balanceXrp || "0");
+  if (bal <= 0) return "status-unfunded";
+  return "status-verified";
+}
+
+function getAvatarStatusText(walletState) {
+  if (!walletState.publicAddress) return "Not connected";
+  if (!walletState.snapshot) return "Address loaded";
+  const bal = parseFloat(walletState.snapshot.account?.balanceXrp || "0");
+  if (bal <= 0) return "Not funded";
+  return "Verified & active";
+}
+
+function renderAvatarStatus(walletState) {
+  const ring  = refs.heroAvatarStatusRing;
+  const label = refs.heroAvatarStatusLabel;
+  if (!ring) return;
+  const cls = getAvatarStatusClass(walletState);
+  ring.className = `avatar-status-ring ${cls}`;
+  if (label) {
+    label.textContent = getAvatarStatusText(walletState);
+    label.style.color =
+      cls === "status-verified"    ? "var(--emerald)" :
+      cls === "status-loaded"      ? "var(--warn)"    :
+      cls === "status-unfunded"    ? "var(--danger)"  :
+      "var(--muted)";
+  }
+}
+
+function renderFundWalletCard(walletState) {
+  if (!refs.fundWalletPanel) return;
+
+  const { publicAddress, snapshot } = walletState;
+
+  if (!publicAddress) {
+    if (refs.fundWalletCard) refs.fundWalletCard.classList.add("hidden");
+    return;
+  }
+
+  if (refs.fundWalletCard) refs.fundWalletCard.classList.remove("hidden");
+
+  const bal = parseFloat(snapshot?.account?.balanceXrp || "0");
+  const isFunded = snapshot && bal >= 1;
+  const isVerified = Boolean(snapshot);
+
+  if (refs.fundWalletStatusBadge) {
+    refs.fundWalletStatusBadge.textContent = isFunded ? "Active" : isVerified ? "Unfunded" : "Not queried";
+    refs.fundWalletStatusBadge.style.color = isFunded ? "var(--emerald)" : "var(--warn)";
+  }
+
+  if (isFunded) {
+    refs.fundWalletPanel.innerHTML = `
+      <div class="fund-wallet-funded">
+        <span style="font-size:1.2rem">✓</span>
+        <span>This wallet is active on the XRPL — balance: <strong>${bal.toFixed(4)} XRP</strong></span>
+      </div>
+      <div class="fund-wallet-address-block" style="margin-top:0.75rem">
+        <span class="fund-wallet-addr-label">Classic Address</span>
+        <code class="fund-wallet-addr-value">${publicAddress}</code>
+        <button type="button" class="ghost fund-copy-btn" data-copy="${publicAddress}" style="align-self:flex-start;font-size:0.8rem;margin-top:0.25rem">Copy Address</button>
+      </div>
+      <div class="button-row" style="margin-top:0.75rem">
+        <button type="button" class="fund-modal-btn" data-modal="send">Send XRP</button>
+        <button type="button" class="ghost fund-modal-btn" data-modal="receive">Receive / QR</button>
+      </div>
+    `;
+  } else {
+    const baseReserve = 1;
+    const recommended = 2;
+    refs.fundWalletPanel.innerHTML = `
+      <div class="fund-wallet-address-block">
+        <span class="fund-wallet-addr-label">Send XRP to this address to activate your wallet</span>
+        <code class="fund-wallet-addr-value">${publicAddress}</code>
+        <button type="button" class="ghost fund-copy-btn" data-copy="${publicAddress}" style="align-self:flex-start;font-size:0.8rem;margin-top:0.25rem">Copy Address</button>
+      </div>
+      <div class="fund-wallet-amount-row">
+        <div class="fund-wallet-amount-tile">
+          <span class="fund-tile-label">Base Reserve</span>
+          <span class="fund-tile-value">${baseReserve}<span class="fund-tile-unit">XRP</span></span>
+        </div>
+        <div class="fund-wallet-amount-tile">
+          <span class="fund-tile-label">Recommended</span>
+          <span class="fund-tile-value">${recommended}<span class="fund-tile-unit">XRP minimum</span></span>
+        </div>
+        <div class="fund-wallet-amount-tile">
+          <span class="fund-tile-label">Current Balance</span>
+          <span class="fund-tile-value" style="color:var(--danger)">${isVerified ? bal.toFixed(4) : "—"}<span class="fund-tile-unit">XRP</span></span>
+        </div>
+      </div>
+      <div class="fund-wallet-steps">
+        <div class="fund-step-row"><span class="fund-step-num">1</span><span>Copy your Classic Address above.</span></div>
+        <div class="fund-step-row"><span class="fund-step-num">2</span><span>Log in to any exchange that supports XRP Ledger withdrawals (Coinbase, Kraken, Binance, Bybit, etc.).</span></div>
+        <div class="fund-step-row"><span class="fund-step-num">3</span><span>Withdraw at least <strong>2 XRP</strong> to your Classic Address. No destination tag is needed for self-custody wallets.</span></div>
+        <div class="fund-step-row"><span class="fund-step-num">4</span><span>Return here and press <strong>Refresh Account</strong> on the dashboard. Once 1 XRP arrives, your account activates on-chain.</span></div>
+      </div>
+      <p class="muted" style="font-size:0.78rem;margin-top:0.5rem">The XRPL base reserve (1 XRP) is locked in your account permanently and cannot be spent — it is only recovered by deleting the account. Send 2 XRP so you have 1 XRP spendable after the reserve.</p>
+    `;
+  }
+
+  // Wire copy buttons
+  refs.fundWalletPanel.querySelectorAll(".fund-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      navigator.clipboard.writeText(btn.dataset.copy || "")
+        .then(() => { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Address"; }, 2000); })
+        .catch(() => { btn.textContent = "Copy failed"; });
+    });
+  });
+  // Wire send/receive modal buttons
+  refs.fundWalletPanel.querySelectorAll(".fund-modal-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.modal === "send") openSendModal();
+      else openReceiveModal();
+    });
+  });
+}
+
+function onPhotoFile(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    setFeedback("Please select an image file.", true);
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    setFeedback("Image too large — max 8 MB.", true);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    try {
+      localStorage.setItem(STORAGE_KEYS.profilePhoto, dataUrl);
+    } catch {
+      setFeedback("Storage full — try a smaller image.", true);
+      return;
+    }
+    applyProfilePhoto();
+    setFeedback("Profile photo updated.");
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderProfile(walletState) {
+  const html = buildProfileIdentityHTML(walletState);
+  if (refs.profileStatus) refs.profileStatus.innerHTML = html;
+  if (refs.profilePagePanel) refs.profilePagePanel.innerHTML = html;
+  applyProfilePhoto();
+  syncProfileEditor(walletState.profile || getProfileFields());
+  renderProfileWalletCard(walletState);
+}
+
+function renderProfileWalletCard(walletState) {
+  if (!refs.profileWalletPanel) return;
+
+  const { publicAddress, snapshot, network, mode } = walletState;
+  const netConfig = NETWORKS[network] || NETWORKS["xrpl-testnet"];
+
+  if (refs.profileWalletNetworkBadge) {
+    refs.profileWalletNetworkBadge.textContent = netConfig.label;
+  }
+
+  if (!publicAddress) {
+    refs.profileWalletPanel.innerHTML = `
+      <div class="profile-wallet-empty">
+        <p class="muted">No wallet connected to this profile.</p>
+        <p class="muted">Enter a public XRPL address on the dashboard or create a new wallet to see your account details here.</p>
+        <div class="button-row">
+          <button type="button" class="ghost profile-wallet-nav-btn" data-nav="dashboard">Go to Dashboard</button>
+          <button type="button" class="ghost profile-wallet-nav-btn" data-nav="create-wallet">Create Wallet</button>
+        </div>
+      </div>
+    `;
+    refs.profileWalletPanel.querySelectorAll(".profile-wallet-nav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => setActivePage(btn.dataset.nav));
+    });
+    return;
+  }
+
+  const account = snapshot?.account;
+  const isVerified = Boolean(snapshot);
+
+  // Reserve breakdown — live from XRPL or fallback to current spec values
+  const ownerCount = account?.ownerCount ?? 0;
+  const baseReserveXrp = 1;
+  const ownerReservePerObj = 0.2;
+  const totalOwnerReserve = (ownerCount * ownerReservePerObj).toFixed(2);
+  const totalReserved = (baseReserveXrp + ownerCount * ownerReservePerObj).toFixed(2);
+
+  const statusColor = !isVerified ? "var(--warn)" : "var(--emerald)";
+  const statusLabel = !isVerified ? "Address loaded — not yet verified on-chain" : account?.accountStatus || "Active";
+
+  refs.profileWalletPanel.innerHTML = `
+    <div class="profile-wallet-address-row">
+      <span class="profile-wallet-addr-label">Classic Address</span>
+      <code class="profile-wallet-addr">${publicAddress}</code>
+      <button type="button" class="ghost keygen-copy-btn profile-wallet-copy" data-copy="${publicAddress}">Copy</button>
+    </div>
+
+    <div class="profile-wallet-status-row">
+      <span class="profile-wallet-status-dot" style="background:${statusColor}"></span>
+      <span style="color:${statusColor}; font-size:0.82rem; font-weight:600;">${statusLabel}</span>
+      <span class="muted" style="font-size:0.78rem;">· ${mode || "Read-only Mode"}</span>
+    </div>
+
+    ${isVerified ? `
+    <div class="profile-wallet-kpi-grid">
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Total XRP</span>
+        <span class="profile-wallet-kpi-value gold">${account?.balanceXrp ?? "0"}</span>
+        <span class="profile-wallet-kpi-unit">XRP</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Available</span>
+        <span class="profile-wallet-kpi-value cyan">${account?.availableXrp ?? "0"}</span>
+        <span class="profile-wallet-kpi-unit">XRP</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Reserved</span>
+        <span class="profile-wallet-kpi-value muted-val">${account?.ownerReserveXrp ?? totalReserved}</span>
+        <span class="profile-wallet-kpi-unit">XRP</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Objects</span>
+        <span class="profile-wallet-kpi-value violet">${ownerCount}</span>
+        <span class="profile-wallet-kpi-unit">owned</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Trust Lines</span>
+        <span class="profile-wallet-kpi-value cyan">${account?.trustLines ?? 0}</span>
+        <span class="profile-wallet-kpi-unit">lines</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">NFTs</span>
+        <span class="profile-wallet-kpi-value violet">${account?.nftCount ?? 0}</span>
+        <span class="profile-wallet-kpi-unit">items</span>
+      </div>
+    </div>
+
+    <div class="profile-wallet-detail-grid">
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Sequence</span>
+        <span class="profile-wallet-detail-value mono">${account?.sequence ?? "—"}</span>
+      </div>
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Recent Activity</span>
+        <span class="profile-wallet-detail-value">${account?.recentActivityCount ?? 0} transactions</span>
+      </div>
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Base Reserve</span>
+        <span class="profile-wallet-detail-value">${baseReserveXrp} XRP <span class="muted">(account activation)</span></span>
+      </div>
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Owner Reserve</span>
+        <span class="profile-wallet-detail-value">${totalOwnerReserve} XRP <span class="muted">(${ownerCount} × 0.2 XRP)</span></span>
+      </div>
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Total Reserved</span>
+        <span class="profile-wallet-detail-value">${totalReserved} XRP</span>
+      </div>
+      <div class="profile-wallet-detail-row">
+        <span class="profile-wallet-detail-label">Network</span>
+        <span class="profile-wallet-detail-value">${netConfig.label}</span>
+      </div>
+    </div>
+    <div class="button-row" style="margin-top:1rem">
+      <button type="button" class="profile-modal-btn" data-modal="send">Send XRP</button>
+      <button type="button" class="ghost profile-modal-btn" data-modal="receive">Receive / QR</button>
+    </div>
+    ` : `
+    <div class="profile-wallet-unverified">
+      <p class="muted">Account not yet verified on-chain. Press <strong>Refresh Account</strong> on the dashboard to query the XRPL.</p>
+      ${netConfig.isMainnet ? `<p class="keygen-danger-note">⚠ You are on Mainnet — real assets may be involved.</p>` : ""}
+    </div>
+    `}
+  `;
+
+  // Wire copy button
+  const copyBtn = refs.profileWalletPanel.querySelector(".profile-wallet-copy");
+  copyBtn?.addEventListener("click", () => {
+    const addr = copyBtn.dataset.copy;
+    navigator.clipboard.writeText(addr)
+      .then(() => { copyBtn.textContent = "Copied!"; setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000); })
+      .catch(() => { copyBtn.textContent = "Copy failed"; });
+  });
+  // Wire send/receive modal buttons
+  refs.profileWalletPanel.querySelectorAll(".profile-modal-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.modal === "send") openSendModal();
+      else openReceiveModal();
+    });
+  });
+}
+
+function onSaveProfile() {
+  const nextProfile = getProfileEditorValues();
+  updateProfileState(nextProfile);
+  const walletState = getWalletState();
+  renderProfile(walletState);
+  setFeedback("Profile saved.");
 }
 
 function renderProofLearning(walletState) {
@@ -825,20 +1354,41 @@ function renderExtendedPanels(walletState) {
 }
 
 function renderSecurity() {
-  if (!refs.securityStatus) return;
   const events = getSecurityEvents();
-  if (!events.length) {
-    refs.securityStatus.innerHTML = `
-      <p><strong>Checklist:</strong> Seed phrase blocked, private key blocked, network warning active.</p>
-      <p><strong>Status:</strong> Protected connection</p>
-      <p><strong>Events:</strong> No recent warnings</p>
-    `;
-    return;
+
+  if (refs.securityStatus) {
+    if (!events.length) {
+      refs.securityStatus.innerHTML = `
+        <p><strong>Checklist:</strong> Seed phrase blocked, private key blocked, network warning active.</p>
+        <p><strong>Status:</strong> Protected connection</p>
+        <p><strong>Events:</strong> No recent warnings</p>
+      `;
+    } else {
+      refs.securityStatus.innerHTML = events.slice(0, 6).map((event) =>
+        `<p><strong>${event.riskLevel}</strong> - ${event.eventType} (${new Date(event.createdAt).toLocaleString()})</p>`
+      ).join("");
+    }
   }
 
-  refs.securityStatus.innerHTML = events.slice(0, 6).map((event) =>
-    `<p><strong>${event.riskLevel}</strong> - ${event.eventType} (${new Date(event.createdAt).toLocaleString()})</p>`
-  ).join("");
+  if (refs.securityEventLog) {
+    if (!events.length) {
+      refs.securityEventLog.innerHTML = `<p class="muted">No session events yet. Events are logged as you interact with the wallet.</p>`;
+    } else {
+      refs.securityEventLog.innerHTML = `<div class="security-events">${events.slice(0, 12).map((event) => {
+        const riskClass = event.riskLevel === "BLOCKED" ? "chip-blocked"
+          : event.riskLevel === "HIGH" ? "chip-high"
+          : event.riskLevel === "MEDIUM" ? "chip-medium"
+          : event.riskLevel === "LOW" ? "chip-low"
+          : "chip-safe";
+        const time = new Date(event.createdAt).toLocaleTimeString();
+        return `<div class="security-event-row">
+          <span class="chip ${riskClass}">${event.riskLevel}</span>
+          <span>${event.eventType}</span>
+          <span class="muted" style="margin-left:auto">${time}</span>
+        </div>`;
+      }).join("")}</div>`;
+    }
+  }
 
   if (refs.securityChipStat) {
     refs.securityChipStat.textContent = events.length ? "Review warnings" : "Protected";
@@ -863,6 +1413,8 @@ function renderAll() {
   renderTxHistory(walletState);
   renderTxPreview(walletState);
   renderSecurity();
+  renderAvatarStatus(walletState);
+  renderFundWalletCard(walletState);
   void renderMarketOverview();
   renderExtendedPanels(walletState);
 }
@@ -891,7 +1443,9 @@ function closeSettingsDrawer() {
 function openSidebarPanel() {
   refs.workspaceGrid?.classList.remove("sidebar-closed");
   refs.sidebarPanel?.classList.add("open");
-  refs.sidebarOverlay?.classList.remove("hidden");
+  if (window.innerWidth <= 1100) {
+    refs.sidebarOverlay?.classList.remove("hidden");
+  }
 }
 
 function closeSidebarPanel() {
@@ -1135,7 +1689,7 @@ function onConfirmSignIntent() {
     renderSecurity();
   })().catch(() => {
     setFeedback("Preview confirmed, but follow-up logging failed.", true);
-  })();
+  });
 }
 
 function onSaveSupabase() {
@@ -1163,6 +1717,253 @@ async function onTestSupabase() {
 
   const result = await testSupabaseConnection();
   setSupabaseStatus(result.message, !result.ok);
+}
+
+// In-memory only — NEVER persisted to localStorage or any storage
+const createWalletState = { address: "", publicKey: "", privateKey: "" };
+
+function clearCreateWalletKeys() {
+  createWalletState.address = "";
+  createWalletState.publicKey = "";
+  createWalletState.privateKey = "";
+  if (refs.keygenAddress) refs.keygenAddress.textContent = "";
+  if (refs.keygenPublicKey) refs.keygenPublicKey.textContent = "";
+  if (refs.keygenPrivateKey) {
+    refs.keygenPrivateKey.textContent = "";
+    refs.keygenPrivateKey.classList.add("hidden");
+  }
+  if (refs.keygenCopyPrivButton) refs.keygenCopyPrivButton.classList.add("hidden");
+  if (refs.keygenPrivShield) refs.keygenPrivShield.classList.remove("hidden");
+  if (refs.keygenResult) refs.keygenResult.classList.add("hidden");
+  if (refs.keygenGate) refs.keygenGate.classList.remove("hidden");
+  // Uncheck all boxes
+  refs.keygenChecks.forEach((cb) => { cb.checked = false; });
+  if (refs.keygenGenerateButton) refs.keygenGenerateButton.disabled = true;
+  if (refs.keygenResultStatus) refs.keygenResultStatus.textContent = "";
+}
+
+function onKeygenCheckChange() {
+  const allChecked = refs.keygenChecks.every((cb) => cb.checked);
+  if (refs.keygenGenerateButton) refs.keygenGenerateButton.disabled = !allChecked;
+}
+
+async function onKeygenGenerate() {
+  if (!isKeygenSupported()) {
+    if (refs.keygenGateStatus) refs.keygenGateStatus.textContent = "Your browser does not support Web Crypto API. Please use a modern browser.";
+    return;
+  }
+
+  const allChecked = refs.keygenChecks.every((cb) => cb.checked);
+  if (!allChecked) return;
+
+  if (refs.keygenGenerateButton) refs.keygenGenerateButton.disabled = true;
+  if (refs.keygenGateStatus) refs.keygenGateStatus.textContent = "Generating keypair...";
+
+  try {
+    const wallet = await generateXrplWallet();
+    createWalletState.address = wallet.classicAddress;
+    createWalletState.publicKey = wallet.publicKey;
+    createWalletState.privateKey = wallet.privateKey;
+
+    if (refs.keygenAddress) refs.keygenAddress.textContent = wallet.classicAddress;
+    if (refs.keygenPublicKey) refs.keygenPublicKey.textContent = wallet.publicKey;
+    // Private key starts hidden behind shield
+    if (refs.keygenPrivateKey) {
+      refs.keygenPrivateKey.textContent = wallet.privateKey;
+      refs.keygenPrivateKey.classList.add("hidden");
+    }
+    if (refs.keygenCopyPrivButton) refs.keygenCopyPrivButton.classList.add("hidden");
+    if (refs.keygenPrivShield) refs.keygenPrivShield.classList.remove("hidden");
+
+    if (refs.keygenGate) refs.keygenGate.classList.add("hidden");
+    if (refs.keygenResult) refs.keygenResult.classList.remove("hidden");
+    if (refs.keygenGateStatus) refs.keygenGateStatus.textContent = "";
+
+    logSecurityEvent("wallet_generated", RISK_LEVELS.SAFE, { context: "keygen", note: "keys shown in-browser only" });
+  } catch (err) {
+    if (refs.keygenGateStatus) refs.keygenGateStatus.textContent = err instanceof Error ? err.message : "Key generation failed.";
+    if (refs.keygenGenerateButton) refs.keygenGenerateButton.disabled = false;
+  }
+}
+
+function onKeygenReveal() {
+  if (!createWalletState.privateKey) return;
+  if (refs.keygenPrivShield) refs.keygenPrivShield.classList.add("hidden");
+  if (refs.keygenPrivateKey) refs.keygenPrivateKey.classList.remove("hidden");
+  if (refs.keygenCopyPrivButton) refs.keygenCopyPrivButton.classList.remove("hidden");
+  logSecurityEvent("private_key_revealed", RISK_LEVELS.MEDIUM, { context: "keygen_reveal", note: "user viewed private key" });
+}
+
+async function onKeygenCopyField(targetId) {
+  const el = document.getElementById(targetId);
+  const text = el?.textContent?.trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if (refs.keygenResultStatus) refs.keygenResultStatus.textContent = "Copied!";
+    setTimeout(() => { if (refs.keygenResultStatus) refs.keygenResultStatus.textContent = ""; }, 2000);
+  } catch {
+    if (refs.keygenResultStatus) refs.keygenResultStatus.textContent = "Copy failed — select the text and copy manually.";
+  }
+}
+
+function onKeygenLoadAddress() {
+  if (!createWalletState.address) return;
+  const address = createWalletState.address;
+  if (refs.addressInput) refs.addressInput.value = address;
+  setPublicAddress(address);
+  logSecurityEvent("keygen_address_loaded", RISK_LEVELS.SAFE, { context: "keygen", addressHint: formatAddress(address) });
+  setActivePage("dashboard");
+  setFeedback("New wallet address loaded. Use Xaman to sign transactions.");
+  clearCreateWalletKeys();
+}
+
+function loadQRCodeLib() {
+  return new Promise((resolve, reject) => {
+    if (window.QRCode) { resolve(); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("QR code library failed to load."));
+    document.head.appendChild(script);
+  });
+}
+
+function renderQRCode(container, text) {
+  container.innerHTML = "";
+  new window.QRCode(container, {
+    text,
+    width: 220,
+    height: 220,
+    colorDark: "#1a2840",
+    colorLight: "#f4f8ff",
+    correctLevel: window.QRCode.CorrectLevel.M
+  });
+}
+
+function openSendModal() {
+  const walletState = getWalletState();
+  if (!walletState.publicAddress) {
+    setFeedback("Load a wallet address before sending.", true);
+    return;
+  }
+  if (refs.sendDestInput)   refs.sendDestInput.value = "";
+  if (refs.sendAmountInput) refs.sendAmountInput.value = "";
+  if (refs.sendTagInput)    refs.sendTagInput.value = "";
+  if (refs.sendMemoInput)   refs.sendMemoInput.value = "";
+  if (refs.sendStep1Status) refs.sendStep1Status.textContent = "";
+  if (refs.sendStep1) refs.sendStep1.classList.remove("hidden");
+  if (refs.sendStep2) refs.sendStep2.classList.add("hidden");
+  sendXamanUrl = "";
+  refs.sendModal?.classList.remove("hidden");
+  if (refs.sendModal) {
+    refs.sendModal.style.display = "flex";
+    refs.sendModal.setAttribute("aria-hidden", "false");
+  }
+  refs.sendDestInput?.focus();
+}
+
+function closeSendModal() {
+  refs.sendModal?.classList.add("hidden");
+  if (refs.sendModal) {
+    refs.sendModal.style.display = "none";
+    refs.sendModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openReceiveModal() {
+  const walletState = getWalletState();
+  if (!walletState.publicAddress) {
+    setFeedback("Load a wallet address first.", true);
+    return;
+  }
+  const address = walletState.publicAddress;
+  if (refs.receiveAddressDisplay) refs.receiveAddressDisplay.textContent = address;
+  if (refs.receiveQrContainer) {
+    refs.receiveQrContainer.innerHTML = `<img
+      src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(address)}&margin=8"
+      alt="QR code for address ${address}"
+      width="200" height="200" loading="lazy" />`;
+  }
+  refs.receiveModal?.classList.remove("hidden");
+  if (refs.receiveModal) {
+    refs.receiveModal.style.display = "flex";
+    refs.receiveModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeReceiveModal() {
+  refs.receiveModal?.classList.add("hidden");
+  if (refs.receiveModal) {
+    refs.receiveModal.style.display = "none";
+    refs.receiveModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+async function onSendPreview() {
+  const walletState = getWalletState();
+  const dest      = refs.sendDestInput?.value.trim()   || "";
+  const amountStr = refs.sendAmountInput?.value.trim() || "";
+  const tag       = refs.sendTagInput?.value.trim()    || "";
+  const memo      = refs.sendMemoInput?.value.trim()   || "";
+
+  if (!dest || !dest.startsWith("r") || dest.length < 25) {
+    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Enter a valid XRPL destination address (starts with r).";
+    return;
+  }
+  const amount = parseFloat(amountStr);
+  if (!amountStr || !Number.isFinite(amount) || amount <= 0) {
+    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Enter a valid XRP amount greater than 0.";
+    return;
+  }
+  if (dest === walletState.publicAddress) {
+    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Destination cannot be the same as your address.";
+    return;
+  }
+
+  if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Building transaction...";
+
+  try {
+    const tx = buildPaymentTx({
+      account:        walletState.publicAddress,
+      destination:    dest,
+      amountXrp:      amountStr,
+      destinationTag: tag,
+      memo
+    });
+
+    sendXamanUrl = buildXamanSignUrl(tx);
+
+    const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+    if (refs.sendTxSummary) {
+      refs.sendTxSummary.innerHTML = `
+        <p><strong>Sending:</strong> ${amount.toFixed(6)} XRP</p>
+        <p><strong>To:</strong> <span style="font-family:monospace">${formatAddress(dest)}</span></p>
+        <p><strong>From:</strong> <span style="font-family:monospace">${formatAddress(walletState.publicAddress)}</span></p>
+        <p><strong>Network:</strong> ${network.label}</p>
+        <p><strong>Fee:</strong> 12 drops (~0.000012 XRP)</p>
+        ${tag ? `<p><strong>Destination Tag:</strong> ${tag}</p>` : ""}
+        ${memo ? `<p><strong>Memo:</strong> ${memo}</p>` : ""}
+      `;
+    }
+
+    if (refs.sendConfirmCheckbox) refs.sendConfirmCheckbox.checked = false;
+    if (refs.sendOpenXamanButton) refs.sendOpenXamanButton.disabled = true;
+
+    await loadQRCodeLib();
+    if (refs.sendQrContainer) renderQRCode(refs.sendQrContainer, sendXamanUrl);
+
+    if (refs.sendStep1) refs.sendStep1.classList.add("hidden");
+    if (refs.sendStep2) refs.sendStep2.classList.remove("hidden");
+
+    logSecurityEvent("send_preview_built", RISK_LEVELS.MEDIUM, {
+      context: "send_modal",
+      network: walletState.network,
+      addressHint: formatAddress(dest)
+    });
+  } catch (err) {
+    if (refs.sendStep1Status) refs.sendStep1Status.textContent = err instanceof Error ? err.message : "Transaction build failed.";
+  }
 }
 
 function initNetworkOptions() {
@@ -1204,6 +2005,8 @@ function initEventHandlers() {
     if (event.key === "Escape") {
       closeSettingsDrawer();
       closeSidebarPanel();
+      closeSendModal();
+      closeReceiveModal();
       if (!refs.signGateModal?.classList.contains("hidden")) {
         closeSignGateModal();
       }
@@ -1214,8 +2017,74 @@ function initEventHandlers() {
   bindClick(refs.openSidebarButton, openSidebarPanel);
   bindClick(refs.closeSidebarButton, closeSidebarPanel);
   bindClick(refs.closeSettingsButton, closeSettingsDrawer);
+  bindClick(refs.saveProfileButton, onSaveProfile);
   bindClick(refs.settingsDisconnectButton, onDisconnect);
   bindClick(refs.settingsClearSessionButton, onClearSession);
+  bindClick(refs.settingsPageOpenDrawerButton, openSettingsDrawer);
+  bindClick(refs.settingsPageClearButton, onClearSession);
+  bindClick(refs.settingsPageDisconnectButton, onDisconnect);
+
+  // Profile photo upload
+  bindClick(refs.heroAvatarPill, () => refs.avatarPhotoInput?.click());
+  bindClick(refs.uploadPhotoButton, () => refs.avatarPhotoInput?.click());
+  bindClick(refs.cameraPhotoButton, () => refs.avatarCameraInput?.click());
+  bindClick(refs.profileAvatarPill, () => refs.avatarPhotoInput?.click());
+  bindClick(refs.clearPhotoButton, () => {
+    localStorage.removeItem(STORAGE_KEYS.profilePhoto);
+    applyProfilePhoto();
+    setFeedback("Profile photo removed.");
+  });
+  refs.avatarPhotoInput?.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (file) onPhotoFile(file);
+    e.target.value = "";
+  });
+  refs.avatarCameraInput?.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (file) onPhotoFile(file);
+    e.target.value = "";
+  });
+
+  // Drag and drop on upload zone
+  const zone = refs.profileUploadZone;
+  if (zone) {
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag-over");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) onPhotoFile(file);
+    });
+  }
+
+  // Avatar style customizer — live preview then save on any change
+  const avatarStyleInputs = [
+    refs.avatarGlowColorInput,
+    refs.avatarGlowIntensityInput,
+    refs.avatarBorderColorInput,
+    refs.avatarBorderWidthInput,
+    refs.avatarBorderShapeInput
+  ];
+  avatarStyleInputs.forEach((el) => {
+    el?.addEventListener("input", saveAvatarStyle);
+    el?.addEventListener("change", saveAvatarStyle);
+  });
+
+  // Keygen handlers
+  refs.keygenChecks.forEach((cb) => cb.addEventListener("change", onKeygenCheckChange));
+  bindClick(refs.keygenGenerateButton, () => { void onKeygenGenerate(); });
+  bindClick(refs.keygenRevealButton, onKeygenReveal);
+  bindClick(refs.keygenLoadAddressButton, onKeygenLoadAddress);
+  bindClick(refs.keygenClearButton, clearCreateWalletKeys);
+  document.querySelectorAll(".keygen-copy-btn[data-target]").forEach((btn) => {
+    btn.addEventListener("click", () => { void onKeygenCopyField(btn.dataset.target); });
+  });
+  bindClick(refs.keygenCopyPrivButton, () => { void onKeygenCopyField("keygenPrivateKey"); });
+
   bindClick(refs.adminUnlockButton, onUnlockAdmin);
   bindClick(refs.adminLockButton, onLockAdmin);
   bindClick(refs.saveSupabaseButton, onSaveSupabase);
@@ -1250,13 +2119,44 @@ function initEventHandlers() {
     applyTheme(event.target.value || "dark");
   });
   bindClick(refs.profileButton, () => setActivePage("profile"));
-  bindClick(refs.qrCodeButton, () => {
-    const address = getWalletState().publicAddress;
-    if (!address) {
-      setFeedback("Load an address before showing QR.", true);
-      return;
-    }
-    setFeedback(`QR preview ready for ${formatAddress(address)}.`);
+  bindClick(refs.qrCodeButton, openReceiveModal);
+  bindClick(refs.sendButton,   openSendModal);
+
+  // Send modal
+  bindClick(refs.closeSendModalButton, closeSendModal);
+  bindClick(refs.cancelSendButton,     closeSendModal);
+  bindClick(refs.cancelSendButton2,    closeSendModal);
+  bindClick(refs.sendPreviewButton, () => { void onSendPreview(); });
+  bindClick(refs.sendBackButton, () => {
+    if (refs.sendStep1) refs.sendStep1.classList.remove("hidden");
+    if (refs.sendStep2) refs.sendStep2.classList.add("hidden");
+    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "";
+  });
+  refs.sendConfirmCheckbox?.addEventListener("change", (e) => {
+    if (refs.sendOpenXamanButton) refs.sendOpenXamanButton.disabled = !e.target.checked;
+  });
+  bindClick(refs.sendOpenXamanButton, () => {
+    if (!sendXamanUrl) return;
+    window.open(sendXamanUrl, "_blank", "noopener,noreferrer");
+  });
+  refs.sendModal?.addEventListener("click", (e) => {
+    if (e.target === refs.sendModal) closeSendModal();
+  });
+
+  // Receive modal
+  bindClick(refs.closeReceiveModalButton, closeReceiveModal);
+  bindClick(refs.copyReceiveAddressButton, () => {
+    const addr = refs.receiveAddressDisplay?.textContent || "";
+    if (!addr) return;
+    navigator.clipboard.writeText(addr)
+      .then(() => {
+        if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copied!";
+        setTimeout(() => { if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copy Address"; }, 2000);
+      })
+      .catch(() => { if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copy failed"; });
+  });
+  refs.receiveModal?.addEventListener("click", (e) => {
+    if (e.target === refs.receiveModal) closeReceiveModal();
   });
 
   refs.timeframeButtons.forEach((button) => {
@@ -1307,6 +2207,8 @@ function boot() {
   );
   renderAdminPanel();
   renderReminders();
+  applyProfilePhoto();
+  applyAvatarStyle();
   initEventHandlers();
   if (window.innerWidth <= 1100) {
     closeSidebarPanel();
@@ -1315,6 +2217,8 @@ function boot() {
   }
   closeSettingsDrawer();
   closeSignGateModal();
+  closeSendModal();
+  closeReceiveModal();
   if (state.marketTimer) {
     clearInterval(state.marketTimer);
   }
