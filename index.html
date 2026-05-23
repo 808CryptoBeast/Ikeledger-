@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>IkeLedger - Where ancestral knowledge meets verifiable value.</title>
     <link rel="stylesheet" href="./ikeledger/css/ikeledger.css" />
   </head>
@@ -119,12 +119,73 @@
                 <p id="feedback" class="feedback" aria-live="polite"></p>
               </div>
               <div class="account-hero-right">
-                <h3>Portfolio Intelligence</h3>
-                <div id="portfolioSummary" class="card-content"></div>
-                <div class="market-kpis">
-                  <div><span>XRP Price</span><strong id="xrpPriceStat">-</strong></div>
-                  <div><span>24h Change</span><strong id="xrpChangeStat">-</strong></div>
-                  <div><span>Security</span><strong id="securityChipStat">Protected</strong></div>
+                <div class="hero-tab-bar" role="tablist" aria-label="Portfolio and wallet actions">
+                  <button class="hero-tab is-active" data-hero-tab="overview" type="button" id="heroTabOverviewBtn" role="tab" aria-selected="true">Portfolio</button>
+                  <button class="hero-tab" data-hero-tab="send" type="button" id="heroTabSendBtn" role="tab" aria-selected="false">Send</button>
+                  <button class="hero-tab" data-hero-tab="receive" type="button" id="heroTabReceiveBtn" role="tab" aria-selected="false">Receive</button>
+                </div>
+
+                <!-- Portfolio Overview Tab -->
+                <div id="heroTabOverview" class="hero-tab-panel" role="tabpanel">
+                  <div id="portfolioSummary" class="card-content"></div>
+                  <div class="market-kpis">
+                    <div><span>XRP Price</span><strong id="xrpPriceStat">-</strong></div>
+                    <div><span>24h Change</span><strong id="xrpChangeStat">-</strong></div>
+                    <div><span>Security</span><strong id="securityChipStat">Protected</strong></div>
+                  </div>
+                </div>
+
+                <!-- Send Tab -->
+                <div id="heroTabSend" class="hero-tab-panel hidden" role="tabpanel">
+                  <div id="heroSendStep1" class="hero-send-step">
+                    <div class="hero-send-form">
+                      <label class="hero-field-label">
+                        To
+                        <input id="heroSendDest" type="text" placeholder="r..." autocomplete="off" spellcheck="false" inputmode="text" />
+                      </label>
+                      <label class="hero-field-label">
+                        Amount (XRP)
+                        <input id="heroSendAmount" type="number" min="0.000001" step="0.000001" placeholder="0.00" inputmode="decimal" />
+                      </label>
+                      <label class="hero-field-label">
+                        Destination Tag <span class="muted">(optional)</span>
+                        <input id="heroSendTag" type="number" min="0" step="1" placeholder="Exchange tag" inputmode="numeric" />
+                      </label>
+                      <label class="hero-field-label">
+                        Memo <span class="muted">(optional)</span>
+                        <input id="heroSendMemo" type="text" maxlength="100" placeholder="On-chain note" autocomplete="off" />
+                      </label>
+                    </div>
+                    <p id="heroSendStatus" class="feedback" aria-live="polite"></p>
+                    <div class="button-row">
+                      <button id="heroSendPreviewBtn" type="button">Preview Transaction</button>
+                    </div>
+                  </div>
+                  <div id="heroSendStep2" class="hero-send-step hidden">
+                    <div id="heroSendSummary" class="hero-send-summary"></div>
+                    <p class="muted" style="font-size:0.74rem;text-align:center;margin:0.35rem 0 0">Scan with Xaman · or tap Open if on mobile</p>
+                    <div id="heroSendQr" class="hero-qr-wrap"></div>
+                    <label class="confirm-row" style="font-size:0.78rem;margin:0.3rem 0">
+                      <input id="heroSendConfirm" type="checkbox" />
+                      I've reviewed — XRPL transactions are irreversible.
+                    </label>
+                    <div class="button-row">
+                      <button id="heroOpenXamanBtn" type="button" disabled>Open in Xaman</button>
+                      <button id="heroSendBackBtn" type="button" class="ghost">Back</button>
+                    </div>
+                    <p id="heroSendStep2Status" class="feedback" aria-live="polite"></p>
+                  </div>
+                </div>
+
+                <!-- Receive Tab -->
+                <div id="heroTabReceive" class="hero-tab-panel hidden" role="tabpanel">
+                  <p class="muted" style="font-size:0.8rem;margin-bottom:0.4rem">Share your address or QR to receive XRP and tokens.</p>
+                  <div id="heroReceiveQr" class="hero-qr-wrap"></div>
+                  <div class="hero-receive-addr-block">
+                    <code id="heroReceiveAddr" class="hero-addr-code"></code>
+                    <button id="heroReceiveCopy" type="button" class="ghost" style="font-size:0.78rem">Copy Address</button>
+                  </div>
+                  <p class="muted" style="font-size:0.72rem;margin-top:0.4rem">Public address — always safe to share. Never share your private key.</p>
                 </div>
               </div>
             </article>

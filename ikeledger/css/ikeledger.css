@@ -2577,6 +2577,13 @@ button.ghost:hover {
   .settings-page-grid {
     grid-template-columns: 1fr;
   }
+
+  /* Profile identity in hero is accessible via Profile page — hide on tablet/mobile */
+  .profile-status-block { display: none; }
+  .avatar-upload-hint { display: none; }
+
+  /* Center avatar when profile block is hidden */
+  .account-hero-left { align-items: center; }
 }
 
 /* ─────────────────────────────────────────────
@@ -2598,6 +2605,8 @@ button.ghost:hover {
 
   .bottom-nav {
     display: grid;
+    /* iOS notch / home indicator safe area */
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom, 0px));
   }
 
   .bottom-link-label {
@@ -2642,7 +2651,7 @@ button.ghost:hover {
     width: 100%;
     padding: 0 0.45rem;
     margin-top: 0.45rem;
-    margin-bottom: 5.5rem;
+    margin-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .glass-card {
@@ -2653,6 +2662,14 @@ button.ghost:hover {
   .profile-layout {
     grid-template-columns: 1fr;
   }
+
+  /* Shrink oversized network icon images */
+  .network-icon-chip img { width: 2.8rem; height: 2.8rem; }
+
+  /* Hide secondary hero buttons on mobile — accessible via sidebar/settings */
+  #demoButton,
+  #copyAddressButton,
+  #clearSessionButton { display: none; }
 }
 
 /* ─────────────────────────────────────────────
@@ -2695,6 +2712,135 @@ button.ghost:hover {
 /* ─────────────────────────────────────────────
    Responsive — 380px
    ───────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────
+   Hero Action Tabs (Portfolio / Send / Receive)
+   ───────────────────────────────────────────── */
+
+.hero-tab-bar {
+  display: flex;
+  gap: 0.28rem;
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(142, 193, 255, 0.13);
+}
+
+.hero-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-2);
+  padding: 0.28rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  min-height: 28px;
+  box-shadow: none;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex: 1;
+  justify-content: center;
+}
+
+.hero-tab:hover {
+  color: var(--ink-1);
+  background: rgba(70, 188, 255, 0.07);
+  border-color: rgba(70, 188, 255, 0.22);
+  filter: none;
+  box-shadow: none;
+}
+
+.hero-tab.is-active {
+  color: var(--cyan);
+  border-color: rgba(53, 216, 255, 0.42);
+  background: rgba(53, 216, 255, 0.08);
+  box-shadow: none;
+}
+
+.hero-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hero-tab-panel.hidden { display: none !important; }
+
+/* Hero send form */
+.hero-send-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.hero-send-step.hidden { display: none !important; }
+
+.hero-send-form {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.hero-field-label {
+  display: grid;
+  gap: 0.18rem;
+  font-size: 0.74rem;
+  color: var(--ink-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.hero-field-label input {
+  font-size: 0.82rem;
+  padding: 0.38rem 0.52rem;
+}
+
+.hero-send-summary {
+  background: rgba(11, 19, 48, 0.62);
+  border: 1px solid var(--border-cyan);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
+
+.hero-send-summary strong { color: var(--gold); }
+
+/* Hero QR container — used for both Send and Receive tabs */
+.hero-qr-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 120px;
+  padding: 0.3rem 0;
+}
+
+.hero-qr-wrap img,
+.hero-qr-wrap canvas {
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(70, 188, 255, 0.3);
+  box-shadow: 0 0 14px rgba(70, 188, 255, 0.12);
+}
+
+/* Hero receive address block */
+.hero-receive-addr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.hero-addr-code {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.72rem;
+  word-break: break-all;
+  text-align: center;
+  color: var(--cyan);
+  line-height: 1.55;
+  user-select: all;
+}
 
 /* ─────────────────────────────────────────────
    Send / Receive Modals

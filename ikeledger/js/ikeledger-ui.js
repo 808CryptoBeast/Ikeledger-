@@ -32,6 +32,7 @@ import {
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
 
 let sendXamanUrl = "";
+let heroSendXamanUrl = "";
 
 const state = {
   adminMode: false,
@@ -209,7 +210,31 @@ const refs = {
   closeReceiveModalButton: document.getElementById("closeReceiveModalButton"),
   receiveQrContainer: document.getElementById("receiveQrContainer"),
   receiveAddressDisplay: document.getElementById("receiveAddressDisplay"),
-  copyReceiveAddressButton: document.getElementById("copyReceiveAddressButton")
+  copyReceiveAddressButton: document.getElementById("copyReceiveAddressButton"),
+  // Hero inline Send / Receive tabs
+  heroTabOverviewBtn: document.getElementById("heroTabOverviewBtn"),
+  heroTabSendBtn: document.getElementById("heroTabSendBtn"),
+  heroTabReceiveBtn: document.getElementById("heroTabReceiveBtn"),
+  heroTabOverview: document.getElementById("heroTabOverview"),
+  heroTabSend: document.getElementById("heroTabSend"),
+  heroTabReceive: document.getElementById("heroTabReceive"),
+  heroSendStep1: document.getElementById("heroSendStep1"),
+  heroSendStep2: document.getElementById("heroSendStep2"),
+  heroSendDest: document.getElementById("heroSendDest"),
+  heroSendAmount: document.getElementById("heroSendAmount"),
+  heroSendTag: document.getElementById("heroSendTag"),
+  heroSendMemo: document.getElementById("heroSendMemo"),
+  heroSendStatus: document.getElementById("heroSendStatus"),
+  heroSendSummary: document.getElementById("heroSendSummary"),
+  heroSendQr: document.getElementById("heroSendQr"),
+  heroSendConfirm: document.getElementById("heroSendConfirm"),
+  heroOpenXamanBtn: document.getElementById("heroOpenXamanBtn"),
+  heroSendPreviewBtn: document.getElementById("heroSendPreviewBtn"),
+  heroSendBackBtn: document.getElementById("heroSendBackBtn"),
+  heroSendStep2Status: document.getElementById("heroSendStep2Status"),
+  heroReceiveQr: document.getElementById("heroReceiveQr"),
+  heroReceiveAddr: document.getElementById("heroReceiveAddr"),
+  heroReceiveCopy: document.getElementById("heroReceiveCopy")
 };
 
 function chipClass(level) {
@@ -607,12 +632,10 @@ function renderPortfolioSummary(walletState) {
   if (!refs.portfolioSummary) return;
   const snap = walletState.snapshot;
   const kpis = [
-    { label: "Total XRP",  value: snap?.account?.balanceXrp    || "0",  unit: "XRP",       color: "gold"      },
-    { label: "Available",  value: snap?.account?.availableXrp  || "0",  unit: "XRP",       color: "gold"      },
-    { label: "Assets",     value: snap?.tokenHoldings?.length  || 0,    unit: "tokens",    color: "cyan"      },
-    { label: "Issued",     value: snap?.issuedTokenEntries?.length || 0, unit: "projects", color: "cyan"      },
-    { label: "NFTs",       value: snap?.nftItems?.length        || 0,    unit: "items",     color: "violet"    },
-    { label: "AMM",        value: snap?.amm?.objectCount        || 0,    unit: "positions", color: "turquoise" }
+    { label: "Assets",  value: snap?.tokenHoldings?.length     || 0, unit: "tokens",    color: "cyan"      },
+    { label: "Issued",  value: snap?.issuedTokenEntries?.length || 0, unit: "projects",  color: "cyan"      },
+    { label: "NFTs",    value: snap?.nftItems?.length           || 0, unit: "items",     color: "violet"    },
+    { label: "AMM",     value: snap?.amm?.objectCount           || 0, unit: "positions", color: "turquoise" }
   ];
   refs.portfolioSummary.innerHTML = `
     <div class="portfolio-kpi-grid">
@@ -623,7 +646,7 @@ function renderPortfolioSummary(walletState) {
           <span class="portfolio-kpi-unit">${k.unit}</span>
         </div>`).join("")}
     </div>
-    <p class="portfolio-mode-note muted">Native XRPL read-only · load address to refresh</p>
+    <p class="portfolio-mode-note muted">Assets &amp; positions · XRP balance in Wallet Status</p>
   `;
 }
 
@@ -815,10 +838,6 @@ function renderFundWalletCard(walletState) {
         <code class="fund-wallet-addr-value">${publicAddress}</code>
         <button type="button" class="ghost fund-copy-btn" data-copy="${publicAddress}" style="align-self:flex-start;font-size:0.8rem;margin-top:0.25rem">Copy Address</button>
       </div>
-      <div class="button-row" style="margin-top:0.75rem">
-        <button type="button" class="fund-modal-btn" data-modal="send">Send XRP</button>
-        <button type="button" class="ghost fund-modal-btn" data-modal="receive">Receive / QR</button>
-      </div>
     `;
   } else {
     const baseReserve = 1;
@@ -859,13 +878,6 @@ function renderFundWalletCard(walletState) {
       navigator.clipboard.writeText(btn.dataset.copy || "")
         .then(() => { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Address"; }, 2000); })
         .catch(() => { btn.textContent = "Copy failed"; });
-    });
-  });
-  // Wire send/receive modal buttons
-  refs.fundWalletPanel.querySelectorAll(".fund-modal-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.modal === "send") openSendModal();
-      else openReceiveModal();
     });
   });
 }
@@ -1016,10 +1028,6 @@ function renderProfileWalletCard(walletState) {
         <span class="profile-wallet-detail-value">${netConfig.label}</span>
       </div>
     </div>
-    <div class="button-row" style="margin-top:1rem">
-      <button type="button" class="profile-modal-btn" data-modal="send">Send XRP</button>
-      <button type="button" class="ghost profile-modal-btn" data-modal="receive">Receive / QR</button>
-    </div>
     ` : `
     <div class="profile-wallet-unverified">
       <p class="muted">Account not yet verified on-chain. Press <strong>Refresh Account</strong> on the dashboard to query the XRPL.</p>
@@ -1035,13 +1043,6 @@ function renderProfileWalletCard(walletState) {
     navigator.clipboard.writeText(addr)
       .then(() => { copyBtn.textContent = "Copied!"; setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000); })
       .catch(() => { copyBtn.textContent = "Copy failed"; });
-  });
-  // Wire send/receive modal buttons
-  refs.profileWalletPanel.querySelectorAll(".profile-modal-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.modal === "send") openSendModal();
-      else openReceiveModal();
-    });
   });
 }
 
@@ -1347,10 +1348,7 @@ function renderExtendedPanels(walletState) {
       <p><strong>Verification status:</strong> Ready for XRPL anchor integration.</p>
     `;
   }
-
-  if (refs.profilePagePanel) {
-    refs.profilePagePanel.innerHTML = refs.profileStatus?.innerHTML || "<p>No profile data.</p>";
-  }
+  // profilePagePanel is set by renderProfile — no need to copy it here
 }
 
 function renderSecurity() {
@@ -1966,6 +1964,132 @@ async function onSendPreview() {
   }
 }
 
+function switchHeroTab(tab) {
+  const tabs    = { overview: refs.heroTabOverview,    send: refs.heroTabSend,    receive: refs.heroTabReceive };
+  const buttons = { overview: refs.heroTabOverviewBtn, send: refs.heroTabSendBtn, receive: refs.heroTabReceiveBtn };
+  Object.keys(tabs).forEach((key) => {
+    tabs[key]?.classList.toggle("hidden", key !== tab);
+    const btn = buttons[key];
+    if (btn) {
+      btn.classList.toggle("is-active", key === tab);
+      btn.setAttribute("aria-selected", key === tab ? "true" : "false");
+    }
+  });
+}
+
+function openHeroSend() {
+  const walletState = getWalletState();
+  if (!walletState.publicAddress) {
+    setFeedback("Load a wallet address before sending.", true);
+    return;
+  }
+  if (refs.heroSendDest)   refs.heroSendDest.value = "";
+  if (refs.heroSendAmount) refs.heroSendAmount.value = "";
+  if (refs.heroSendTag)    refs.heroSendTag.value = "";
+  if (refs.heroSendMemo)   refs.heroSendMemo.value = "";
+  if (refs.heroSendStatus) refs.heroSendStatus.textContent = "";
+  if (refs.heroSendStep2Status) refs.heroSendStep2Status.textContent = "";
+  if (refs.heroSendStep1)  refs.heroSendStep1.classList.remove("hidden");
+  if (refs.heroSendStep2)  refs.heroSendStep2.classList.add("hidden");
+  heroSendXamanUrl = "";
+  switchHeroTab("send");
+  refs.heroSendDest?.focus();
+}
+
+function openHeroReceive() {
+  const walletState = getWalletState();
+  if (!walletState.publicAddress) {
+    setFeedback("Load a wallet address first.", true);
+    return;
+  }
+  const address = walletState.publicAddress;
+  if (refs.heroReceiveAddr) refs.heroReceiveAddr.textContent = address;
+  if (refs.heroReceiveQr) {
+    refs.heroReceiveQr.innerHTML = `<img
+      src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(address)}&margin=6"
+      alt="QR code for ${address}"
+      width="180" height="180" loading="lazy" />`;
+  }
+  switchHeroTab("receive");
+}
+
+async function onHeroSendPreview() {
+  const walletState = getWalletState();
+  const dest      = refs.heroSendDest?.value.trim()   || "";
+  const amountStr = refs.heroSendAmount?.value.trim() || "";
+  const tag       = refs.heroSendTag?.value.trim()    || "";
+  const memo      = refs.heroSendMemo?.value.trim()   || "";
+
+  if (!dest || !dest.startsWith("r") || dest.length < 25) {
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "Enter a valid XRPL destination address (starts with r).";
+    return;
+  }
+  const amount = parseFloat(amountStr);
+  if (!amountStr || !Number.isFinite(amount) || amount <= 0) {
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "Enter a valid XRP amount greater than 0.";
+    return;
+  }
+  if (dest === walletState.publicAddress) {
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "Destination cannot be the same as your address.";
+    return;
+  }
+
+  if (refs.heroSendStatus) refs.heroSendStatus.textContent = "Building transaction...";
+
+  try {
+    const tx = buildPaymentTx({
+      account:        walletState.publicAddress,
+      destination:    dest,
+      amountXrp:      amountStr,
+      destinationTag: tag,
+      memo
+    });
+
+    heroSendXamanUrl = buildXamanSignUrl(tx);
+
+    const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+    if (refs.heroSendSummary) {
+      refs.heroSendSummary.innerHTML = `
+        <p><strong>From:</strong> <span style="font-family:monospace">${formatAddress(walletState.publicAddress)}</span></p>
+        <p><strong>To:</strong> <span style="font-family:monospace">${formatAddress(dest)}</span></p>
+        <p><strong>Amount:</strong> ${amount.toFixed(6)} XRP</p>
+        <p><strong>Network:</strong> ${network.label} &nbsp;·&nbsp; Fee: 12 drops</p>
+        ${tag  ? `<p><strong>Tag:</strong> ${tag}</p>`   : ""}
+        ${memo ? `<p><strong>Memo:</strong> ${memo}</p>` : ""}
+      `;
+    }
+
+    if (refs.heroSendConfirm) refs.heroSendConfirm.checked = false;
+    if (refs.heroOpenXamanBtn) refs.heroOpenXamanBtn.disabled = true;
+    if (refs.heroSendStep2Status) refs.heroSendStep2Status.textContent = "";
+
+    await loadQRCodeLib();
+    if (refs.heroSendQr) {
+      refs.heroSendQr.innerHTML = "";
+      new window.QRCode(refs.heroSendQr, {
+        text: heroSendXamanUrl,
+        width: 180,
+        height: 180,
+        colorDark: "#1a2840",
+        colorLight: "#f4f8ff",
+        correctLevel: window.QRCode.CorrectLevel.M
+      });
+    }
+
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "";
+    if (refs.heroSendStep1) refs.heroSendStep1.classList.add("hidden");
+    if (refs.heroSendStep2) refs.heroSendStep2.classList.remove("hidden");
+
+    logSecurityEvent("send_preview_built", RISK_LEVELS.MEDIUM, {
+      context: "hero_send",
+      network: walletState.network,
+      addressHint: formatAddress(dest)
+    });
+  } catch (err) {
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = err instanceof Error ? err.message : "Transaction build failed.";
+  }
+}
+
 function initNetworkOptions() {
   if (!refs.networkSelect) return;
   refs.networkSelect.innerHTML = Object.values(NETWORKS)
@@ -2119,44 +2243,45 @@ function initEventHandlers() {
     applyTheme(event.target.value || "dark");
   });
   bindClick(refs.profileButton, () => setActivePage("profile"));
-  bindClick(refs.qrCodeButton, openReceiveModal);
-  bindClick(refs.sendButton,   openSendModal);
+  // Hero button row wires into inline tabs
+  bindClick(refs.sendButton,   openHeroSend);
+  bindClick(refs.qrCodeButton, openHeroReceive);
 
-  // Send modal
-  bindClick(refs.closeSendModalButton, closeSendModal);
-  bindClick(refs.cancelSendButton,     closeSendModal);
-  bindClick(refs.cancelSendButton2,    closeSendModal);
-  bindClick(refs.sendPreviewButton, () => { void onSendPreview(); });
-  bindClick(refs.sendBackButton, () => {
-    if (refs.sendStep1) refs.sendStep1.classList.remove("hidden");
-    if (refs.sendStep2) refs.sendStep2.classList.add("hidden");
-    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "";
+  // Hero tab buttons
+  bindClick(refs.heroTabOverviewBtn, () => switchHeroTab("overview"));
+  bindClick(refs.heroTabSendBtn,     openHeroSend);
+  bindClick(refs.heroTabReceiveBtn,  openHeroReceive);
+
+  // Hero send step 1
+  bindClick(refs.heroSendPreviewBtn, () => { void onHeroSendPreview(); });
+
+  // Hero send step 2
+  bindClick(refs.heroSendBackBtn, () => {
+    if (refs.heroSendStep1) refs.heroSendStep1.classList.remove("hidden");
+    if (refs.heroSendStep2) refs.heroSendStep2.classList.add("hidden");
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "";
   });
-  refs.sendConfirmCheckbox?.addEventListener("change", (e) => {
-    if (refs.sendOpenXamanButton) refs.sendOpenXamanButton.disabled = !e.target.checked;
+  refs.heroSendConfirm?.addEventListener("change", (e) => {
+    if (refs.heroOpenXamanBtn) refs.heroOpenXamanBtn.disabled = !e.target.checked;
   });
-  bindClick(refs.sendOpenXamanButton, () => {
-    if (!sendXamanUrl) return;
-    window.open(sendXamanUrl, "_blank", "noopener,noreferrer");
-  });
-  refs.sendModal?.addEventListener("click", (e) => {
-    if (e.target === refs.sendModal) closeSendModal();
+  bindClick(refs.heroOpenXamanBtn, () => {
+    if (!heroSendXamanUrl) return;
+    window.open(heroSendXamanUrl, "_blank", "noopener,noreferrer");
+    if (refs.heroSendStep2Status) {
+      refs.heroSendStep2Status.textContent = "Xaman opened — approve the transaction in the app. Press Refresh Account after it confirms on-chain.";
+    }
   });
 
-  // Receive modal
-  bindClick(refs.closeReceiveModalButton, closeReceiveModal);
-  bindClick(refs.copyReceiveAddressButton, () => {
-    const addr = refs.receiveAddressDisplay?.textContent || "";
+  // Hero receive copy
+  bindClick(refs.heroReceiveCopy, () => {
+    const addr = refs.heroReceiveAddr?.textContent || "";
     if (!addr) return;
     navigator.clipboard.writeText(addr)
       .then(() => {
-        if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copied!";
-        setTimeout(() => { if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copy Address"; }, 2000);
+        if (refs.heroReceiveCopy) refs.heroReceiveCopy.textContent = "Copied!";
+        setTimeout(() => { if (refs.heroReceiveCopy) refs.heroReceiveCopy.textContent = "Copy Address"; }, 2000);
       })
-      .catch(() => { if (refs.copyReceiveAddressButton) refs.copyReceiveAddressButton.textContent = "Copy failed"; });
-  });
-  refs.receiveModal?.addEventListener("click", (e) => {
-    if (e.target === refs.receiveModal) closeReceiveModal();
+      .catch(() => { if (refs.heroReceiveCopy) refs.heroReceiveCopy.textContent = "Copy failed"; });
   });
 
   refs.timeframeButtons.forEach((button) => {
@@ -2219,6 +2344,7 @@ function boot() {
   closeSignGateModal();
   closeSendModal();
   closeReceiveModal();
+  switchHeroTab("overview");
   if (state.marketTimer) {
     clearInterval(state.marketTimer);
   }
