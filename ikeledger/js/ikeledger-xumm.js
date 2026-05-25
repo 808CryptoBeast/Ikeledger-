@@ -5,6 +5,8 @@ let xummClient = null;
 let xummApiKey = "";
 let readyPromise = null;
 const XUMM_PKCE_STORAGE_KEY = "XummPkceJwt";
+const XUMM_ACCOUNT_RECOVERY_MS = 20000;
+const XUMM_ACCOUNT_POLL_MS = 500;
 
 export async function loadXummCDN() {
   if (typeof window === "undefined") return;
@@ -43,8 +45,15 @@ export async function signInWithXumm(xumm) {
   try { localStorage.removeItem(XUMM_PKCE_STORAGE_KEY); } catch {}
   try { sessionStorage.removeItem(XUMM_PKCE_STORAGE_KEY); } catch {}
 
-  const result = await xumm.authorize();
-  if (result instanceof Error) throw result;
+  let result = null;
+  try {
+    result = await xumm.authorize();
+    if (result instanceof Error) throw result;
+  } catch (error) {
+    const recoveredAccount = await waitForXummAccount(xumm, XUMM_ACCOUNT_RECOVERY_MS);
+    if (recoveredAccount) return recoveredAccount;
+    throw error;
+  }
 
   const account = result?.me?.account
     || result?.me?.sub
@@ -57,6 +66,22 @@ export async function signInWithXumm(xumm) {
   }
 
   return account;
+}
+
+export async function waitForXummAccount(xumm, timeoutMs = XUMM_ACCOUNT_RECOVERY_MS) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const account = xumm?.state?.account || await Promise.race([
+      xumm?.user?.account || Promise.resolve(""),
+      new Promise(resolve => setTimeout(() => resolve(""), XUMM_ACCOUNT_POLL_MS))
+    ]).catch(() => "");
+
+    if (account) return account;
+    await new Promise(resolve => setTimeout(resolve, XUMM_ACCOUNT_POLL_MS));
+  }
+
+  return "";
 }
 
 export function clearXummSession() {

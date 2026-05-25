@@ -301,7 +301,7 @@ export async function fetchAccountSnapshot(address, networkKey) {
       command: "account_lines",
       account: address,
       ledger_index: "validated",
-      limit: 20
+      limit: 400
     });
 
     const txResponse = await client.request({
@@ -316,7 +316,7 @@ export async function fetchAccountSnapshot(address, networkKey) {
     const nftsResponse = await client.request({
       command: "account_nfts",
       account: address,
-      limit: 20
+      limit: 100
     }).catch(() => ({ result: { account_nfts: [] } }));
 
     const gatewayBalancesResponse = await client.request({

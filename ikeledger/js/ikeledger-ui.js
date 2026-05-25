@@ -35,6 +35,9 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
+const TOP_ISSUED_ASSETS_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc&limit=50";
+const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v1";
+const TOP_ISSUED_ASSETS_CACHE_MS = 15 * 60 * 1000;
 
 let heroSendXamanUrl = "";
 
@@ -45,12 +48,19 @@ const state = {
   rawJsonOpen: false,
   latestTxItems: [],
   activePage: "dashboard",
+  selectedNftId: "",
   chartTimeframe: "24H",
   marketTimer: null,
   marketCache: {
     key: "",
     fetchedAt: 0,
     snapshot: null
+  },
+  topIssuedAssets: {
+    fetchedAt: 0,
+    items: [],
+    loading: false,
+    error: ""
   }
 };
 
@@ -103,6 +113,8 @@ const refs = {
   dexStatus: document.getElementById("dexStatus"),
   walletPageSummary: document.getElementById("walletPageSummary"),
   tokensPagePanel: document.getElementById("tokensPagePanel"),
+  topIssuedTokensPanel: document.getElementById("topIssuedTokensPanel"),
+  refreshTopIssuedTokensButton: document.getElementById("refreshTopIssuedTokensButton"),
   nftsPagePanel: document.getElementById("nftsPagePanel"),
   nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
   dexPagePanel: document.getElementById("dexPagePanel"),
@@ -286,17 +298,22 @@ function escapeHtml(value = "") {
 function toIpfsGateway(uri = "") {
   const clean = String(uri || "").trim();
   if (!clean) return "";
+  if (clean.startsWith("data:image/")) return clean;
   if (clean.startsWith("ipfs://ipfs/")) {
     return `https://ipfs.io/ipfs/${clean.slice("ipfs://ipfs/".length)}`;
   }
   if (clean.startsWith("ipfs://")) {
     return `https://ipfs.io/ipfs/${clean.slice("ipfs://".length)}`;
   }
+  if (clean.startsWith("ar://")) {
+    return `https://arweave.net/${clean.slice("ar://".length)}`;
+  }
   if (clean.startsWith("https://") || clean.startsWith("http://")) return clean;
   return "";
 }
 
 function looksLikeImageUrl(url = "") {
+  if (String(url || "").startsWith("data:image/")) return true;
   return /\.(avif|gif|jpe?g|png|svg|webp)(\?.*)?$/i.test(url);
 }
 
@@ -332,6 +349,56 @@ function getProfileEditorValues() {
 function safeNumber(value, decimals = 6) {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n.toFixed(decimals) : "0";
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function formatCompactNumber(value, decimals = 1) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "n/a";
+  return new Intl.NumberFormat("en-US", {
+    notation: Math.abs(n) >= 10000 ? "compact" : "standard",
+    maximumFractionDigits: Math.abs(n) >= 10000 ? decimals : 2
+  }).format(n);
+}
+
+function formatUsd(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "n/a";
+  if (Math.abs(n) < 0.01 && n !== 0) return `$${n.toPrecision(3)}`;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Math.abs(n) >= 1 ? 4 : 6
+  }).format(n);
+}
+
+function formatPercent(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "n/a";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function decodeCurrencyCode(currency = "") {
+  const value = String(currency || "").trim();
+  if (/^[A-Fa-f0-9]{40}$/.test(value)) {
+    try {
+      const chars = value.match(/.{2}/g)
+        .map((pair) => Number.parseInt(pair, 16))
+        .filter((code) => code > 0)
+        .map((code) => String.fromCharCode(code))
+        .join("")
+        .trim();
+      return chars || value.slice(0, 8);
+    } catch {
+      return value.slice(0, 8);
+    }
+  }
+  return value || "Unknown";
 }
 
 function shouldUseSupabaseSync() {
@@ -407,6 +474,17 @@ function setCommandAuthStatus(text, isError = false) {
   if (!refs.commandAuthStatus) return;
   refs.commandAuthStatus.textContent = text;
   refs.commandAuthStatus.style.color = isError ? "#ffb9c3" : "#a9ffe6";
+}
+
+function friendlyXummError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/timeout|timed out|expired/i.test(message)) {
+    return "Xumm approval is still pending or took too long. If you approved it, wait a moment, then press Sign In with Xumm again to resume.";
+  }
+  if (/cancel|reject|denied/i.test(message)) {
+    return "Xumm sign in was cancelled in the wallet app.";
+  }
+  return message || "Could not complete Xumm sign in.";
 }
 
 function getXamanApiKey() {
@@ -1328,6 +1406,181 @@ function renderTokenHoldings(walletState) {
   if (refs.tokensPagePanel) refs.tokensPagePanel.innerHTML = html;
 }
 
+function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
+  const symbol = decodeCurrencyCode(token.name || token.currency || "");
+  return {
+    rank: index + 1,
+    symbol,
+    currency: decodeCurrencyCode(token.currency || symbol),
+    issuer: token.issuer || "",
+    priceUsd: toFiniteNumber(token.usd, Number.NaN),
+    change24h: toFiniteNumber(token.pro24h ?? token.p24h, Number.NaN),
+    marketCap: toFiniteNumber(token.marketcap, Number.NaN),
+    holders: toFiniteNumber(token.holders, Number.NaN),
+    trustlines: toFiniteNumber(token.trustlines, Number.NaN),
+    volume24h: toFiniteNumber(token.vol24hxrp ?? token.vol24h, Number.NaN),
+    verified: Boolean(token.verified || token.kyc),
+    slug: token.slug || "",
+    updatedAt: token.lastUpdated || token.updatedAt || ""
+  };
+}
+
+function getCachedTopIssuedAssets() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(TOP_ISSUED_ASSETS_CACHE_KEY) || "null");
+    if (!cached?.items?.length || !cached.fetchedAt) return null;
+    if (Date.now() - cached.fetchedAt > TOP_ISSUED_ASSETS_CACHE_MS) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedTopIssuedAssets(items) {
+  try {
+    localStorage.setItem(TOP_ISSUED_ASSETS_CACHE_KEY, JSON.stringify({
+      fetchedAt: Date.now(),
+      items
+    }));
+  } catch {
+    // Cache is optional.
+  }
+}
+
+function renderTopIssuedTokens() {
+  if (!refs.topIssuedTokensPanel) return;
+  const { items, loading, error, fetchedAt } = state.topIssuedAssets;
+
+  if (!items.length && loading) {
+    refs.topIssuedTokensPanel.innerHTML = `
+      <div class="market-token-empty">
+        <strong>Loading top issued assets...</strong>
+        <p class="muted">Fetching price, market cap, holder, and trust line data.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!items.length) {
+    refs.topIssuedTokensPanel.innerHTML = `
+      <div class="market-token-empty">
+        <strong>${error ? "Top issued assets unavailable" : "Top issued assets loading soon"}</strong>
+        <p class="muted">${error ? escapeHtml(error) : "Live XRPL issued-asset data will appear here."}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const totalMarketCap = items.reduce((sum, token) => sum + (Number.isFinite(token.marketCap) ? token.marketCap : 0), 0);
+  const totalHolders = items.reduce((sum, token) => sum + (Number.isFinite(token.holders) ? token.holders : 0), 0);
+  const updatedLabel = fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "cached";
+
+  const rows = items.slice(0, 50).map((token) => {
+    const changeClass = Number.isFinite(token.change24h) && token.change24h >= 0 ? "positive" : "negative";
+    const sourceUrl = token.slug ? `https://xrpl.to/token/${encodeURIComponent(token.slug)}` : "";
+    return `
+      <tr>
+        <td class="rank-cell">${token.rank}</td>
+        <td>
+          <strong>${escapeHtml(token.symbol)}</strong>
+          <span>${escapeHtml(formatAddress(token.issuer))}</span>
+        </td>
+        <td>${formatUsd(token.priceUsd)}</td>
+        <td class="${changeClass}">${formatPercent(token.change24h)}</td>
+        <td>${formatUsd(token.marketCap)}</td>
+        <td>${formatCompactNumber(token.holders, 1)}</td>
+        <td>${formatCompactNumber(token.trustlines, 1)}</td>
+        <td>${formatCompactNumber(token.volume24h, 1)} XRP</td>
+        <td>${token.verified ? '<span class="market-token-badge verified">Verified</span>' : '<span class="market-token-badge">Unverified</span>'}</td>
+        <td>${sourceUrl ? `<a class="ghost table-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer">View</a>` : "-"}</td>
+      </tr>
+    `;
+  }).join("");
+
+  refs.topIssuedTokensPanel.innerHTML = `
+    <div class="market-token-summary">
+      <div><span>Assets</span><strong>${items.length}</strong></div>
+      <div><span>Combined Market Cap</span><strong>${formatUsd(totalMarketCap)}</strong></div>
+      <div><span>Holder Count</span><strong>${formatCompactNumber(totalHolders, 1)}</strong></div>
+      <div><span>Updated</span><strong>${updatedLabel}</strong></div>
+    </div>
+    ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
+    <div class="issued-token-table-wrap" role="region" aria-label="Top 50 issued XRPL assets" tabindex="0">
+      <table class="issued-token-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Asset / Issuer</th>
+            <th>Price</th>
+            <th>24h</th>
+            <th>Market Cap</th>
+            <th>Holders</th>
+            <th>Trust Lines</th>
+            <th>Volume</th>
+            <th>Status</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function loadTopIssuedAssets(forceRefresh = false) {
+  if (!refs.topIssuedTokensPanel || state.topIssuedAssets.loading) return;
+
+  if (!forceRefresh && state.topIssuedAssets.items.length) {
+    renderTopIssuedTokens();
+    return;
+  }
+
+  const cached = !forceRefresh ? getCachedTopIssuedAssets() : null;
+  if (cached) {
+    state.topIssuedAssets = {
+      fetchedAt: cached.fetchedAt,
+      items: cached.items,
+      loading: false,
+      error: ""
+    };
+    renderTopIssuedTokens();
+    return;
+  }
+
+  state.topIssuedAssets.loading = true;
+  state.topIssuedAssets.error = "";
+  renderTopIssuedTokens();
+
+  try {
+    const response = await fetch(TOP_ISSUED_ASSETS_URL, { headers: { accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(response.status === 429
+        ? "Market API rate limit reached. Try refresh again in a moment."
+        : "Could not load issued asset market data.");
+    }
+    const data = await response.json();
+    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+    const items = tokens.slice(0, 50).map(normalizeIssuedAssetMarketToken);
+    state.topIssuedAssets = {
+      fetchedAt: Date.now(),
+      items,
+      loading: false,
+      error: ""
+    };
+    setCachedTopIssuedAssets(items);
+  } catch (error) {
+    const cachedFallback = getCachedTopIssuedAssets();
+    state.topIssuedAssets = {
+      fetchedAt: cachedFallback?.fetchedAt || 0,
+      items: cachedFallback?.items || state.topIssuedAssets.items || [],
+      loading: false,
+      error: error instanceof Error ? error.message : "Could not load issued asset market data."
+    };
+  }
+
+  renderTopIssuedTokens();
+}
+
 function renderIssuedTokens(walletState) {
   if (!refs.issuedTokens) return;
   const issued = walletState.snapshot?.issuedTokenEntries || [];
@@ -1708,6 +1961,7 @@ function renderAll() {
   renderProofLearning(walletState);
   renderBadges(walletState);
   renderTokenHoldings(walletState);
+  renderTopIssuedTokens();
   renderIssuedTokens(walletState);
   renderNfts(walletState);
   renderAmm(walletState);
@@ -1926,13 +2180,17 @@ function onCopyAddress() {
 
 async function connectWithXumm() {
   setFeedback("Opening Xumm sign in...");
+  setCommandAuthStatus("Opening Xumm sign in. Approve the request in Xaman to continue.");
   logSecurityEvent("xumm_signin_started", RISK_LEVELS.LOW, { context: "connect_wallet_button" });
   if (refs.connectXamanButton) refs.connectXamanButton.disabled = true;
   if (refs.commandXummSignInButton) refs.commandXummSignInButton.disabled = true;
 
   try {
+    if (refs.commandXummSignInButton) refs.commandXummSignInButton.textContent = "Waiting for Xumm...";
     const xumm = await initXumm(getXamanApiKey());
+    setCommandAuthStatus("Waiting for wallet approval in Xaman...");
     const account = await signInWithXumm(xumm);
+    setCommandAuthStatus("Xumm approved. Loading your XRPL account...");
     const verified = await verifyXummAccount(account);
     if (verified) {
       const existingUser = state.appUser;
@@ -1946,19 +2204,26 @@ async function connectWithXumm() {
         walletAddress: account,
         createdAt: existingUser?.createdAt
       });
+      setCommandAuthStatus("Connected with Xumm.");
     } else {
       clearXummSession();
       sessionStorage.removeItem("ike_wallet_provider");
       setWalletProvider("");
+      setCommandAuthStatus("Xumm approved, but the XRPL account could not be loaded yet. Try Refresh Account.", true);
     }
   } catch (err) {
     clearXummSession();
     sessionStorage.removeItem("ike_wallet_provider");
     setWalletProvider("");
-    setFeedback(err instanceof Error ? err.message : "Could not complete Xumm sign in.", true);
+    const message = friendlyXummError(err);
+    setCommandAuthStatus(message, true);
+    setFeedback(message, true);
   } finally {
     if (refs.connectXamanButton) refs.connectXamanButton.disabled = false;
-    if (refs.commandXummSignInButton) refs.commandXummSignInButton.disabled = false;
+    if (refs.commandXummSignInButton) {
+      refs.commandXummSignInButton.disabled = false;
+      refs.commandXummSignInButton.textContent = "Sign In with Xumm";
+    }
   }
 }
 
@@ -2060,11 +2325,11 @@ async function verifyXummAccount(approvedAddress = "") {
     if (refs.networkSelect) refs.networkSelect.value = "xrpl-mainnet";
 
     setPublicAddress(address);
-    await lookupXamanAddressAcrossNetworks(address);
     sessionStorage.setItem("ike_wallet_provider", "xaman");
     setWalletProvider("xaman");
 
     if (refs.addressInput) refs.addressInput.value = address;
+    await lookupXamanAddressAcrossNetworks(address);
 
     logSecurityEvent("xaman_connect_verified", RISK_LEVELS.LOW, {
       context: "xumm_connect",
@@ -2086,8 +2351,20 @@ async function verifyXummAccount(approvedAddress = "") {
     renderAll();
     return true;
   } catch (err) {
-    setFeedback(err instanceof Error ? err.message : "Verification failed.", true);
-    return false;
+    sessionStorage.setItem("ike_wallet_provider", "xaman");
+    setWalletProvider("xaman");
+    if (refs.addressInput) refs.addressInput.value = address;
+
+    logSecurityEvent("xaman_connect_pending_snapshot", RISK_LEVELS.LOW, {
+      context: "xumm_connect",
+      addressHint: formatAddress(address),
+      reason: err instanceof Error ? err.message : "snapshot pending"
+    });
+
+    setCommandAuthStatus("Xumm approved. XRPL account data is still loading; press Refresh Account if balances do not appear.", false);
+    setFeedback("Xumm wallet connected. XRPL account data is still loading; press Refresh Account if needed.");
+    renderAll();
+    return true;
   }
 }
 
@@ -2466,6 +2743,7 @@ function initEventHandlers() {
   bindClick(refs.commandXummSignInButton, () => { void connectWithXumm(); });
   bindClick(refs.commandEmailSignUpButton, () => { void onEmailProfileSignUp(); });
   bindClick(refs.commandEmailSignInButton, () => { void onEmailProfileSignIn(); });
+  bindClick(refs.refreshTopIssuedTokensButton, () => { void loadTopIssuedAssets(true); });
   bindClick(refs.toggleRawJsonButton, toggleRawJson);
 
   bindClick(refs.openSignGateButton, openSignGateModal);
@@ -2715,6 +2993,7 @@ function boot() {
     void renderMarketOverview(true);
   }, 15000);
   renderAll();
+  void loadTopIssuedAssets();
 }
 
 boot();

@@ -3633,3 +3633,402 @@ button.ghost:hover {
     height: 92px;
   }
 }
+/* ---------------------------------------------
+   Sharp Banner Title Fix
+   --------------------------------------------- */
+
+.top-nav {
+  grid-template-columns: auto minmax(340px, 1fr) auto;
+  min-height: 104px;
+}
+
+.nav-wordmark {
+  width: 100%;
+  height: 88px;
+  min-width: 0;
+  overflow: visible;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, rgba(6, 12, 30, 0.78), rgba(12, 24, 56, 0.5), rgba(6, 12, 30, 0.78));
+}
+
+.nav-wordmark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  border-radius: 14px;
+}
+
+@media (max-width: 1100px) {
+  .top-nav {
+    grid-template-columns: auto minmax(240px, 1fr) auto;
+    min-height: 90px;
+  }
+
+  .nav-wordmark {
+    height: 72px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 68px;
+  }
+
+  .nav-wordmark {
+    height: 48px;
+    padding-inline: 0.1rem;
+  }
+
+  .nav-wordmark img {
+    border-radius: 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .nav-wordmark {
+    height: 42px;
+  }
+}
+/* ---------------------------------------------
+   Banner Size Balance
+   --------------------------------------------- */
+
+.top-nav {
+  min-height: 78px;
+  grid-template-columns: auto minmax(280px, 1fr) auto;
+  padding-top: 0.28rem;
+  padding-bottom: 0.28rem;
+}
+
+.nav-wordmark {
+  height: 64px;
+  background: rgba(5, 10, 26, 0.32);
+}
+
+.nav-wordmark img {
+  width: 108%;
+  max-width: 108%;
+  height: 100%;
+  margin-left: -4%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.nav-logo-btn img {
+  width: 54px;
+  height: 54px;
+}
+
+@media (max-width: 1100px) {
+  .top-nav {
+    min-height: 72px;
+    grid-template-columns: auto minmax(210px, 1fr) auto;
+  }
+
+  .nav-wordmark {
+    height: 58px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    min-height: 62px;
+    padding-top: 0.22rem;
+    padding-bottom: 0.22rem;
+  }
+
+  .nav-wordmark {
+    height: 44px;
+  }
+
+  .nav-wordmark img {
+    width: 112%;
+    max-width: 112%;
+    margin-left: -6%;
+  }
+
+  .nav-logo-btn img {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 420px) {
+  .nav-wordmark {
+    height: 40px;
+  }
+}
+/* ---------------------------------------------
+   Compact Banner Fill
+   --------------------------------------------- */
+
+.top-nav {
+  grid-template-columns: auto minmax(260px, 340px) auto;
+  justify-content: space-between;
+  min-height: 82px;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.nav-wordmark {
+  justify-self: center;
+  width: clamp(260px, 32vw, 340px);
+  height: 70px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(5, 10, 26, 0.32);
+}
+
+.nav-wordmark img {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin-left: 0;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 14px;
+}
+
+.nav-logo-btn img {
+  width: 54px;
+  height: 54px;
+}
+
+@media (max-width: 1100px) {
+  .top-nav {
+    grid-template-columns: auto minmax(240px, 320px) auto;
+    min-height: 76px;
+  }
+
+  .nav-wordmark {
+    width: clamp(240px, 34vw, 320px);
+    height: 64px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    grid-template-columns: auto minmax(180px, 1fr) auto;
+    min-height: 62px;
+    gap: 0.35rem;
+  }
+
+  .nav-wordmark {
+    width: min(260px, 100%);
+    height: 48px;
+    border-radius: 10px;
+  }
+
+  .nav-wordmark img {
+    border-radius: 10px;
+  }
+
+  .nav-logo-btn img {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 420px) {
+  .top-nav {
+    grid-template-columns: auto minmax(140px, 1fr) auto;
+  }
+
+  .nav-wordmark {
+    height: 42px;
+  }
+}
+/* Compact Command Safety Guide */
+#commandSafetyGuide.command-safety-grid {
+  display: block;
+  margin-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+#commandSafetyGuide > .safety-guide-card:not(:first-child) {
+  display: none !important;
+}
+
+#commandSafetyGuide > .safety-guide-card.wide {
+  width: 100%;
+  max-width: none;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  overflow: hidden;
+}
+
+.command-safety-head {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+}
+
+.command-safety-head .card-visual {
+  width: 84px;
+  height: 84px;
+  padding: 0.45rem;
+  object-fit: contain;
+  border-radius: 16px;
+  border: 1px solid rgba(116, 202, 255, 0.28);
+  background: linear-gradient(145deg, rgba(3, 11, 28, 0.88), rgba(18, 35, 75, 0.58));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+.command-safety-head .section-top.compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.3rem;
+}
+
+.command-safety-head h3 {
+  margin: 0;
+  font-size: clamp(1.08rem, 2vw, 1.35rem);
+  line-height: 1.15;
+}
+
+.command-safety-head .muted {
+  margin: 0;
+  max-width: 74ch;
+}
+
+.safety-topic-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 1rem 0 0.85rem;
+}
+
+.safety-topic-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.35rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(114, 188, 255, 0.22);
+  background: rgba(7, 17, 37, 0.72);
+  color: rgba(232, 244, 255, 0.86);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.safety-accordion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.safety-accordion-grid details {
+  min-width: 0;
+  border: 1px solid rgba(99, 183, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(5, 13, 29, 0.62);
+  overflow: hidden;
+}
+
+.safety-accordion-grid details[open] {
+  border-color: rgba(244, 202, 122, 0.42);
+  background: linear-gradient(145deg, rgba(8, 18, 39, 0.9), rgba(15, 32, 63, 0.68));
+}
+
+.safety-accordion-grid summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 46px;
+  padding: 0.68rem 0.78rem;
+  cursor: pointer;
+  color: #f2f8ff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.25;
+  list-style: none;
+}
+
+.safety-accordion-grid summary::-webkit-details-marker {
+  display: none;
+}
+
+.safety-accordion-grid summary::after {
+  content: '+';
+  margin-left: auto;
+  color: #f4ca7a;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.safety-accordion-grid details[open] summary::after {
+  content: '-';
+}
+
+.safety-accordion-grid summary img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.safety-accordion-grid .safety-bullet-list {
+  margin: 0;
+  padding: 0 0.85rem 0.85rem 1.05rem;
+}
+
+.safety-accordion-grid .safety-bullet-list li {
+  margin-bottom: 0.46rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .safety-accordion-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  #commandSafetyGuide > .safety-guide-card.wide {
+    padding: 0.9rem;
+  }
+
+  .command-safety-head {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 0.72rem;
+  }
+
+  .command-safety-head .card-visual {
+    width: 58px;
+    height: 58px;
+    border-radius: 12px;
+  }
+
+  .command-safety-head .section-top.compact {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .command-safety-head h3 {
+    font-size: 1rem;
+  }
+
+  .safety-topic-strip {
+    gap: 0.35rem;
+    margin-top: 0.85rem;
+  }
+
+  .safety-topic-strip span {
+    min-height: 28px;
+    padding-inline: 0.5rem;
+    font-size: 0.72rem;
+  }
+
+  .safety-accordion-grid summary {
+    min-height: 44px;
+    padding: 0.62rem;
+    font-size: 0.84rem;
+  }
+}

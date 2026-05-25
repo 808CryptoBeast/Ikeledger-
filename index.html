@@ -215,16 +215,61 @@
 
             <section id="commandSafetyGuide" class="card-grid command-safety-grid" aria-label="Web3 safety best practices">
               <article class="glass-card safety-guide-card wide">
-                <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikesecurity.png" alt="Wallet security" loading="lazy" />
-                <div class="section-top">
-                  <h3>Personal Security Field Guide</h3>
-                  <span class="mode-pill">Always on</span>
+                <div class="command-safety-head">
+                  <img class="card-visual" src="./ikeledger/assets/images/ikesecurity.png" alt="Wallet security" loading="lazy" />
+                  <div>
+                    <div class="section-top compact">
+                      <h3>Personal Security Field Guide</h3>
+                      <span class="mode-pill">Always on</span>
+                    </div>
+                    <p class="muted">Compact Web3 safety at a glance. Open any topic for the deeper checklist without crowding the Command Center.</p>
+                  </div>
                 </div>
-                <div class="safety-guide-list">
-                  <p><strong>Seed phrase protection:</strong> Write it offline, store it privately, never photograph it, never paste it into a website, and never send it to support.</p>
-                  <p><strong>Signing discipline:</strong> Read the network, destination, amount, asset issuer, destination tag, memo, and fee before approving anything.</p>
-                  <p><strong>Device hygiene:</strong> Keep wallet apps updated, use device locks, avoid public Wi-Fi for signing, and separate daily wallets from long-term holdings.</p>
-                  <p><strong>Recovery plan:</strong> Test your backup process with small amounts before you rely on it for meaningful value.</p>
+
+                <div class="safety-topic-strip" aria-label="Safety topics">
+                  <span>Seed phrases</span>
+                  <span>Signing</span>
+                  <span>Project red flags</span>
+                  <span>Markets</span>
+                  <span>Do / Don't</span>
+                </div>
+
+                <div class="safety-accordion-grid">
+                  <details open>
+                    <summary><img src="./ikeledger/assets/images/ikewallet.png" alt="" /> Wallet and seed phrase rules</summary>
+                    <ul class="safety-bullet-list">
+                      <li>Write seed phrases offline and store them privately. Never photograph, screenshot, paste, email, or DM them.</li>
+                      <li>Never enter a seed phrase into a website. Xaman approvals should happen inside Xaman, not inside a browser form.</li>
+                      <li>Separate daily-use wallets from long-term holdings and test recovery with small amounts before relying on it.</li>
+                    </ul>
+                  </details>
+
+                  <details>
+                    <summary><img src="./ikeledger/assets/images/ikesecurity.png" alt="" /> Signing checklist</summary>
+                    <ul class="safety-bullet-list">
+                      <li>Review network, destination, amount, asset issuer, destination tag, memo, and fee before approving.</li>
+                      <li>Reject blind signatures, surprise permission requests, rushed approvals, and transactions you did not start.</li>
+                      <li>Refresh account state after signing so you can confirm the ledger outcome.</li>
+                    </ul>
+                  </details>
+
+                  <details>
+                    <summary><img src="./ikeledger/assets/images/NLF.png" alt="" /> Project red flags</summary>
+                    <ul class="safety-bullet-list">
+                      <li>Guaranteed returns, urgent countdowns, copied roadmaps, anonymous teams, or pressure to buy immediately.</li>
+                      <li>Locked withdrawals, unclear token supply, hidden admin controls, vague issuer details, or no verifiable history.</li>
+                      <li>Support DMs, fake airdrops, wallet-drain links, and "verify your wallet" forms.</li>
+                    </ul>
+                  </details>
+
+                  <details>
+                    <summary><img src="./ikeledger/assets/images/ikeswap.png" alt="" /> Market discipline</summary>
+                    <ul class="safety-bullet-list">
+                      <li>Check liquidity, volume, issuer reputation, spreads, and exit paths before trading.</li>
+                      <li>Use small test transactions with new issuers, bridges, exchanges, or unfamiliar assets.</li>
+                      <li>Avoid chasing pumps, influencer signals, and charts without fundamentals.</li>
+                    </ul>
+                  </details>
                 </div>
               </article>
 
@@ -356,6 +401,16 @@
                 </div>
                 <div id="tokensPagePanel" class="card-content scroll"></div>
               </article>
+              <article class="glass-card wide">
+                <div class="section-top">
+                  <div>
+                    <h3>Top 50 Issued Assets</h3>
+                    <p class="muted">XRPL issued assets ranked by live market data, with price, 24h change, market cap, holders, and trust lines.</p>
+                  </div>
+                  <button id="refreshTopIssuedTokensButton" class="ghost" type="button">Refresh</button>
+                </div>
+                <div id="topIssuedTokensPanel" class="card-content"></div>
+              </article>
               <article class="glass-card">
                 <h3>Trust Line Safety</h3>
                 <div class="card-content">
@@ -374,13 +429,13 @@
               <h2>NFT Viewer</h2>
               <p class="muted">Non-fungible tokens held by this account on the XRP Ledger (XLS-20).</p>
             </div>
-            <article class="glass-card">
+            <article class="glass-card nft-viewer-card">
               <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikenft.png" alt="XRPL NFT collection" loading="lazy" />
               <div class="section-top">
                 <h3>NFT Inventory</h3>
                 <span class="mode-pill">XLS-20 Standard</span>
               </div>
-              <div id="nftsPagePanel" class="card-content scroll"></div>
+              <div id="nftsPagePanel" class="card-content nft-viewer-content"></div>
             </article>
           </section>
 
