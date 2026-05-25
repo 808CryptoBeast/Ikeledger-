@@ -3528,3 +3528,108 @@ button.ghost:hover {
     grid-template-columns: 1fr 1fr;
   }
 }
+/* ---------------------------------------------
+   Command Center Safety Guide
+   --------------------------------------------- */
+
+.command-safety-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(210px, 1fr));
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.command-safety-grid .wide {
+  grid-column: auto;
+}
+
+.safety-guide-card {
+  display: grid;
+  gap: 0.72rem;
+  align-content: start;
+}
+
+.safety-guide-card .wide-visual {
+  width: min(240px, 100%);
+  height: 104px;
+}
+
+.safety-guide-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.safety-guide-list p,
+.safety-bullet-list li,
+.safety-do-grid p {
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.safety-guide-list strong,
+.safety-do-grid strong {
+  color: var(--ink-0);
+}
+
+.safety-bullet-list {
+  display: grid;
+  gap: 0.46rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.safety-bullet-list li {
+  position: relative;
+  padding-left: 1rem;
+}
+
+.safety-bullet-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: var(--mana-gold);
+  box-shadow: 0 0 10px rgba(233, 199, 122, 0.32);
+}
+
+.safety-do-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.safety-do-grid div {
+  padding: 0.62rem;
+  border: 1px solid rgba(118, 153, 212, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 10, 26, 0.42);
+}
+
+.safety-do-grid div:first-child {
+  border-color: rgba(72, 214, 168, 0.24);
+}
+
+.safety-do-grid div:last-child {
+  border-color: rgba(255, 116, 136, 0.22);
+}
+
+@media (max-width: 1200px) {
+  .command-safety-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .command-safety-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .safety-guide-card .wide-visual {
+    width: 100%;
+    height: 92px;
+  }
+}
