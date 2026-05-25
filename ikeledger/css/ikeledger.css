@@ -3097,3 +3097,434 @@ button.ghost:hover {
 #authModal .command-auth-grid {
   align-items: stretch;
 }
+/* ---------------------------------------------
+   Visual Assets + Navigation Finishing Pass
+   --------------------------------------------- */
+
+.top-nav {
+  grid-template-columns: auto minmax(260px, 1fr) auto;
+  min-height: 86px;
+  padding: 0.42rem clamp(0.7rem, 2vw, 1.4rem);
+}
+
+.nav-wordmark {
+  min-width: 0;
+  padding: 0 0.7rem;
+}
+
+.nav-wordmark img {
+  width: min(760px, 58vw);
+  height: 72px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 12px;
+  background: rgba(5, 10, 26, 0.28);
+}
+
+.nav-logo-btn img {
+  width: 62px;
+  height: 62px;
+}
+
+.sidebar-panel {
+  padding: 0.9rem;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(10, 18, 44, 0.92), rgba(6, 11, 30, 0.82)),
+    rgba(5, 10, 26, 0.8);
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.sidebar-btn {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 48px;
+  padding: 0.38rem 0.52rem;
+  border-radius: 14px;
+  background: rgba(7, 14, 34, 0.52);
+  border-color: rgba(118, 153, 212, 0.15);
+  white-space: normal;
+  text-align: left;
+}
+
+.sidebar-btn.is-active {
+  border-left: 3px solid var(--mana-gold);
+  background:
+    linear-gradient(90deg, rgba(233, 199, 122, 0.14), rgba(70, 188, 255, 0.08)),
+    rgba(10, 18, 44, 0.76);
+}
+
+.nav-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 12px;
+  border: 1px solid rgba(233, 199, 122, 0.34);
+  background: rgba(5, 10, 26, 0.58);
+}
+
+.nav-icon img,
+.bottom-nav-icon {
+  object-fit: cover;
+  object-position: center;
+}
+
+.section-visual,
+.card-visual,
+.page-visual {
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  border: 1px solid rgba(233, 199, 122, 0.2);
+  background: rgba(5, 10, 26, 0.45);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24), 0 0 18px rgba(70, 188, 255, 0.08);
+}
+
+.command-visual {
+  width: 112px;
+  height: 112px;
+  border-radius: 20px;
+}
+
+.card-visual {
+  width: 72px;
+  height: 72px;
+  margin: 0 0 0.72rem;
+  border-radius: 16px;
+}
+
+.page-visual {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  flex: 0 0 auto;
+}
+
+.wide-visual {
+  width: min(260px, 100%);
+  height: 116px;
+  border-radius: 18px;
+  margin: 0 0 0.85rem;
+}
+
+.market-card .wide-visual,
+.profile-card .wide-visual {
+  width: min(320px, 100%);
+  height: 118px;
+}
+
+.page-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.page-hero h2,
+.page-hero .muted {
+  grid-column: 2;
+}
+
+.page-hero .page-visual {
+  grid-row: 1 / span 2;
+}
+
+.account-hero-left {
+  gap: 0.9rem;
+}
+
+#commandOverviewCards .glass-card {
+  align-content: start;
+}
+
+#commandOverviewCards .card-visual {
+  width: 64px;
+  height: 64px;
+}
+
+#commandStructuredGrid .amm-card .card-visual {
+  width: 82px;
+  height: 82px;
+}
+
+.bottom-nav {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.42rem;
+  padding: 0.48rem 0.56rem calc(0.68rem + env(safe-area-inset-bottom, 0px));
+  border-top-color: rgba(233, 199, 122, 0.16);
+  background:
+    linear-gradient(180deg, rgba(12, 22, 52, 0.94), rgba(3, 6, 16, 0.98));
+}
+
+.bottom-link {
+  min-width: 0;
+  min-height: 62px;
+  border-radius: 16px;
+  background: rgba(7, 14, 34, 0.78);
+}
+
+.bottom-nav-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+}
+
+.bottom-link-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#authModal .command-auth-panel {
+  width: min(820px, 94vw);
+}
+
+#authModal .command-auth-card {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .top-nav {
+    grid-template-columns: auto minmax(180px, 1fr) auto;
+  }
+
+  .nav-wordmark img {
+    width: min(560px, 52vw);
+    height: 62px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    min-height: 72px;
+    gap: 0.45rem;
+    padding: 0.34rem 0.5rem;
+  }
+
+  .nav-logo-btn img {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+  }
+
+  .nav-wordmark {
+    padding: 0 0.25rem;
+  }
+
+  .nav-wordmark img {
+    width: 100%;
+    height: 48px;
+    border-radius: 10px;
+  }
+
+  .top-controls {
+    gap: 0.2rem;
+  }
+
+  .top-controls .inline-control {
+    display: none;
+  }
+
+  .xrp-price-chip {
+    max-width: 76px;
+    justify-content: center;
+    padding-inline: 0.38rem;
+  }
+
+  .section-visual.command-visual {
+    width: 82px;
+    height: 82px;
+  }
+
+  .card-visual,
+  #commandOverviewCards .card-visual {
+    width: 54px;
+    height: 54px;
+    border-radius: 14px;
+    margin-bottom: 0.5rem;
+  }
+
+  .wide-visual,
+  .market-card .wide-visual,
+  .profile-card .wide-visual {
+    width: 100%;
+    height: 92px;
+    border-radius: 14px;
+    margin-bottom: 0.65rem;
+  }
+
+  .page-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.62rem;
+    padding-inline: 0.1rem;
+  }
+
+  .page-visual {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  #authModal .command-auth-panel {
+    width: 100vw;
+    max-height: 92vh;
+  }
+
+  #authModal .command-auth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #authModal .button-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bottom-link {
+    min-height: 58px;
+    padding: 0.28rem 0.08rem;
+  }
+
+  .bottom-nav-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .bottom-link-label {
+    font-size: 0.55rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-wordmark img {
+    height: 42px;
+  }
+
+  .xrp-price-chip {
+    display: none;
+  }
+
+  .command-overview {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .account-hero-left {
+    align-items: center;
+  }
+
+  .page-hero h2 {
+    font-size: 1.05rem;
+  }
+
+  #authModal .button-row {
+    grid-template-columns: 1fr;
+  }
+}
+/* ---------------------------------------------
+   Banner + Market Overview Final Pass
+   --------------------------------------------- */
+
+.nav-wordmark {
+  width: 100%;
+  height: 88px;
+  padding: 0 clamp(0.35rem, 1.5vw, 1.1rem);
+}
+
+.nav-wordmark img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 14px;
+}
+
+.top-nav {
+  min-height: 100px;
+}
+
+.network-icon-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.network-icon-chip {
+  min-width: 0;
+  justify-content: flex-start;
+  padding: 0.55rem 0.65rem;
+}
+
+.network-icon-chip img {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.network-icon-chip span {
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.15;
+}
+
+@media (max-width: 1100px) {
+  .nav-wordmark {
+    height: 76px;
+  }
+
+  .top-nav {
+    min-height: 88px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    min-height: 68px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .nav-wordmark {
+    height: 50px;
+    padding: 0 0.2rem;
+  }
+
+  .nav-wordmark img {
+    border-radius: 10px;
+  }
+
+  .network-icon-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.48rem;
+  }
+
+  .network-icon-chip {
+    padding: 0.44rem 0.5rem;
+  }
+
+  .network-icon-chip img {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .nav-wordmark {
+    height: 44px;
+  }
+
+  .nav-logo-btn img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .network-icon-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+}
