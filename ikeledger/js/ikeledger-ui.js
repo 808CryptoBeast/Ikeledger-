@@ -1,4 +1,4 @@
-import { DEFAULT_NETWORK, NETWORKS, RISK_LEVELS, STORAGE_KEYS } from "./ikeledger-config.js";
+import { DEFAULT_NETWORK, NETWORKS, RISK_LEVELS, STORAGE_KEYS, XAMAN_API_KEY, XRPL_ADDRESS_PATTERN } from "./ikeledger-config.js";
 import {
   assessRisk,
   getSecurityEvents,
@@ -15,10 +15,12 @@ import {
   lookupReadOnlyAddress,
   setNetwork,
   setPublicAddress,
+  setWalletProvider,
   updateProfileState
 } from "./ikeledger-wallet.js";
 import { getManaSummary } from "./ikeledger-rewards.js";
-import { openXamanConnect, buildPaymentTx, buildXamanSignUrl } from "./ikeledger-xaman.js";
+import { buildPaymentTx } from "./ikeledger-xaman.js";
+import { initXumm, signInWithXumm, createTxFlow, resetXumm, clearXummSession } from "./ikeledger-xumm.js";
 import { generateXrplWallet, isKeygenSupported } from "./ikeledger-keygen.js";
 import {
   getSupabaseConfig,
@@ -26,16 +28,19 @@ import {
   linkWalletConnectionRemote,
   logSecurityEventRemote,
   saveSupabaseConfig,
+  signInWithEmail,
+  signOutEmailAuth,
+  signUpWithEmail,
   testSupabaseConnection
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
 
-let sendXamanUrl = "";
 let heroSendXamanUrl = "";
 
 const state = {
   adminMode: false,
+  appUser: null,
   latestPreview: null,
   rawJsonOpen: false,
   latestTxItems: [],
@@ -48,6 +53,12 @@ const state = {
     snapshot: null
   }
 };
+
+const nftMetadataCache = new Map();
+
+const XRPL_ACCOUNT_PAGES = new Set(["wallet", "tokens", "nfts", "nft-listings", "amm", "activity"]);
+const SIGNING_WALLET_PAGES = new Set(["dex"]);
+const PROFILE_PAGES = new Set(["profile", "credentials"]);
 
 const refs = {
   chips: document.getElementById("statusChips"),
@@ -69,6 +80,21 @@ const refs = {
   marketLedgerIndex: document.getElementById("marketLedgerIndex"),
   marketTps: document.getElementById("marketTps"),
   marketFee: document.getElementById("marketFee"),
+  authModal: document.getElementById("authModal"),
+  closeAuthModalButton: document.getElementById("closeAuthModalButton"),
+  commandOpenAuthButton: document.getElementById("commandOpenAuthButton"),
+  commandAuthPanel: document.getElementById("commandAuthPanel"),
+  commandOverviewHero: document.getElementById("commandOverviewHero"),
+  commandOverviewCards: document.getElementById("commandOverviewCards"),
+  commandStructuredGrid: document.getElementById("commandStructuredGrid"),
+  commandSessionBadge: document.getElementById("commandSessionBadge"),
+  commandUsernameInput: document.getElementById("commandUsernameInput"),
+  commandEmailInput: document.getElementById("commandEmailInput"),
+  commandPasswordInput: document.getElementById("commandPasswordInput"),
+  commandEmailSignUpButton: document.getElementById("commandEmailSignUpButton"),
+  commandEmailSignInButton: document.getElementById("commandEmailSignInButton"),
+  commandXummSignInButton: document.getElementById("commandXummSignInButton"),
+  commandAuthStatus: document.getElementById("commandAuthStatus"),
   xrpNavPrice: document.getElementById("xrpNavPrice"),
   xrpPriceStat: document.getElementById("xrpPriceStat"),
   xrpChangeStat: document.getElementById("xrpChangeStat"),
@@ -109,6 +135,7 @@ const refs = {
   profileStatus: document.getElementById("profileStatus"),
   proofLearning: document.getElementById("proofLearning"),
   badgeCredentials: document.getElementById("badgeCredentials"),
+  dashboardActivity: document.getElementById("dashboardActivity"),
   tokenHoldings: document.getElementById("tokenHoldings"),
   issuedTokens: document.getElementById("issuedTokens"),
   nftInventory: document.getElementById("nftInventory"),
@@ -189,28 +216,6 @@ const refs = {
   keygenClearButton: document.getElementById("keygenClearButton"),
   keygenResultStatus: document.getElementById("keygenResultStatus"),
   sendButton: document.getElementById("sendButton"),
-  sendModal: document.getElementById("sendModal"),
-  closeSendModalButton: document.getElementById("closeSendModalButton"),
-  sendStep1: document.getElementById("sendStep1"),
-  sendStep2: document.getElementById("sendStep2"),
-  sendDestInput: document.getElementById("sendDestInput"),
-  sendAmountInput: document.getElementById("sendAmountInput"),
-  sendTagInput: document.getElementById("sendTagInput"),
-  sendMemoInput: document.getElementById("sendMemoInput"),
-  sendStep1Status: document.getElementById("sendStep1Status"),
-  sendTxSummary: document.getElementById("sendTxSummary"),
-  sendQrContainer: document.getElementById("sendQrContainer"),
-  sendConfirmCheckbox: document.getElementById("sendConfirmCheckbox"),
-  sendOpenXamanButton: document.getElementById("sendOpenXamanButton"),
-  sendPreviewButton: document.getElementById("sendPreviewButton"),
-  sendBackButton: document.getElementById("sendBackButton"),
-  cancelSendButton: document.getElementById("cancelSendButton"),
-  cancelSendButton2: document.getElementById("cancelSendButton2"),
-  receiveModal: document.getElementById("receiveModal"),
-  closeReceiveModalButton: document.getElementById("closeReceiveModalButton"),
-  receiveQrContainer: document.getElementById("receiveQrContainer"),
-  receiveAddressDisplay: document.getElementById("receiveAddressDisplay"),
-  copyReceiveAddressButton: document.getElementById("copyReceiveAddressButton"),
   // Hero inline Send / Receive tabs
   heroTabOverviewBtn: document.getElementById("heroTabOverviewBtn"),
   heroTabSendBtn: document.getElementById("heroTabSendBtn"),
@@ -269,6 +274,32 @@ function formatAddress(address = "") {
   return `${address.slice(0, 8)}...${address.slice(-8)}`;
 }
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function toIpfsGateway(uri = "") {
+  const clean = String(uri || "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("ipfs://ipfs/")) {
+    return `https://ipfs.io/ipfs/${clean.slice("ipfs://ipfs/".length)}`;
+  }
+  if (clean.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${clean.slice("ipfs://".length)}`;
+  }
+  if (clean.startsWith("https://") || clean.startsWith("http://")) return clean;
+  return "";
+}
+
+function looksLikeImageUrl(url = "") {
+  return /\.(avif|gif|jpe?g|png|svg|webp)(\?.*)?$/i.test(url);
+}
+
 function getProfileFields() {
   const profile = getProfileState();
   return {
@@ -307,6 +338,120 @@ function shouldUseSupabaseSync() {
   return state.adminMode && hasSupabaseConfig();
 }
 
+function hasXrplAccount() {
+  return Boolean(getWalletState().publicAddress);
+}
+
+function hasSigningWallet() {
+  const walletState = getWalletState();
+  const provider = walletState.provider || sessionStorage.getItem("ike_wallet_provider");
+  return Boolean(walletState.publicAddress && (provider === "xaman" || provider === "created"));
+}
+
+function pageAccessMessage(page) {
+  if (SIGNING_WALLET_PAGES.has(page)) {
+    return "DEX access needs a Xumm wallet connection or an XRPL account created in IkeLedger.";
+  }
+  if (XRPL_ACCOUNT_PAGES.has(page)) {
+    return "Connect Xumm, create a wallet, or load an XRPL address before opening that page.";
+  }
+  if (PROFILE_PAGES.has(page)) {
+    return "Sign in to your IkeLedger profile first.";
+  }
+  return "";
+}
+
+function canOpenPage(page) {
+  if (SIGNING_WALLET_PAGES.has(page)) return hasSigningWallet();
+  if (XRPL_ACCOUNT_PAGES.has(page)) return hasXrplAccount();
+  if (PROFILE_PAGES.has(page)) return Boolean(state.appUser);
+  return true;
+}
+
+function getStoredAppUser() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.appUserSession);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAppUserSession(user) {
+  state.appUser = {
+    id: user.id || `${user.method || "local"}:${user.email || user.walletAddress || Date.now()}`,
+    method: user.method || "email",
+    email: user.email || "",
+    username: user.username || user.email?.split("@")[0] || "IkeLedger User",
+    verified: Boolean(user.verified),
+    walletLinked: Boolean(user.walletLinked),
+    walletAddress: user.walletAddress || "",
+    createdAt: user.createdAt || new Date().toISOString()
+  };
+  localStorage.setItem(STORAGE_KEYS.appUserSession, JSON.stringify(state.appUser));
+  updateProfileState({
+    displayName: state.appUser.username,
+    handle: state.appUser.email ? `@${state.appUser.email.split("@")[0]}` : "@xumm-user"
+  });
+  renderCommandCenterAuth();
+  closeAuthModal();
+}
+
+function clearAppUserSession() {
+  state.appUser = null;
+  localStorage.removeItem(STORAGE_KEYS.appUserSession);
+  renderCommandCenterAuth();
+}
+
+function setCommandAuthStatus(text, isError = false) {
+  if (!refs.commandAuthStatus) return;
+  refs.commandAuthStatus.textContent = text;
+  refs.commandAuthStatus.style.color = isError ? "#ffb9c3" : "#a9ffe6";
+}
+
+function getXamanApiKey() {
+  return XAMAN_API_KEY || "";
+}
+
+function isAccountLookupMiss(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /No funded XRPL account|actNotFound|account.*not.*found/i.test(message);
+}
+
+async function lookupXamanAddressAcrossNetworks(address) {
+  const initialNetwork = getWalletState().network || DEFAULT_NETWORK;
+  const attempts = [
+    initialNetwork,
+    "xrpl-mainnet",
+    "xrpl-testnet",
+    "xrpl-devnet"
+  ].filter((network, index, list) => NETWORKS[network] && list.indexOf(network) === index);
+
+  let lastError = null;
+
+  for (const network of attempts) {
+    setNetwork(network);
+    if (refs.networkSelect) refs.networkSelect.value = network;
+
+    try {
+      return await lookupReadOnlyAddress(address);
+    } catch (error) {
+      lastError = error;
+      if (!isAccountLookupMiss(error)) {
+        throw error;
+      }
+    }
+  }
+
+  setNetwork(initialNetwork);
+  if (refs.networkSelect) refs.networkSelect.value = initialNetwork;
+
+  if (lastError) {
+    throw new Error("No funded XRPL account was found for this address on Mainnet, Testnet, or Devnet. If this is a new wallet, send XRP to activate it first.");
+  }
+  throw new Error("Could not verify the XRPL account.");
+}
+
 function resolveThemeMode(mode) {
   if (mode === "system") {
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
@@ -328,6 +473,14 @@ function cycleTheme() {
 }
 
 function setActivePage(page) {
+  if (!canOpenPage(page)) {
+    setFeedback(pageAccessMessage(page), true);
+    if (!hasXrplAccount() || PROFILE_PAGES.has(page)) {
+      openAuthModal();
+    }
+    page = "dashboard";
+  }
+
   // Clear generated keys whenever leaving the create-wallet page
   if (state.activePage === "create-wallet" && page !== "create-wallet") {
     clearCreateWalletKeys();
@@ -579,7 +732,7 @@ function renderChips(walletState) {
   const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
   const chips = [
     { label: walletState.status, risk: assessRisk("wallet_connect") },
-    { label: walletState.mode || "Read-only Mode", risk: RISK_LEVELS.SAFE },
+    { label: walletState.mode || (sessionStorage.getItem("ike_wallet_provider") === "xaman" ? "Xaman Mode" : "Read-only Mode"), risk: RISK_LEVELS.SAFE },
     { label: network.label, risk: network.isMainnet ? RISK_LEVELS.HIGH : RISK_LEVELS.LOW },
     { label: walletState.snapshot ? "Wallet Verified" : "Read-only Exploration", risk: walletState.snapshot ? RISK_LEVELS.SAFE : RISK_LEVELS.LOW }
   ];
@@ -590,7 +743,13 @@ function renderChips(walletState) {
 
 function renderConnectionMeta(walletState) {
   if (!refs.providerStatus) return;
-  refs.providerStatus.textContent = walletState.snapshot ? "XRPL + Xaman ready" : "Xaman / Read-only";
+  const isXaman = walletState.provider === "xaman" || sessionStorage.getItem("ike_wallet_provider") === "xaman";
+  const isCreated = walletState.provider === "created";
+  refs.providerStatus.textContent = isXaman
+    ? (walletState.snapshot ? "Xaman Connected" : "Xaman (address loaded)")
+    : isCreated
+      ? "Created Wallet"
+    : (walletState.snapshot ? "XRPL + Xaman ready" : "Xaman / Read-only");
   refs.publicAddressCompact.textContent = formatAddress(walletState.publicAddress);
 
   const verified = walletState.snapshot;
@@ -606,25 +765,76 @@ function renderConnectionMeta(walletState) {
     const modeLabel = !walletState.publicAddress
       ? "Disconnected"
       : walletState.snapshot
-        ? "Verified"
+        ? (isXaman ? "Xaman" : isCreated ? "Created" : "Verified")
         : "Read-only";
     refs.walletConnectionChip.textContent = modeLabel;
     refs.walletConnectionChip.className = `chip ${walletState.snapshot ? "chip-safe" : walletState.publicAddress ? "chip-low" : "chip-medium"}`;
   }
 }
 
+function renderCommandCenterAuth() {
+  const isSignedIn = Boolean(state.appUser);
+  const walletState = getWalletState();
+  const hasAccount = Boolean(walletState.publicAddress);
+  const canSign = hasSigningWallet();
+
+  if (refs.commandSessionBadge) {
+    refs.commandSessionBadge.textContent = isSignedIn
+      ? hasAccount ? canSign ? "Profile + Signing Wallet" : "Profile + XRPL"
+        : "Profile only"
+      : "Not signed in";
+  }
+
+  if (refs.openSignGateButton) refs.openSignGateButton.disabled = !canSign;
+  if (refs.sendButton) refs.sendButton.disabled = !canSign;
+
+  const sidebarButtons = refs.sidebarPanel ? Array.from(refs.sidebarPanel.querySelectorAll(".sidebar-btn")) : [];
+  const gatedButtons = [...refs.topLinks, ...refs.bottomLinks, ...sidebarButtons];
+  gatedButtons.forEach((button) => {
+    const page = button.dataset.page;
+    const locked = page ? !canOpenPage(page) : false;
+    button.classList.toggle("is-locked", locked);
+    button.setAttribute("aria-disabled", locked ? "true" : "false");
+    if (locked) button.title = pageAccessMessage(page);
+    else button.removeAttribute("title");
+  });
+}
+
 function renderWalletStatus(walletState) {
   if (!refs.walletStatus) return;
   const account = walletState.snapshot?.account;
+  const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+  if (!account) {
+    refs.walletStatus.innerHTML = `
+      <div class="wallet-status-empty">
+        <span class="wallet-status-dot"></span>
+        <div>
+          <strong>No account loaded</strong>
+          <p>Connect with Xaman or load a public XRPL address to view balances, reserves, and ledger objects.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   refs.walletStatus.innerHTML = `
-    <p><strong>XRP Balance:</strong> ${account?.balanceXrp || "0"} XRP</p>
-    <p><strong>Available Balance:</strong> ${account?.availableXrp || "0"} XRP</p>
-    <p><strong>Owner Reserve:</strong> ${account?.ownerReserveXrp || "0"} XRP</p>
-    <p><strong>Sequence:</strong> ${account?.sequence ?? "-"}</p>
-    <p><strong>Account Status:</strong> ${account?.accountStatus || "No wallet loaded"}</p>
-    <p><strong>Trust Lines:</strong> ${account?.trustLines ?? "-"}</p>
-    <p><strong>NFT Count:</strong> ${account?.nftCount ?? "-"}</p>
-    <p><strong>Recent Activity:</strong> ${account?.recentActivityCount ?? 0}</p>
+    <div class="wallet-status-topline">
+      <span class="chip ${network.isMainnet ? "chip-high" : "chip-low"}">${network.label}</span>
+      <span class="chip chip-safe">${account.accountStatus || "Active"}</span>
+    </div>
+    <div class="wallet-balance-strip">
+      <div><span>Total XRP</span><strong>${safeNumber(account.balanceXrp, 6)}</strong></div>
+      <div><span>Available</span><strong>${safeNumber(account.availableXrp, 6)}</strong></div>
+      <div><span>Reserve</span><strong>${safeNumber(account.ownerReserveXrp, 6)}</strong></div>
+    </div>
+    <div class="wallet-ledger-grid">
+      <div><span>Sequence</span><strong>${account.sequence ?? "-"}</strong></div>
+      <div><span>Objects</span><strong>${account.ownerCount ?? 0}</strong></div>
+      <div><span>Trust Lines</span><strong>${account.trustLines ?? 0}</strong></div>
+      <div><span>NFTs</span><strong>${account.nftCount ?? 0}</strong></div>
+      <div><span>Recent Tx</span><strong>${account.recentActivityCount ?? 0}</strong></div>
+      <div><span>Flags</span><strong>${account.flags ?? 0}</strong></div>
+    </div>
   `;
 }
 
@@ -646,7 +856,7 @@ function renderPortfolioSummary(walletState) {
           <span class="portfolio-kpi-unit">${k.unit}</span>
         </div>`).join("")}
     </div>
-    <p class="portfolio-mode-note muted">Assets &amp; positions · XRP balance in Wallet Status</p>
+    <p class="portfolio-mode-note muted">Assets, issued tokens, NFTs, and AMM objects from the loaded XRPL account.</p>
   `;
 }
 
@@ -724,9 +934,6 @@ function applyAvatarStyle() {
   const borderShape  = localStorage.getItem(STORAGE_KEYS.avatarBorderShape)   || "circle";
   const borderWidth  = parseInt(localStorage.getItem(STORAGE_KEYS.avatarBorderWidth) ?? "2", 10);
 
-  const pill = refs.heroAvatarPill;
-  if (!pill) return;
-
   // Glow box-shadow from color + intensity
   const { r, g, b } = hexToRgb(glowColor);
   const alpha1 = (glowIntensity / 100) * 0.75;
@@ -741,14 +948,14 @@ function applyAvatarStyle() {
   const radii = { circle: "50%", rounded: "20px", square: "6px" };
   const radius = radii[borderShape] || "50%";
 
-  pill.style.setProperty("--avatar-glow", glowShadow);
-  pill.style.setProperty("--avatar-border-color", borderColor);
-  pill.style.setProperty("--avatar-border-radius", radius);
-  pill.style.setProperty("--avatar-border-width", `${borderWidth}px`);
-
-  // Also apply shape class for img child border-radius
-  pill.classList.remove("avatar-shape-circle", "avatar-shape-rounded", "avatar-shape-square");
-  pill.classList.add(`avatar-shape-${borderShape}`);
+  [refs.heroAvatarPill, refs.profileAvatarPill].filter(Boolean).forEach((pill) => {
+    pill.style.setProperty("--avatar-glow", glowShadow);
+    pill.style.setProperty("--avatar-border-color", borderColor);
+    pill.style.setProperty("--avatar-border-radius", radius);
+    pill.style.setProperty("--avatar-border-width", `${borderWidth}px`);
+    pill.classList.remove("avatar-shape-circle", "avatar-shape-rounded", "avatar-shape-square");
+    pill.classList.add(`avatar-shape-${borderShape}`);
+  });
 
   // Keep status ring shape in sync
   if (refs.heroAvatarStatusRing) {
@@ -1084,7 +1291,6 @@ function renderBadges(walletState) {
 }
 
 function renderTokenHoldings(walletState) {
-  if (!refs.tokenHoldings) return;
   const holdings = walletState.snapshot?.tokenHoldings || [];
   const xrpBalance = walletState.snapshot?.account?.balanceXrp || "0";
   const xrpRow = `
@@ -1096,12 +1302,15 @@ function renderTokenHoldings(walletState) {
     </div>
   `;
 
+  let html = "";
   if (!holdings.length) {
-    refs.tokenHoldings.innerHTML = `${xrpRow}<p>No issued token balances found.</p>`;
+    html = `${xrpRow}<p>No issued token balances found.</p>`;
+    if (refs.tokenHoldings) refs.tokenHoldings.innerHTML = html;
+    if (refs.tokensPagePanel) refs.tokensPagePanel.innerHTML = html;
     return;
   }
 
-  refs.tokenHoldings.innerHTML = xrpRow + holdings.slice(0, 16).map((token) => {
+  html = xrpRow + holdings.slice(0, 16).map((token) => {
     const balance = Number.parseFloat(token.balance || "0");
     const risk = balance < 0 ? RISK_LEVELS.MEDIUM : RISK_LEVELS.LOW;
     const change = `${balance >= 0 ? "+" : ""}${(Math.abs(balance) % 7).toFixed(2)}%`;
@@ -1115,6 +1324,8 @@ function renderTokenHoldings(walletState) {
       </div>
     `;
   }).join("");
+  if (refs.tokenHoldings) refs.tokenHoldings.innerHTML = html;
+  if (refs.tokensPagePanel) refs.tokensPagePanel.innerHTML = html;
 }
 
 function renderIssuedTokens(walletState) {
@@ -1135,11 +1346,75 @@ function renderIssuedTokens(walletState) {
   `).join("");
 }
 
+function nftFallbackMarkup(nft) {
+  const initials = String(nft?.issuer || "NFT").slice(0, 2).toUpperCase();
+  return `<div class="nft-thumb-fallback"><span>${escapeHtml(initials)}</span></div>`;
+}
+
+function resolveNftImageSource(nft) {
+  const uri = toIpfsGateway(nft?.uri || "");
+  if (!uri) return { imageUrl: "", metadataUrl: "" };
+  if (looksLikeImageUrl(uri)) return { imageUrl: uri, metadataUrl: "" };
+  return { imageUrl: "", metadataUrl: uri };
+}
+
+async function fetchNftMetadata(nft) {
+  const cacheKey = nft.nftId || nft.uri || "";
+  if (!cacheKey) return {};
+  if (nftMetadataCache.has(cacheKey)) return nftMetadataCache.get(cacheKey);
+
+  const initial = resolveNftImageSource(nft);
+  if (initial.imageUrl) {
+    const result = { imageUrl: initial.imageUrl, name: "", description: "" };
+    nftMetadataCache.set(cacheKey, result);
+    return result;
+  }
+
+  if (!initial.metadataUrl) {
+    nftMetadataCache.set(cacheKey, {});
+    return {};
+  }
+
+  try {
+    const response = await fetch(initial.metadataUrl, { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("NFT metadata request failed.");
+    const metadata = await response.json();
+    const imageUrl = toIpfsGateway(metadata.image || metadata.image_url || metadata.imageUrl || metadata.animation_url || "");
+    const result = {
+      imageUrl,
+      name: metadata.name || "",
+      description: metadata.description || ""
+    };
+    nftMetadataCache.set(cacheKey, result);
+    return result;
+  } catch {
+    nftMetadataCache.set(cacheKey, {});
+    return {};
+  }
+}
+
+function hydrateNftImages(nfts) {
+  nfts.slice(0, 10).forEach((nft) => {
+    void fetchNftMetadata(nft).then((metadata) => {
+      const item = document.querySelector(`[data-nft-id="${CSS.escape(nft.nftId)}"]`);
+      if (!item || !metadata.imageUrl) return;
+      const thumb = item.querySelector(".nft-thumb");
+      if (thumb) {
+        thumb.innerHTML = `<img src="${escapeHtml(metadata.imageUrl)}" alt="${escapeHtml(metadata.name || "XRPL NFT image")}" loading="lazy" referrerpolicy="no-referrer" />`;
+        thumb.classList.add("has-image");
+      }
+      const title = item.querySelector(".nft-title");
+      if (title && metadata.name) title.textContent = metadata.name;
+    });
+  });
+}
+
 function renderNfts(walletState) {
-  if (!refs.nftInventory) return;
   const nfts = walletState.snapshot?.nftItems || [];
   if (!nfts.length) {
-    refs.nftInventory.innerHTML = "<p>No NFTs found for this XRPL account.</p>";
+    if (refs.nftInventory) {
+      refs.nftInventory.innerHTML = "<p>No NFTs found for this XRPL account.</p>";
+    }
     if (refs.nftListingStatus) {
       refs.nftListingStatus.innerHTML = "<p>No active NFT listings, buy offers, or sell offers found.</p>";
     }
@@ -1149,37 +1424,49 @@ function renderNfts(walletState) {
     return;
   }
 
-  refs.nftInventory.innerHTML = nfts.slice(0, 10).map((nft) => `
-    <div class="nft-item">
-      <div class="nft-thumb" aria-hidden="true"></div>
-      <p><strong>ID:</strong> ${formatAddress(nft.nftId)}</p>
-      <p><strong>Issuer:</strong> ${formatAddress(nft.issuer)}</p>
-      <p><strong>Collection:</strong> Taxon ${nft.taxon}</p>
+  const nftGridHtml = nfts.slice(0, 10).map((nft) => {
+    const source = resolveNftImageSource(nft);
+    const thumb = source.imageUrl
+      ? `<img src="${escapeHtml(source.imageUrl)}" alt="XRPL NFT image" loading="lazy" referrerpolicy="no-referrer" />`
+      : nftFallbackMarkup(nft);
+    return `
+    <div class="nft-item" data-nft-id="${escapeHtml(nft.nftId)}">
+      <div class="nft-thumb ${source.imageUrl ? "has-image" : ""}">${thumb}</div>
+      <p class="nft-title">${escapeHtml(formatAddress(nft.nftId))}</p>
+      <p><strong>Issuer:</strong> ${escapeHtml(formatAddress(nft.issuer))}</p>
+      <p><strong>Collection:</strong> Taxon ${escapeHtml(nft.taxon)}</p>
       <p><strong>Status:</strong> ${Number(nft.taxon) % 2 ? "Listed" : "Unlisted"}</p>
-      <p><strong>Metadata:</strong> Preview pending gateway source</p>
+      <p><strong>URI:</strong> ${nft.uri ? escapeHtml(formatAddress(nft.uri)) : "No metadata URI"}</p>
       <div class="button-row"><button class="ghost" type="button">View details</button><button class="ghost" type="button">Create listing</button></div>
     </div>
-  `).join("");
+  `;
+  }).join("");
+
+  if (refs.nftInventory) {
+    refs.nftInventory.innerHTML = nftGridHtml;
+  }
+
+  hydrateNftImages(nfts);
+
+  const nftListingHtml = `
+    <p><strong>Active Listings:</strong> ${Math.ceil(nfts.length / 2)}</p>
+    <p><strong>Incoming Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 3))}</p>
+    <p><strong>Outgoing Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 4))}</p>
+    <p><strong>Action Policy:</strong> Listing, accept, and cancel require transaction preview before wallet signing.</p>
+  `;
 
   if (refs.nftListingStatus) {
-    refs.nftListingStatus.innerHTML = `
-      <p><strong>Active Listings:</strong> ${Math.ceil(nfts.length / 2)}</p>
-      <p><strong>Incoming Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 3))}</p>
-      <p><strong>Outgoing Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 4))}</p>
-      <p><strong>Action Policy:</strong> Listing, accept, and cancel require transaction preview before wallet signing.</p>
-    `;
+    refs.nftListingStatus.innerHTML = nftListingHtml;
   }
 
   if (refs.nftsPagePanel) {
     refs.nftsPagePanel.innerHTML = `
-      <p><strong>Search:</strong> Filter by issuer, listed status, newest/oldest.</p>
-      <p><strong>Offers:</strong> View buy and sell offers before any action.</p>
-      <p><strong>Safety:</strong> NFT ownership transfers permanently when accepted.</p>
+      <div class="nft-grid">${nftGridHtml}</div>
     `;
   }
 
   if (refs.nftListingsPagePanel) {
-    refs.nftListingsPagePanel.innerHTML = refs.nftListingStatus?.innerHTML || "<p>No listing data.</p>";
+    refs.nftListingsPagePanel.innerHTML = nftListingHtml;
   }
 }
 
@@ -1233,6 +1520,9 @@ function renderTxHistory(walletState) {
 
   if (!txItems.length) {
     refs.txHistory.innerHTML = "<p>No recent ledger activity for this session.</p>";
+    if (refs.dashboardActivity) {
+      refs.dashboardActivity.innerHTML = "<p>No recent ledger activity loaded yet.</p>";
+    }
     refs.txRawJson.textContent = "[]";
     return;
   }
@@ -1245,6 +1535,13 @@ function renderTxHistory(walletState) {
       <p>Fee: ${tx.fee} drops | Hash: ${formatAddress(tx.hash)}</p>
     </div>
   `).join("");
+
+  if (refs.dashboardActivity) {
+    refs.dashboardActivity.innerHTML = txItems.slice(0, 3).map((tx) => `
+      <p><strong>${tx.type}</strong> - ${tx.amount} ${tx.asset}<br />
+      <span class="muted">${formatAddress(tx.hash)}</span></p>
+    `).join("");
+  }
 
   refs.txRawJson.textContent = JSON.stringify(txItems.map((tx) => tx.raw || {}), null, 2);
 }
@@ -1318,26 +1615,32 @@ function renderTxPreview(walletState) {
 }
 
 function renderExtendedPanels(walletState) {
-  if (refs.dexStatus) {
-    refs.dexStatus.innerHTML = `
+  const dexHtml = hasSigningWallet()
+    ? `
       <p><strong>Pair Selector:</strong> XRP / USDC</p>
       <p><strong>Order Book:</strong> Ready for live bids/asks integration.</p>
       <p><strong>Open Orders:</strong> ${walletState.snapshot?.txItems?.filter((tx) => tx.type === "OfferCreate").length || 0}</p>
       <p><strong>Risk Labels:</strong> Issuer and slippage warnings enabled.</p>
       <div class="button-row"><button class="ghost" type="button">Create Offer</button><button class="ghost" type="button">Cancel Offer</button><button class="ghost" type="button">Set Trust Line</button></div>
+    `
+    : `
+      <p><strong>DEX locked:</strong> Connect Xumm or load a wallet created in IkeLedger to access transaction tools.</p>
+      <p class="muted">Email-only profiles can view the Command Center overview, but cannot create offers or sign transactions.</p>
+      <div class="button-row"><button id="dexAuthPromptButton" type="button">Sign In / Connect</button><button class="ghost profile-wallet-nav-btn" data-nav="create-wallet" type="button">Create Wallet</button></div>
     `;
-  }
+
+  if (refs.dexStatus) refs.dexStatus.innerHTML = dexHtml;
 
   if (refs.dexPagePanel) {
-    refs.dexPagePanel.innerHTML = refs.dexStatus?.innerHTML || "<p>DEX panel unavailable.</p>";
+    refs.dexPagePanel.innerHTML = dexHtml;
+    refs.dexPagePanel.querySelector("#dexAuthPromptButton")?.addEventListener("click", openAuthModal);
+    refs.dexPagePanel.querySelectorAll(".profile-wallet-nav-btn[data-nav]").forEach((button) => {
+      button.addEventListener("click", () => setActivePage(button.dataset.nav));
+    });
   }
 
   if (refs.walletPageSummary) {
     refs.walletPageSummary.innerHTML = refs.walletStatus?.innerHTML || "<p>Wallet overview unavailable.</p>";
-  }
-
-  if (refs.tokensPagePanel) {
-    refs.tokensPagePanel.innerHTML = refs.tokenHoldings?.innerHTML || "<p>No token data.</p>";
   }
 
   if (refs.credentialsPagePanel) {
@@ -1395,6 +1698,7 @@ function renderSecurity() {
 
 function renderAll() {
   const walletState = getWalletState();
+  renderCommandCenterAuth();
   renderChips(walletState);
   renderConnectionMeta(walletState);
   renderPortfolioSummary(walletState);
@@ -1435,6 +1739,24 @@ function closeSettingsDrawer() {
   if (refs.settingsDrawer) {
     refs.settingsDrawer.style.display = "none";
     refs.settingsDrawer.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openAuthModal() {
+  refs.authModal?.classList.remove("hidden");
+  if (refs.authModal) {
+    refs.authModal.style.display = "flex";
+    refs.authModal.setAttribute("aria-hidden", "false");
+  }
+  renderCommandCenterAuth();
+  refs.commandXummSignInButton?.focus();
+}
+
+function closeAuthModal() {
+  refs.authModal?.classList.add("hidden");
+  if (refs.authModal) {
+    refs.authModal.style.display = "none";
+    refs.authModal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -1516,6 +1838,8 @@ async function onLookup() {
 
   try {
     setPublicAddress(address);
+    setWalletProvider("read-only");
+    sessionStorage.removeItem("ike_wallet_provider");
     await lookupReadOnlyAddress(address);
 
     if (shouldUseSupabaseSync()) {
@@ -1551,17 +1875,34 @@ function onNetworkChange(event) {
 
 function onDisconnect() {
   disconnectWallet();
+  sessionStorage.removeItem("ike_wallet_provider");
+  setWalletProvider(null);
+  if (state.appUser?.walletLinked) {
+    saveAppUserSession({
+      ...state.appUser,
+      walletLinked: false,
+      walletAddress: ""
+    });
+  }
+  resetXumm();
   if (refs.addressInput) refs.addressInput.value = "";
   logSecurityEvent("wallet_disconnected", RISK_LEVELS.LOW, { context: "manual" });
   setFeedback("Wallet disconnected.");
+  if (!canOpenPage(state.activePage)) setActivePage("dashboard");
   renderAll();
 }
 
 function onClearSession() {
   clearSessionStorage();
+  sessionStorage.removeItem("ike_wallet_provider");
+  setWalletProvider(null);
+  clearAppUserSession();
+  void signOutEmailAuth();
+  resetXumm();
   if (refs.addressInput) refs.addressInput.value = "";
   logSecurityEvent("session_cleared", RISK_LEVELS.SAFE, { context: "manual" });
   setFeedback("Session cleared.");
+  if (!canOpenPage(state.activePage)) setActivePage("dashboard");
   renderAll();
 }
 
@@ -1583,43 +1924,179 @@ function onCopyAddress() {
     .catch(() => setFeedback("Copy failed. You can copy manually.", true));
 }
 
-function onConnectXaman() {
-  void (async () => {
-    const walletState = getWalletState();
-    const context = openXamanConnect(walletState.network, walletState.publicAddress);
-    if (refs.xamanStatus) {
-      refs.xamanStatus.textContent = `${context.provider} opened for ${context.network}. ${context.note}`;
+async function connectWithXumm() {
+  setFeedback("Opening Xumm sign in...");
+  logSecurityEvent("xumm_signin_started", RISK_LEVELS.LOW, { context: "connect_wallet_button" });
+  if (refs.connectXamanButton) refs.connectXamanButton.disabled = true;
+  if (refs.commandXummSignInButton) refs.commandXummSignInButton.disabled = true;
+
+  try {
+    const xumm = await initXumm(getXamanApiKey());
+    const account = await signInWithXumm(xumm);
+    const verified = await verifyXummAccount(account);
+    if (verified) {
+      const existingUser = state.appUser;
+      saveAppUserSession({
+        id: existingUser?.id,
+        method: existingUser?.method || "xumm",
+        email: existingUser?.email || "",
+        username: existingUser?.username || `Xumm ${formatAddress(account)}`,
+        verified: existingUser ? existingUser.verified : true,
+        walletLinked: true,
+        walletAddress: account,
+        createdAt: existingUser?.createdAt
+      });
+    } else {
+      clearXummSession();
+      sessionStorage.removeItem("ike_wallet_provider");
+      setWalletProvider("");
     }
+  } catch (err) {
+    clearXummSession();
+    sessionStorage.removeItem("ike_wallet_provider");
+    setWalletProvider("");
+    setFeedback(err instanceof Error ? err.message : "Could not complete Xumm sign in.", true);
+  } finally {
+    if (refs.connectXamanButton) refs.connectXamanButton.disabled = false;
+    if (refs.commandXummSignInButton) refs.commandXummSignInButton.disabled = false;
+  }
+}
 
-    logSecurityEvent("xaman_connect_started", RISK_LEVELS.LOW, {
-      context: "provider_connect",
-      network: walletState.network,
-      addressHint: formatAddress(walletState.publicAddress)
+async function onEmailProfileSignUp() {
+  const username = refs.commandUsernameInput?.value.trim() || "";
+  const email = refs.commandEmailInput?.value.trim() || "";
+  const password = refs.commandPasswordInput?.value || "";
+
+  if (!username || !email || password.length < 6) {
+    setCommandAuthStatus("Enter a username, valid email, and password with at least 6 characters.", true);
+    return;
+  }
+
+  if (!hasSupabaseConfig()) {
+    setCommandAuthStatus("Email verification needs Supabase Auth configured in Builder Admin.", true);
+    return;
+  }
+
+  const result = await signUpWithEmail({ email, password, username });
+  setCommandAuthStatus(result.message, !result.ok);
+  if (result.ok) {
+    const user = result.data?.user;
+    const confirmed = Boolean(user?.email_confirmed_at);
+    if (result.data?.session && confirmed) {
+      saveAppUserSession({
+        id: user?.id,
+        method: "email",
+        email,
+        username,
+        verified: true,
+        walletLinked: Boolean(getWalletState().publicAddress),
+        walletAddress: getWalletState().publicAddress || ""
+      });
+    }
+  }
+}
+
+async function onEmailProfileSignIn() {
+  const email = refs.commandEmailInput?.value.trim() || "";
+  const password = refs.commandPasswordInput?.value || "";
+
+  if (!email || !password) {
+    setCommandAuthStatus("Enter your email and password.", true);
+    return;
+  }
+
+  if (!hasSupabaseConfig()) {
+    setCommandAuthStatus("Email sign in needs Supabase Auth configured in Builder Admin.", true);
+    return;
+  }
+
+  const result = await signInWithEmail({ email, password });
+  if (!result.ok) {
+    setCommandAuthStatus(result.message, true);
+    return;
+  }
+
+  const user = result.data?.user;
+  const username = user?.user_metadata?.username || email.split("@")[0];
+  saveAppUserSession({
+    id: user?.id,
+    method: "email",
+    email,
+    username,
+    verified: Boolean(user?.email_confirmed_at),
+    walletLinked: Boolean(getWalletState().publicAddress),
+    walletAddress: getWalletState().publicAddress || ""
+  });
+  setCommandAuthStatus(user?.email_confirmed_at ? "Signed in." : "Signed in. Email verification is still pending.", !user?.email_confirmed_at);
+}
+
+async function verifyXummAccount(approvedAddress = "") {
+  const address = approvedAddress.trim();
+
+  if (!address) {
+    setFeedback("Xumm did not return an XRPL address.", true);
+    return false;
+  }
+
+  if (looksLikeSensitiveInput(address)) {
+    logSecurityEvent("blocked_secret_input", RISK_LEVELS.BLOCKED, {
+      context: "xumm_connect_account",
+      addressHint: "blocked"
+    });
+    setFeedback("For your safety, seed phrases and private keys are blocked.", true);
+    renderSecurity();
+    return false;
+  }
+
+  if (!XRPL_ADDRESS_PATTERN.test(address)) {
+    setFeedback("Xumm returned an invalid XRPL Classic Address.", true);
+    return false;
+  }
+
+  setFeedback("Xumm approved. Loading XRPL account...");
+
+  try {
+    setNetwork("xrpl-mainnet");
+    if (refs.networkSelect) refs.networkSelect.value = "xrpl-mainnet";
+
+    setPublicAddress(address);
+    await lookupXamanAddressAcrossNetworks(address);
+    sessionStorage.setItem("ike_wallet_provider", "xaman");
+    setWalletProvider("xaman");
+
+    if (refs.addressInput) refs.addressInput.value = address;
+
+    logSecurityEvent("xaman_connect_verified", RISK_LEVELS.LOW, {
+      context: "xumm_connect",
+      addressHint: formatAddress(address)
     });
 
-    await pushSecurityEventToSupabase("xaman_connect_started", RISK_LEVELS.LOW, walletState.publicAddress, {
-      context: "provider_connect",
-      network: walletState.network,
-      addressHint: formatAddress(walletState.publicAddress)
-    });
-
-    if (shouldUseSupabaseSync() && walletState.publicAddress) {
-      const result = await linkWalletConnectionRemote({
-        walletAddress: walletState.publicAddress,
+    if (shouldUseSupabaseSync()) {
+      const walletState = getWalletState();
+      await linkWalletConnectionRemote({
+        walletAddress: address,
         network: walletState.network,
         provider: "xaman",
-        verified: false
-      });
-      if (!result.ok) {
-        setSupabaseStatus(result.message, true);
-      }
+        verified: true
+      }).catch(() => {});
     }
 
-    renderSecurity();
-  })();
+    setFeedback("Xumm wallet connected and XRPL account loaded.");
+
+    renderAll();
+    return true;
+  } catch (err) {
+    setFeedback(err instanceof Error ? err.message : "Verification failed.", true);
+    return false;
+  }
 }
 
 function openSignGateModal() {
+  if (!hasSigningWallet()) {
+    setFeedback(pageAccessMessage("dex"), true);
+    openAuthModal();
+    return;
+  }
   const preview = state.latestPreview || txToPreview(getWalletState());
   refs.signGateContent.innerHTML = `
     <p><strong>Transaction Type:</strong> ${preview.type}</p>
@@ -1810,158 +2287,19 @@ function onKeygenLoadAddress() {
   const address = createWalletState.address;
   if (refs.addressInput) refs.addressInput.value = address;
   setPublicAddress(address);
+  setWalletProvider("created");
+  sessionStorage.setItem("ike_wallet_provider", "created");
+  if (state.appUser) {
+    saveAppUserSession({
+      ...state.appUser,
+      walletLinked: true,
+      walletAddress: address
+    });
+  }
   logSecurityEvent("keygen_address_loaded", RISK_LEVELS.SAFE, { context: "keygen", addressHint: formatAddress(address) });
   setActivePage("dashboard");
-  setFeedback("New wallet address loaded. Use Xaman to sign transactions.");
+  setFeedback("New wallet address loaded. Save your private key before funding or signing.");
   clearCreateWalletKeys();
-}
-
-function loadQRCodeLib() {
-  return new Promise((resolve, reject) => {
-    if (window.QRCode) { resolve(); return; }
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("QR code library failed to load."));
-    document.head.appendChild(script);
-  });
-}
-
-function renderQRCode(container, text) {
-  container.innerHTML = "";
-  new window.QRCode(container, {
-    text,
-    width: 220,
-    height: 220,
-    colorDark: "#1a2840",
-    colorLight: "#f4f8ff",
-    correctLevel: window.QRCode.CorrectLevel.M
-  });
-}
-
-function openSendModal() {
-  const walletState = getWalletState();
-  if (!walletState.publicAddress) {
-    setFeedback("Load a wallet address before sending.", true);
-    return;
-  }
-  if (refs.sendDestInput)   refs.sendDestInput.value = "";
-  if (refs.sendAmountInput) refs.sendAmountInput.value = "";
-  if (refs.sendTagInput)    refs.sendTagInput.value = "";
-  if (refs.sendMemoInput)   refs.sendMemoInput.value = "";
-  if (refs.sendStep1Status) refs.sendStep1Status.textContent = "";
-  if (refs.sendStep1) refs.sendStep1.classList.remove("hidden");
-  if (refs.sendStep2) refs.sendStep2.classList.add("hidden");
-  sendXamanUrl = "";
-  refs.sendModal?.classList.remove("hidden");
-  if (refs.sendModal) {
-    refs.sendModal.style.display = "flex";
-    refs.sendModal.setAttribute("aria-hidden", "false");
-  }
-  refs.sendDestInput?.focus();
-}
-
-function closeSendModal() {
-  refs.sendModal?.classList.add("hidden");
-  if (refs.sendModal) {
-    refs.sendModal.style.display = "none";
-    refs.sendModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function openReceiveModal() {
-  const walletState = getWalletState();
-  if (!walletState.publicAddress) {
-    setFeedback("Load a wallet address first.", true);
-    return;
-  }
-  const address = walletState.publicAddress;
-  if (refs.receiveAddressDisplay) refs.receiveAddressDisplay.textContent = address;
-  if (refs.receiveQrContainer) {
-    refs.receiveQrContainer.innerHTML = `<img
-      src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(address)}&margin=8"
-      alt="QR code for address ${address}"
-      width="200" height="200" loading="lazy" />`;
-  }
-  refs.receiveModal?.classList.remove("hidden");
-  if (refs.receiveModal) {
-    refs.receiveModal.style.display = "flex";
-    refs.receiveModal.setAttribute("aria-hidden", "false");
-  }
-}
-
-function closeReceiveModal() {
-  refs.receiveModal?.classList.add("hidden");
-  if (refs.receiveModal) {
-    refs.receiveModal.style.display = "none";
-    refs.receiveModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-async function onSendPreview() {
-  const walletState = getWalletState();
-  const dest      = refs.sendDestInput?.value.trim()   || "";
-  const amountStr = refs.sendAmountInput?.value.trim() || "";
-  const tag       = refs.sendTagInput?.value.trim()    || "";
-  const memo      = refs.sendMemoInput?.value.trim()   || "";
-
-  if (!dest || !dest.startsWith("r") || dest.length < 25) {
-    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Enter a valid XRPL destination address (starts with r).";
-    return;
-  }
-  const amount = parseFloat(amountStr);
-  if (!amountStr || !Number.isFinite(amount) || amount <= 0) {
-    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Enter a valid XRP amount greater than 0.";
-    return;
-  }
-  if (dest === walletState.publicAddress) {
-    if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Destination cannot be the same as your address.";
-    return;
-  }
-
-  if (refs.sendStep1Status) refs.sendStep1Status.textContent = "Building transaction...";
-
-  try {
-    const tx = buildPaymentTx({
-      account:        walletState.publicAddress,
-      destination:    dest,
-      amountXrp:      amountStr,
-      destinationTag: tag,
-      memo
-    });
-
-    sendXamanUrl = buildXamanSignUrl(tx);
-
-    const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
-    if (refs.sendTxSummary) {
-      refs.sendTxSummary.innerHTML = `
-        <p><strong>Sending:</strong> ${amount.toFixed(6)} XRP</p>
-        <p><strong>To:</strong> <span style="font-family:monospace">${formatAddress(dest)}</span></p>
-        <p><strong>From:</strong> <span style="font-family:monospace">${formatAddress(walletState.publicAddress)}</span></p>
-        <p><strong>Network:</strong> ${network.label}</p>
-        <p><strong>Fee:</strong> 12 drops (~0.000012 XRP)</p>
-        ${tag ? `<p><strong>Destination Tag:</strong> ${tag}</p>` : ""}
-        ${memo ? `<p><strong>Memo:</strong> ${memo}</p>` : ""}
-      `;
-    }
-
-    if (refs.sendConfirmCheckbox) refs.sendConfirmCheckbox.checked = false;
-    if (refs.sendOpenXamanButton) refs.sendOpenXamanButton.disabled = true;
-
-    await loadQRCodeLib();
-    if (refs.sendQrContainer) renderQRCode(refs.sendQrContainer, sendXamanUrl);
-
-    if (refs.sendStep1) refs.sendStep1.classList.add("hidden");
-    if (refs.sendStep2) refs.sendStep2.classList.remove("hidden");
-
-    logSecurityEvent("send_preview_built", RISK_LEVELS.MEDIUM, {
-      context: "send_modal",
-      network: walletState.network,
-      addressHint: formatAddress(dest)
-    });
-  } catch (err) {
-    if (refs.sendStep1Status) refs.sendStep1Status.textContent = err instanceof Error ? err.message : "Transaction build failed.";
-  }
 }
 
 function switchHeroTab(tab) {
@@ -1979,8 +2317,9 @@ function switchHeroTab(tab) {
 
 function openHeroSend() {
   const walletState = getWalletState();
-  if (!walletState.publicAddress) {
-    setFeedback("Load a wallet address before sending.", true);
+  if (!hasSigningWallet()) {
+    setFeedback("Sending needs a Xumm wallet connection or an XRPL account created in IkeLedger.", true);
+    openAuthModal();
     return;
   }
   if (refs.heroSendDest)   refs.heroSendDest.value = "";
@@ -2045,8 +2384,6 @@ async function onHeroSendPreview() {
       memo
     });
 
-    heroSendXamanUrl = buildXamanSignUrl(tx);
-
     const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
     if (refs.heroSendSummary) {
       refs.heroSendSummary.innerHTML = `
@@ -2062,19 +2399,34 @@ async function onHeroSendPreview() {
     if (refs.heroSendConfirm) refs.heroSendConfirm.checked = false;
     if (refs.heroOpenXamanBtn) refs.heroOpenXamanBtn.disabled = true;
     if (refs.heroSendStep2Status) refs.heroSendStep2Status.textContent = "";
+    if (refs.heroSendQr) refs.heroSendQr.innerHTML = "";
 
-    await loadQRCodeLib();
-    if (refs.heroSendQr) {
-      refs.heroSendQr.innerHTML = "";
-      new window.QRCode(refs.heroSendQr, {
-        text: heroSendXamanUrl,
-        width: 180,
-        height: 180,
-        colorDark: "#1a2840",
-        colorLight: "#f4f8ff",
-        correctLevel: window.QRCode.CorrectLevel.M
-      });
+    // Official Xumm SDK payload - QR hosted by Xaman, proper deep link
+    if (refs.heroSendStatus) refs.heroSendStatus.textContent = "Creating Xaman signing request...";
+    const xumm = await initXumm(getXamanApiKey());
+    const { qrUrl, mobileUrl, resultPromise } = await createTxFlow(xumm, tx);
+
+    heroSendXamanUrl = mobileUrl;
+
+    if (refs.heroSendQr && qrUrl) {
+      refs.heroSendQr.innerHTML = `<img src="${qrUrl}" alt="Scan with Xaman to sign" width="180" height="180" loading="lazy" />`;
     }
+
+    // Listen for signing result in the background
+    resultPromise.then(({ signed, txid }) => {
+      if (signed) {
+        if (refs.heroSendStep2Status) {
+          refs.heroSendStep2Status.textContent = `Transaction signed${txid ? ` - ${txid.slice(0, 12)}...` : ""}. Press Refresh Account to confirm on-chain.`;
+        }
+        logSecurityEvent("xaman_tx_signed", RISK_LEVELS.LOW, {
+          context: "hero_send_sdk",
+          network: walletState.network,
+          addressHint: formatAddress(dest)
+        });
+      } else {
+        if (refs.heroSendStep2Status) refs.heroSendStep2Status.textContent = "Transaction rejected in Xaman.";
+      }
+    }).catch(() => {});
 
     if (refs.heroSendStatus) refs.heroSendStatus.textContent = "";
     if (refs.heroSendStep1) refs.heroSendStep1.classList.add("hidden");
@@ -2108,7 +2460,12 @@ function initEventHandlers() {
   bindClick(refs.clearSessionButton, onClearSession);
   bindClick(refs.demoButton, onLoadDemo);
   bindClick(refs.copyAddressButton, onCopyAddress);
-  bindClick(refs.connectXamanButton, onConnectXaman);
+  bindClick(refs.connectXamanButton, openAuthModal);
+  bindClick(refs.commandOpenAuthButton, openAuthModal);
+  bindClick(refs.closeAuthModalButton, closeAuthModal);
+  bindClick(refs.commandXummSignInButton, () => { void connectWithXumm(); });
+  bindClick(refs.commandEmailSignUpButton, () => { void onEmailProfileSignUp(); });
+  bindClick(refs.commandEmailSignInButton, () => { void onEmailProfileSignIn(); });
   bindClick(refs.toggleRawJsonButton, toggleRawJson);
 
   bindClick(refs.openSignGateButton, openSignGateModal);
@@ -2127,14 +2484,16 @@ function initEventHandlers() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      closeAuthModal();
       closeSettingsDrawer();
       closeSidebarPanel();
-      closeSendModal();
-      closeReceiveModal();
       if (!refs.signGateModal?.classList.contains("hidden")) {
         closeSignGateModal();
       }
     }
+  });
+  refs.authModal?.addEventListener("click", (event) => {
+    if (event.target === refs.authModal) closeAuthModal();
   });
 
   bindClick(refs.openSettingsButton, openSettingsDrawer);
@@ -2238,6 +2597,10 @@ function initEventHandlers() {
     });
   });
 
+  document.querySelectorAll(".profile-wallet-nav-btn[data-nav]").forEach((button) => {
+    button.addEventListener("click", () => setActivePage(button.dataset.nav || "dashboard"));
+  });
+
   bindClick(refs.themeToggleButton, cycleTheme);
   refs.themeSelect?.addEventListener("change", (event) => {
     applyTheme(event.target.value || "dark");
@@ -2315,6 +2678,7 @@ function boot() {
   const supabaseConfig = getSupabaseConfig();
 
   state.adminMode = localStorage.getItem(STORAGE_KEYS.adminMode) === "true";
+  state.appUser = getStoredAppUser();
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
   setActivePage("dashboard");
 
@@ -2341,9 +2705,8 @@ function boot() {
     openSidebarPanel();
   }
   closeSettingsDrawer();
+  closeAuthModal();
   closeSignGateModal();
-  closeSendModal();
-  closeReceiveModal();
   switchHeroTab("overview");
   if (state.marketTimer) {
     clearInterval(state.marketTimer);

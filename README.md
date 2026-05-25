@@ -8,15 +8,24 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 
 ## What is built
 
+### Command Center and sign-in
+- Command Center is the user landing page for XRPL network, XRP market, AMM, and liquidity overview metrics
+- Xumm/email sign-in appears in a popup overlay instead of replacing the dashboard
+- Email/password profile sign-in through Supabase Auth with email verification
+- Email profiles are profile-only until an XRPL wallet is connected or created
+- Xumm/Xaman sign-in uses the official SDK flow and links the approved XRPL account automatically
+- Xumm sessions use IkeLedger's public app key; users never enter an API key
+- Wallet-only pages and DEX transaction tools are gated until the user has a connected or created XRPL account
+
 ### Core wallet
 - Read-only XRPL public address lookup via WebSocket
 - Network selection — Testnet (default), Mainnet, Devnet
 - Mainnet warning banner with real-asset notice
-- Wallet meta grid — provider, address, verified status, last sync
+- Wallet meta grid plus integrated wallet status panel - provider, address, verified status, balances, reserves, ledger objects, and last sync
 - Portfolio Intelligence KPI tiles — Total XRP, Available XRP, assets, issued tokens, NFTs, AMM positions
 - Full transaction history with type classification
 - Token holdings and issued token display
-- NFT viewer with filter (listed / unlisted)
+- NFT viewer with decoded XRPL NFT URI support, IPFS/HTTP metadata lookup, and image thumbnails
 - AMM / LP position viewer
 - DEX access panel with order entry scaffold
 - Transaction consent modal before any signing flow
@@ -69,8 +78,9 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 |---|---|
 | Frontend | Vanilla HTML + CSS + ES Modules (no build step) |
 | XRPL | WebSocket via `wss://` endpoints — read-only, no keys held |
-| Signing | Xaman deep link (no private key ever touches this app) |
-| Storage | `localStorage` for session, profile, appearance |
+| Signing | Official Xumm SDK sign-in plus Xaman transaction payloads using IkeLedger's public app key (no user API key or private key ever touches this app) |
+| App auth | Supabase Auth for optional email/password profiles; Xumm/Xaman for wallet-backed profile sign-in |
+| Storage | `localStorage` for local session, public wallet address, profile, appearance |
 | Sync (optional) | Supabase RPC — profiles, Mana, credentials, security logs |
 | Key generation | `crypto.subtle` (Web Crypto API) + pure-JS RIPEMD-160 |
 
@@ -99,7 +109,8 @@ ikeledger/
     ikeledger-keygen.js           — In-browser XRPL keypair generation (no deps)
     ikeledger-security.js         — Risk levels, event log, input screening
     ikeledger-rewards.js          — Mana and learning reward calculations
-    ikeledger-xaman.js            — Xaman deep link connect handler
+    ikeledger-xaman.js            - XRPL payment transaction builder
+    ikeledger-xumm.js             - Official Xumm SDK sign-in and Xaman transaction payloads
     ikeledger-supabase.js         — Optional Supabase sync client
     ikeledger-cdn.js              — CDN import helper with fallback chain
   assets/images/                  — App icons and network imagery
@@ -113,5 +124,6 @@ ikeledger/
 
 - IkeLedger never requests, stores, or transmits seed phrases, private keys, or recovery phrases.
 - Private keys generated on the Create Wallet page exist only in browser memory and are cleared on navigation.
-- Only appearance preferences and public wallet addresses are persisted in `localStorage`.
+- Email/password profiles do not expose XRPL wallet data until the user links or creates a wallet.
+- Only local session state, appearance preferences, profile settings, and public wallet addresses are persisted in `localStorage`.
 - All signing is delegated to Xaman — no transaction is submitted without user approval in their own wallet app.

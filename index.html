@@ -68,17 +68,20 @@
 
         <section class="dashboard-column">
           <section class="page-section active" data-page="dashboard">
-            <article class="glass-card account-hero">
+            <article id="commandOverviewHero" class="glass-card account-hero">
               <div class="account-hero-left">
-                <div class="hero-avatar-zone">
-                  <div class="avatar-glow-wrap" id="heroAvatarGlowWrap">
-                    <span class="avatar-status-ring status-disconnected" id="heroAvatarStatusRing" aria-hidden="true"></span>
-                    <button id="heroAvatarPill" class="avatar-pill avatar-hero avatar-clickable" type="button" aria-label="Change profile photo" title="Click to change photo">WV</button>
+                <img class="section-visual command-visual" src="./ikeledger/assets/images/Ikeledger.png" alt="IkeLedger command center" loading="lazy" />
+                <div class="command-overview">
+                  <span class="mode-pill">XRPL Operations</span>
+                  <h1>Command Center</h1>
+                  <p>Monitor the loaded account, network status, spendable XRP, ledger objects, and signing readiness from one overview.</p>
+                  <div class="command-overview-list">
+                    <span>Wallet connection</span>
+                    <span>Portfolio counts</span>
+                    <span>Network health</span>
+                    <span>Security signals</span>
                   </div>
-                  <span class="avatar-status-label" id="heroAvatarStatusLabel">Not connected</span>
-                  <span class="avatar-upload-hint">tap to change</span>
                 </div>
-                <div id="profileStatus" class="profile-status-block"></div>
               </div>
               <div class="account-hero-main">
                 <label>
@@ -115,6 +118,7 @@
                     <span id="lastSyncStatus" class="meta-value">Not synced</span>
                   </div>
                 </div>
+                <div id="walletStatus" class="wallet-status-panel"></div>
                 <p id="xamanStatus" class="feedback" aria-live="polite"></p>
                 <p id="feedback" class="feedback" aria-live="polite"></p>
               </div>
@@ -190,34 +194,28 @@
               </div>
             </article>
 
-            <section class="card-grid overview-grid">
-              <article class="glass-card"><h3>Wallet Status</h3><div id="walletStatus" class="card-content"></div></article>
-              <article class="glass-card"><h3>Mana Balance</h3><div id="manaStatus" class="card-content"></div></article>
-              <article class="glass-card"><h3>Proof-of-Learning</h3><div id="proofLearning" class="card-content"></div></article>
-              <article class="glass-card"><h3>Badges and Credentials</h3><div id="badgeCredentials" class="card-content"></div></article>
-              <article class="glass-card"><h3>Security Center</h3><div id="securityStatus" class="card-content"></div></article>
-              <article class="glass-card"><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
-            </section>
-
-            <section class="card-grid structured-grid">
-              <article class="glass-card asset-card wide">
-                <div class="section-top">
-                  <h3>Assets and Issued Tokens</h3>
-                  <span class="mode-pill">Verifiable value</span>
-                </div>
-                <div class="assets-split">
-                  <div>
-                    <h4>Account Assets</h4>
-                    <div id="tokenHoldings" class="card-content scroll"></div>
-                  </div>
-                  <div>
-                    <h4>Issued Tokens</h4>
-                    <div id="issuedTokens" class="card-content scroll"></div>
+            <section id="commandOverviewCards" class="card-grid overview-grid">
+              <article class="glass-card">
+                <img class="card-visual" src="./ikeledger/assets/images/ikewallet.png" alt="Wallet connection" loading="lazy" />
+                <h3>Connection Plan</h3>
+                <div class="card-content">
+                  <p><strong>Overview:</strong> Command Center stays focused on XRPL network and XRP market intelligence.</p>
+                  <p><strong>Profile:</strong> Email sign-in unlocks profile tools, not wallet-only features.</p>
+                  <p><strong>Wallet:</strong> Xumm or a created XRPL account unlocks account pages and transaction tools.</p>
+                  <div class="button-row">
+                    <button id="commandOpenAuthButton" type="button">Sign In / Connect</button>
+                    <button type="button" class="ghost profile-wallet-nav-btn" data-nav="create-wallet">Create Wallet</button>
                   </div>
                 </div>
               </article>
+              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/ikenotifications.png" alt="Recent activity" loading="lazy" /><h3>Recent Activity</h3><div id="dashboardActivity" class="card-content"></div></article>
+              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/NLF.png" alt="Security signals" loading="lazy" /><h3>Security Signals</h3><div id="securityStatus" class="card-content"></div></article>
+              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/manapoints.png" alt="Value mix" loading="lazy" /><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
+            </section>
 
+            <section id="commandStructuredGrid" class="card-grid structured-grid">
               <article class="glass-card market-card wide">
+                <img class="section-visual wide-visual" src="./ikeledger/assets/images/digitslverse.png" alt="Digital XRPL market overview" loading="lazy" />
                 <div class="section-top">
                   <h3>XRP Market Overview</h3>
                   <div class="button-row timeframe-row">
@@ -250,40 +248,13 @@
                 </div>
               </article>
 
-              <article class="glass-card nft-card">
-                <div class="section-top">
-                  <h3>NFT Viewer</h3>
-                  <div class="button-row">
-                    <button id="nftFilterListed" class="ghost" type="button">Listed</button>
-                    <button id="nftFilterUnlisted" class="ghost" type="button">Unlisted</button>
-                  </div>
-                </div>
-                <div id="nftInventory" class="card-content nft-grid"></div>
-              </article>
-
-              <article class="glass-card listing-card">
-                <h3>Current NFT Listings and Offers</h3>
-                <div id="nftListingStatus" class="card-content"></div>
-              </article>
-
               <article class="glass-card amm-card">
+                <img class="card-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM and liquidity pools" loading="lazy" />
                 <h3>AMM / LP Position Viewer</h3>
                 <div id="ammStatus" class="card-content"></div>
                 <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
               </article>
 
-              <article class="glass-card dex-card">
-                <div class="section-top">
-                  <h3>DEX Access</h3>
-                  <span class="mode-pill">OfferCreate / OfferCancel</span>
-                </div>
-                <div id="dexStatus" class="card-content"></div>
-                <div class="section-top">
-                  <h4>Transaction Preview</h4>
-                  <button id="openSignGateButton" type="button">Preview Before Signing</button>
-                </div>
-                <div id="txPreview" class="card-content"></div>
-              </article>
             </section>
           </section>
 
@@ -384,6 +355,11 @@
                   <span class="mode-pill">OfferCreate / OfferCancel</span>
                 </div>
                 <div id="dexPagePanel" class="card-content scroll"></div>
+                <div class="section-top">
+                  <h4>Transaction Preview</h4>
+                  <button id="openSignGateButton" type="button">Preview Before Signing</button>
+                </div>
+                <div id="txPreview" class="card-content"></div>
               </article>
               <article class="glass-card">
                 <h3>DEX Safety</h3>
@@ -839,6 +815,47 @@
       </div>
     </aside>
 
+    <div id="authModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+      <article id="commandAuthPanel" class="modal-card command-auth-panel">
+        <div class="section-top">
+          <div>
+            <h2 id="authModalTitle">Sign In to IkeLedger</h2>
+            <p class="muted">Use Xumm for wallet-backed access, or email for a profile-only account.</p>
+          </div>
+          <button id="closeAuthModalButton" type="button" class="ghost" aria-label="Close sign in dialog">Close</button>
+        </div>
+        <span id="commandSessionBadge" class="mode-pill">Not signed in</span>
+        <div class="command-auth-grid">
+          <div class="command-auth-card">
+            <h3>Sign in with Xumm</h3>
+            <p class="muted">Opens the official Xumm flow, then loads your XRPL account for wallet features.</p>
+            <button id="commandXummSignInButton" type="button">Sign In with Xumm</button>
+          </div>
+          <div class="command-auth-card">
+            <h3>Email Profile</h3>
+            <p class="muted">Email sign-in creates a profile only. XRPL tools unlock after you connect Xumm or create a wallet.</p>
+            <label>
+              Username
+              <input id="commandUsernameInput" type="text" maxlength="32" autocomplete="username" placeholder="wayfinder" />
+            </label>
+            <label>
+              Email
+              <input id="commandEmailInput" type="email" autocomplete="email" placeholder="you@example.com" />
+            </label>
+            <label>
+              Password
+              <input id="commandPasswordInput" type="password" autocomplete="current-password" placeholder="At least 6 characters" />
+            </label>
+            <div class="button-row">
+              <button id="commandEmailSignUpButton" type="button">Create Profile</button>
+              <button id="commandEmailSignInButton" type="button" class="ghost">Sign In</button>
+            </div>
+          </div>
+        </div>
+        <p id="commandAuthStatus" class="feedback" aria-live="polite"></p>
+      </article>
+    </div>
+
     <div id="signGateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signGateTitle">
       <div class="modal-card">
         <div class="section-top">
@@ -857,72 +874,6 @@
         </div>
       </div>
     </div>
-
-    <div id="sendModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="sendModalTitle">
-      <div class="modal-card">
-        <div class="section-top">
-          <h2 id="sendModalTitle">Send XRP</h2>
-          <button id="closeSendModalButton" type="button" class="ghost" aria-label="Close send dialog">Close</button>
-        </div>
-        <div id="sendStep1" class="send-step">
-          <div class="control-grid">
-            <label>
-              Destination Address
-              <input id="sendDestInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
-            </label>
-            <label>
-              Amount (XRP)
-              <input id="sendAmountInput" type="number" min="0.000001" step="0.000001" placeholder="0.00" />
-            </label>
-            <label>
-              Destination Tag <span class="muted">(optional — required by some exchanges)</span>
-              <input id="sendTagInput" type="number" min="0" step="1" placeholder="Leave blank for self-custody wallets" />
-            </label>
-            <label>
-              Memo <span class="muted">(optional)</span>
-              <input id="sendMemoInput" type="text" maxlength="100" placeholder="Optional on-chain note" autocomplete="off" />
-            </label>
-          </div>
-          <p id="sendStep1Status" class="feedback" aria-live="polite"></p>
-          <div class="button-row">
-            <button id="sendPreviewButton" type="button">Preview Transaction</button>
-            <button id="cancelSendButton" type="button" class="ghost">Cancel</button>
-          </div>
-        </div>
-        <div id="sendStep2" class="send-step hidden">
-          <div id="sendTxSummary" class="send-tx-summary"></div>
-          <p class="muted" style="font-size:0.82rem;margin:0.5rem 0">Scan this QR with Xaman on your phone, or tap <strong>Open in Xaman</strong> if you are on mobile.</p>
-          <div id="sendQrContainer" class="qr-container"></div>
-          <label class="confirm-row">
-            <input id="sendConfirmCheckbox" type="checkbox" />
-            I have reviewed the transaction details. XRPL transactions are irreversible after validation.
-          </label>
-          <div class="button-row">
-            <button id="sendOpenXamanButton" type="button" disabled>Open in Xaman</button>
-            <button id="sendBackButton" type="button" class="ghost">Back</button>
-            <button id="cancelSendButton2" type="button" class="ghost">Cancel</button>
-          </div>
-          <p id="sendStep2Status" class="feedback" aria-live="polite"></p>
-        </div>
-      </div>
-    </div>
-
-    <div id="receiveModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="receiveModalTitle">
-      <div class="modal-card">
-        <div class="section-top">
-          <h2 id="receiveModalTitle">Receive XRP</h2>
-          <button id="closeReceiveModalButton" type="button" class="ghost" aria-label="Close receive dialog">Close</button>
-        </div>
-        <p class="muted" style="margin-bottom:0.5rem">Share this QR code or address to receive XRP and tokens.</p>
-        <div id="receiveQrContainer" class="qr-container"></div>
-        <div class="receive-address-block">
-          <code id="receiveAddressDisplay" class="receive-address-code"></code>
-          <button id="copyReceiveAddressButton" type="button" class="ghost">Copy Address</button>
-        </div>
-        <p class="muted" style="font-size:0.78rem;margin-top:0.75rem">This is your public XRPL address — always safe to share. Never share your private key or seed phrase.</p>
-      </div>
-    </div>
-
     <script type="module" src="./ikeledger/js/ikeledger-ui.js"></script>
   </body>
 </html>

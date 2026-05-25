@@ -145,9 +145,29 @@ function getNetwork(networkKey) {
   return network;
 }
 
+function isAccountNotFoundError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /actNotFound|Account not found|account.*not.*found/i.test(message);
+}
+
 function dropsToXrp(drops) {
   const value = toNumber(drops);
   return (value / 1000000).toString();
+}
+
+function decodeHexUri(uri) {
+  if (!uri) return "";
+  const clean = String(uri).trim();
+  if (!/^[0-9A-Fa-f]+$/.test(clean) || clean.length % 2 !== 0) {
+    return clean;
+  }
+
+  try {
+    const bytes = clean.match(/.{1,2}/g).map((hex) => Number.parseInt(hex, 16));
+    return new TextDecoder().decode(new Uint8Array(bytes)).replace(/\0/g, "").trim();
+  } catch {
+    return clean;
+  }
 }
 
 async function withClient(networkKey, callback) {
@@ -270,6 +290,11 @@ export async function fetchAccountSnapshot(address, networkKey) {
       command: "account_info",
       account: address,
       ledger_index: "validated"
+    }).catch((error) => {
+      if (isAccountNotFoundError(error)) {
+        throw new Error(`No funded XRPL account was found for this address on ${network.label}. Check the selected network or fund the address first.`);
+      }
+      throw error;
     });
 
     const linesResponse = await client.request({
@@ -356,7 +381,8 @@ export async function fetchAccountSnapshot(address, networkKey) {
       nftId: nft.NFTokenID,
       issuer: nft.Issuer || "-",
       taxon: nft.NFTokenTaxon ?? "-",
-      transferFee: nft.TransferFee ?? "-"
+      transferFee: nft.TransferFee ?? "-",
+      uri: decodeHexUri(nft.URI || nft.uri || "")
     }));
 
     const ammObjects = (accountObjectsResponse.result.account_objects || []).filter((obj) =>

@@ -1,4 +1,4 @@
-# IkeLedger — Developer Reference
+﻿# IkeLedger — Developer Reference
 
 ## Current build state
 
@@ -8,10 +8,10 @@ All features below are implemented and functional in the current codebase.
 
 | Page | Status | Notes |
 |---|---|---|
-| Command Center (dashboard) | Complete | Account hero, portfolio KPIs, market chart, NFT viewer, DEX, AMM, assets |
+| Command Center (dashboard) | Complete | XRPL network, XRP market, AMM, liquidity, security, and account overview; sign-in opens as an overlay |
 | Wallet Status | Complete | Account overview, reserve system info, connection mode |
 | Tokens | Complete | Token holdings, trust line safety info |
-| NFT Viewer | Complete | Grid view, filter listed/unlisted |
+| NFT Viewer | Complete | Grid view with decoded NFT URI, IPFS/HTTP metadata lookup, image thumbnails, filter scaffold |
 | NFT Listings | Complete | Offers and listings display |
 | DEX Access | Complete | Order panel scaffold, signing gate |
 | AMM / LP | Complete | Position viewer, risk notice |
@@ -24,6 +24,19 @@ All features below are implemented and functional in the current codebase.
 
 ### Key modules
 
+**ikeledger-xumm.js** - Official Xumm SDK sign-in flow
+- Uses IkeLedger's built-in public Xaman app key; users do not enter an API key
+- signInWithXumm(xumm) opens the official Xumm sign-in flow and resolves the approved XRPL account
+- createTxFlow(xumm, txJson) creates transaction signing QR payloads and listens for signing results
+
+**Command Center auth model**
+- Email/password creates or opens an IkeLedger profile only; wallet-only pages stay locked until a wallet is connected or created
+- Xumm/Xaman sign-in creates a wallet-backed profile when no profile exists
+- Connecting Xumm while already signed in by email links the approved XRPL account to that email profile
+- DEX access requires a Xumm signing wallet or an XRPL wallet created inside IkeLedger
+- Clearing the session signs out of email auth and Xumm; disconnecting only removes the wallet connection
+
+
 **ikeledger-keygen.js** — Self-contained browser XRPL keypair generation
 - Ed25519 via Web Crypto API (`crypto.subtle`)
 - Pure-JS RIPEMD-160 (no external dependency)
@@ -33,7 +46,7 @@ All features below are implemented and functional in the current codebase.
 
 **ikeledger-xrpl.js** — WebSocket XRPL client
 - `fetchAccountSnapshot(address, network)` — queries account_info, account_lines, account_tx, account_nfts, gateway_balances, account_objects, server_info
-- Returns typed snapshot object with account, tokenHoldings, issuedTokenEntries, nftItems, amm, valueMix, txItems
+- Returns typed snapshot object with account, tokenHoldings, issuedTokenEntries, nftItems (including decoded URI), amm, valueMix, txItems
 
 **ikeledger-wallet.js** — Wallet state
 - `hydrateWalletState()` — restore from localStorage on boot
@@ -50,12 +63,10 @@ All features below are implemented and functional in the current codebase.
 ## Next steps
 
 ### High priority
-- [ ] **Network icon strip — wire button actions**: Network button focuses the network selector; Mainnet/Testnet/Devnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address
-- [ ] **QR code for address sharing**: Show a scannable QR on the profile and fund wallet cards so mobile users can receive XRP without typing the address. Can use a lightweight inline SVG QR generator or free API
-- [ ] **Xaman deep link signing flow**: Complete the `openXamanConnect` handoff — construct the correct Xaman sign request URL with the transaction payload and open it on mobile
+- [ ] **Network icon strip - wire button actions**: Network button focuses the network selector; Mainnet/Testnet/Devnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address.
+- [ ] **QR code for address sharing**: Show a scannable QR on the profile and fund wallet cards so mobile users can receive XRP without typing the address.
 
 ### Medium priority
-- [ ] **NFT metadata and image display**: Fetch NFT metadata from IPFS or HTTP URI stored in NFTokenURI, display thumbnail images in the NFT grid
 - [ ] **DEX live order book**: Connect to XRPL `book_offers` command to show real bids/asks for selected trading pair
 - [ ] **AMM live pool data**: Use `amm_info` command to show current pool reserves, trading fee, and LP token supply
 - [ ] **Accent color system**: The accent selector (XRP Blue / Mana Gold / Emerald) is in the settings drawer but CSS variables for the accent are not yet wired — connect `accentSelect` to a set of `:root` overrides

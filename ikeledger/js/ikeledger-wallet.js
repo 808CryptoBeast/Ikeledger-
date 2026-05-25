@@ -26,6 +26,7 @@ const state = {
 export function hydrateWalletState() {
   const network = localStorage.getItem(STORAGE_KEYS.network);
   const publicAddress = localStorage.getItem(STORAGE_KEYS.publicAddress);
+  const provider = localStorage.getItem(STORAGE_KEYS.connectionPreference);
   const displayName = localStorage.getItem(STORAGE_KEYS.profileDisplayName);
   const handle = localStorage.getItem(STORAGE_KEYS.profileHandle);
   const bio = localStorage.getItem(STORAGE_KEYS.profileBio);
@@ -39,6 +40,11 @@ export function hydrateWalletState() {
   if (publicAddress && XRPL_ADDRESS_PATTERN.test(publicAddress)) {
     state.publicAddress = publicAddress;
     state.status = "Public address loaded";
+  }
+
+  if (provider) {
+    state.provider = provider;
+    state.mode = provider === "xaman" ? "Xaman Mode" : provider === "created" ? "Created Wallet Mode" : "Read-only Mode";
   }
 
   state.profile = {
@@ -94,13 +100,24 @@ export function setPublicAddress(address) {
   }
 }
 
+export function setWalletProvider(provider) {
+  state.provider = provider || null;
+  state.mode = provider === "xaman" ? "Xaman Mode" : provider === "created" ? "Created Wallet Mode" : "Read-only Mode";
+
+  if (provider) {
+    localStorage.setItem(STORAGE_KEYS.connectionPreference, provider);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.connectionPreference);
+  }
+}
+
 export async function lookupReadOnlyAddress(address) {
   if (!XRPL_ADDRESS_PATTERN.test(address)) {
     throw new Error("Please enter a valid XRPL classic address.");
   }
 
   state.status = "Read-only Mode";
-  state.mode = "Read-only Mode";
+  state.mode = state.provider === "xaman" ? "Xaman Mode" : state.provider === "created" ? "Created Wallet Mode" : "Read-only Mode";
   state.lastError = "";
   state.publicAddress = address;
   localStorage.setItem(STORAGE_KEYS.publicAddress, address);
@@ -126,6 +143,7 @@ export function disconnectWallet() {
   state.snapshot = null;
   state.lastError = "";
   localStorage.removeItem(STORAGE_KEYS.publicAddress);
+  localStorage.removeItem(STORAGE_KEYS.connectionPreference);
 }
 
 export function clearSessionStorage() {
@@ -151,6 +169,7 @@ export function clearSessionStorage() {
 
   state.status = "Disconnected";
   state.mode = "No wallet connected";
+  state.provider = null;
   state.publicAddress = "";
   state.snapshot = null;
   state.profile = {

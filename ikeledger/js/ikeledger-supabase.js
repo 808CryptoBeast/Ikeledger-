@@ -85,6 +85,51 @@ export async function testSupabaseConnection() {
   }
 }
 
+export async function signUpWithEmail({ email, password, username }) {
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { username }
+      }
+    });
+
+    if (error) {
+      return { ok: false, message: cleanError(error, "Email sign up failed."), data: null };
+    }
+
+    return { ok: true, message: "Verification email sent. Check your inbox before signing in.", data };
+  } catch (error) {
+    return { ok: false, message: cleanError(error, "Supabase auth is not configured."), data: null };
+  }
+}
+
+export async function signInWithEmail({ email, password }) {
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      return { ok: false, message: cleanError(error, "Email sign in failed."), data: null };
+    }
+
+    return { ok: true, message: "Signed in.", data };
+  } catch (error) {
+    return { ok: false, message: cleanError(error, "Supabase auth is not configured."), data: null };
+  }
+}
+
+export async function signOutEmailAuth() {
+  try {
+    const client = await getSupabaseClient();
+    await client.auth.signOut();
+  } catch {
+    // Local sign-out should still proceed even if Supabase is unavailable.
+  }
+}
+
 export async function linkWalletConnectionRemote(payload) {
   try {
     const client = await getSupabaseClient();

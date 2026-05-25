@@ -1,5 +1,10 @@
 export const APP_NAME = "IkeLedger";
 
+// Public Xaman app key. This only identifies IkeLedger to Xaman.
+// Safe to include in frontend code. DO NOT include the API Secret here.
+// Rotate the secret at apps.xaman.app if it was ever exposed outside the server.
+export const XAMAN_API_KEY = "4181bda5-a4d1-4f41-b02e-93a739ac3116";
+
 export const NETWORKS = {
   "xrpl-testnet": {
     key: "xrpl-testnet",
@@ -35,6 +40,7 @@ export const STORAGE_KEYS = {
   profileBio: "ikeledger.profileBio",
   profileRealm: "ikeledger.profileRealm",
   profileInitials: "ikeledger.profileInitials",
+  appUserSession: "ikeledger.appUserSession",
   supabaseUrl: "ikeledger.supabaseUrl",
   supabaseAnonKey: "ikeledger.supabaseAnonKey",
   adminMode: "ikeledger.adminMode",
