@@ -245,6 +245,28 @@ function normalizeAmount(amount) {
   };
 }
 
+function formatOfferAmount(amount) {
+  const normalized = normalizeAmount(amount);
+  return `${normalized.value} ${normalized.asset}`;
+}
+
+async function fetchNftOfferSummary(client, nftId) {
+  const [sellResponse, buyResponse] = await Promise.all([
+    client.request({ command: "nft_sell_offers", nft_id: nftId }).catch(() => ({ result: { offers: [] } })),
+    client.request({ command: "nft_buy_offers", nft_id: nftId }).catch(() => ({ result: { offers: [] } }))
+  ]);
+
+  const sellOffers = sellResponse.result?.offers || [];
+  const buyOffers = buyResponse.result?.offers || [];
+
+  return {
+    sellOffers: sellOffers.length,
+    buyOffers: buyOffers.length,
+    lowestSell: sellOffers[0]?.amount ? formatOfferAmount(sellOffers[0].amount) : "",
+    highestBuy: buyOffers[0]?.amount ? formatOfferAmount(buyOffers[0].amount) : ""
+  };
+}
+
 function toNumber(value) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -384,6 +406,19 @@ export async function fetchAccountSnapshot(address, networkKey) {
       transferFee: nft.TransferFee ?? "-",
       uri: decodeHexUri(nft.URI || nft.uri || "")
     }));
+
+    const nftOfferSummaries = await Promise.all(
+      nftItems.slice(0, 24).map((nft) => fetchNftOfferSummary(client, nft.nftId))
+    );
+
+    nftItems.forEach((nft, index) => {
+      nft.offers = nftOfferSummaries[index] || {
+        sellOffers: 0,
+        buyOffers: 0,
+        lowestSell: "",
+        highestBuy: ""
+      };
+    });
 
     const ammObjects = (accountObjectsResponse.result.account_objects || []).filter((obj) =>
       String(obj.LedgerEntryType || "").toLowerCase().includes("amm")

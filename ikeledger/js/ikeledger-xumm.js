@@ -5,8 +5,10 @@ let xummClient = null;
 let xummApiKey = "";
 let readyPromise = null;
 const XUMM_PKCE_STORAGE_KEY = "XummPkceJwt";
-const XUMM_ACCOUNT_RECOVERY_MS = 20000;
+const XUMM_ACCOUNT_RECOVERY_MS = 90000;
 const XUMM_ACCOUNT_POLL_MS = 500;
+const XUMM_EXISTING_ACCOUNT_MS = 1500;
+const XUMM_AUTHORIZE_EVENT_MS = 90000;
 
 export async function loadXummCDN() {
   if (typeof window === "undefined") return;
@@ -42,30 +44,42 @@ export async function initXumm(apiKey) {
 }
 
 export async function signInWithXumm(xumm) {
-  try { localStorage.removeItem(XUMM_PKCE_STORAGE_KEY); } catch {}
-  try { sessionStorage.removeItem(XUMM_PKCE_STORAGE_KEY); } catch {}
+  const existingAccount = await waitForXummAccount(xumm, XUMM_EXISTING_ACCOUNT_MS);
+  if (existingAccount) return existingAccount;
 
   let result = null;
+  let authorizeError = null;
+  const successSignal = waitForXummSuccess(xumm, XUMM_AUTHORIZE_EVENT_MS);
+
   try {
-    result = await xumm.authorize();
-    if (result instanceof Error) throw result;
+    result = await Promise.race([
+      xumm.authorize(),
+      successSignal.then(() => ({ signInEvent: "success" }))
+    ]);
+    if (result instanceof Error) {
+      authorizeError = result;
+    }
   } catch (error) {
-    const recoveredAccount = await waitForXummAccount(xumm, XUMM_ACCOUNT_RECOVERY_MS);
-    if (recoveredAccount) return recoveredAccount;
-    throw error;
+    authorizeError = error instanceof Error ? error : new Error("Xumm sign in did not complete.");
   }
 
   const account = result?.me?.account
     || result?.me?.sub
     || xumm.state?.account
-    || await xumm.user.account
+    || await Promise.race([
+      xumm.user.account,
+      new Promise(resolve => setTimeout(() => resolve(""), XUMM_ACCOUNT_POLL_MS))
+    ]).catch(() => "")
     || "";
 
-  if (!account) {
-    throw new Error("Xumm sign in completed, but no XRPL account was returned.");
-  }
+  if (account) return account;
 
-  return account;
+  const recoveredAccount = await waitForXummAccount(xumm, XUMM_ACCOUNT_RECOVERY_MS);
+  if (recoveredAccount) return recoveredAccount;
+
+  if (authorizeError) throw authorizeError;
+
+  throw new Error("Xumm sign in was not completed. No wallet approval was received.");
 }
 
 export async function waitForXummAccount(xumm, timeoutMs = XUMM_ACCOUNT_RECOVERY_MS) {
@@ -82,6 +96,23 @@ export async function waitForXummAccount(xumm, timeoutMs = XUMM_ACCOUNT_RECOVERY
   }
 
   return "";
+}
+
+function waitForXummSuccess(xumm, timeoutMs = XUMM_AUTHORIZE_EVENT_MS) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value = false) => {
+      if (done) return;
+      done = true;
+      try { xumm?.off?.("success", onSuccess); } catch {}
+      resolve(value);
+    };
+    const onSuccess = () => finish(true);
+
+    try { xumm?.on?.("success", onSuccess); } catch {}
+    xumm?.environment?.success?.then(() => finish(true)).catch(() => {});
+    setTimeout(() => finish(false), timeoutMs);
+  });
 }
 
 export function clearXummSession() {

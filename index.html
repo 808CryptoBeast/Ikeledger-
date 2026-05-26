@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>IkeLedger - Where ancestral knowledge meets verifiable value.</title>
+    <title>IkeLedger</title>
+    <meta name="application-name" content="IkeLedger" />
+    <meta property="og:site_name" content="IkeLedger" />
     <link rel="stylesheet" href="./ikeledger/css/ikeledger.css" />
   </head>
   <body>
@@ -43,8 +45,7 @@
             <button class="sidebar-btn is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/Ikeledger.png" alt="" /></span>Command Center</button>
             <button class="sidebar-btn" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikewallet.png" alt="" /></span>Wallet Status</button>
             <button class="sidebar-btn" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/tokens.png" alt="" /></span>Tokens</button>
-            <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikenft.png" alt="" /></span>NFT Viewer</button>
-            <button class="sidebar-btn" data-page="nft-listings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikenft.png" alt="" /></span>NFT Listings</button>
+            <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikenft.png" alt="" /></span>NFTs & Listings</button>
             <button class="sidebar-btn" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikedex.png" alt="" /></span>DEX Access</button>
             <button class="sidebar-btn" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeamm.png" alt="" /></span>AMM / LP</button>
             <button class="sidebar-btn" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/activity.png" alt="" /></span>Activity</button>
@@ -436,21 +437,6 @@
                 <span class="mode-pill">XLS-20 Standard</span>
               </div>
               <div id="nftsPagePanel" class="card-content nft-viewer-content"></div>
-            </article>
-          </section>
-
-          <section class="page-section" data-page="nft-listings">
-            <div class="page-hero">
-              <img class="page-visual" src="./ikeledger/assets/images/ikenft.png" alt="NFT listings" loading="lazy" />
-              <h2>NFT Listings</h2>
-              <p class="muted">Active listings, buy offers, and sell offers on the XRP Ledger.</p>
-            </div>
-            <article class="glass-card">
-              <div class="section-top">
-                <h3>Active Offers</h3>
-                <span class="mode-pill">Live from XRPL</span>
-              </div>
-              <div id="nftListingsPagePanel" class="card-content scroll"></div>
             </article>
           </section>
 

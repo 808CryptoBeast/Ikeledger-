@@ -49,6 +49,7 @@ const state = {
   latestTxItems: [],
   activePage: "dashboard",
   selectedNftId: "",
+  topIssuedFilter: "",
   chartTimeframe: "24H",
   marketTimer: null,
   marketCache: {
@@ -66,7 +67,7 @@ const state = {
 
 const nftMetadataCache = new Map();
 
-const XRPL_ACCOUNT_PAGES = new Set(["wallet", "tokens", "nfts", "nft-listings", "amm", "activity"]);
+const XRPL_ACCOUNT_PAGES = new Set(["wallet", "tokens", "nfts", "amm", "activity"]);
 const SIGNING_WALLET_PAGES = new Set(["dex"]);
 const PROFILE_PAGES = new Set(["profile", "credentials"]);
 
@@ -479,12 +480,17 @@ function setCommandAuthStatus(text, isError = false) {
 function friendlyXummError(error) {
   const message = error instanceof Error ? error.message : String(error || "");
   if (/timeout|timed out|expired/i.test(message)) {
-    return "Xumm approval is still pending or took too long. If you approved it, wait a moment, then press Sign In with Xumm again to resume.";
+    return "Xumm sign in was not successful in time. No wallet was connected. Please try again and approve the request in Xaman.";
   }
   if (/cancel|reject|denied/i.test(message)) {
-    return "Xumm sign in was cancelled in the wallet app.";
+    return "Xumm sign in was not successful. The request was cancelled or rejected in the wallet app.";
   }
-  return message || "Could not complete Xumm sign in.";
+  return message || "Xumm sign in was not successful.";
+}
+
+function isExplicitXummRejection(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /cancel|reject|denied/i.test(message);
 }
 
 function getXamanApiKey() {
@@ -551,6 +557,10 @@ function cycleTheme() {
 }
 
 function setActivePage(page) {
+  if (page === "nft-listings") {
+    page = "nfts";
+  }
+
   if (!canOpenPage(page)) {
     setFeedback(pageAccessMessage(page), true);
     if (!hasXrplAccount() || PROFILE_PAGES.has(page)) {
@@ -1371,37 +1381,59 @@ function renderBadges(walletState) {
 function renderTokenHoldings(walletState) {
   const holdings = walletState.snapshot?.tokenHoldings || [];
   const xrpBalance = walletState.snapshot?.account?.balanceXrp || "0";
+  const trustLineCount = walletState.snapshot?.account?.trustLines || holdings.length;
   const xrpRow = `
-    <div class="asset-item">
-      <p class="asset-label">XRP | XRP Ledger Native Asset</p>
-      <div class="asset-row-head"><span>Status: Native Asset</span><span>Trust: Not required</span></div>
-      <div class="asset-row-values"><span>Balance: ${safeNumber(xrpBalance, 4)} XRP</span><span>Value: Market linked</span></div>
+    <div class="asset-item wallet-token-card native">
+      <div class="wallet-token-top">
+        <div>
+          <p class="asset-label">XRP</p>
+          <span>XRPL Native Asset</span>
+        </div>
+        <span class="${chipClass(RISK_LEVELS.SAFE)}">Native</span>
+      </div>
+      <div class="wallet-token-balance">${safeNumber(xrpBalance, 4)} <span>XRP</span></div>
+      <div class="asset-row-values"><span>Trust: not required</span><span>Value: market linked</span></div>
       <div class="button-row"><button class="ghost" type="button">Send</button><button class="ghost" type="button">Receive</button><button class="ghost" type="button">Swap</button></div>
     </div>
   `;
 
-  let html = "";
+  const summaryHtml = `
+    <div class="token-holdings-summary">
+      <div><span>XRP Balance</span><strong>${safeNumber(xrpBalance, 4)}</strong></div>
+      <div><span>Issued Assets</span><strong>${holdings.length}</strong></div>
+      <div><span>Trust Lines</span><strong>${trustLineCount}</strong></div>
+    </div>
+  `;
+
+  let html = summaryHtml;
   if (!holdings.length) {
-    html = `${xrpRow}<p>No issued token balances found.</p>`;
+    html += `<div class="wallet-token-grid">${xrpRow}</div><p class="muted">No issued token balances found for this account.</p>`;
     if (refs.tokenHoldings) refs.tokenHoldings.innerHTML = html;
     if (refs.tokensPagePanel) refs.tokensPagePanel.innerHTML = html;
     return;
   }
 
-  html = xrpRow + holdings.slice(0, 16).map((token) => {
+  html += `<div class="wallet-token-grid">${xrpRow}` + holdings.slice(0, 32).map((token) => {
     const balance = Number.parseFloat(token.balance || "0");
     const risk = balance < 0 ? RISK_LEVELS.MEDIUM : RISK_LEVELS.LOW;
     const change = `${balance >= 0 ? "+" : ""}${(Math.abs(balance) % 7).toFixed(2)}%`;
+    const symbol = decodeCurrencyCode(token.currency);
     return `
-      <div class="asset-item">
-        <p class="asset-label">${token.currency} | Issued Token</p>
-        <div class="asset-row-head"><span>Issuer: ${formatAddress(token.counterparty)}</span><span>Status: Trust Line Active</span></div>
-        <div class="asset-row-values"><span>Balance: ${token.balance}</span><span>24h: ${change}</span></div>
-        <p>Risk: <span class="${chipClass(risk)}">${risk}</span></p>
+      <div class="asset-item wallet-token-card">
+        <div class="wallet-token-top">
+          <div>
+            <p class="asset-label">${escapeHtml(symbol)}</p>
+            <span>Issued Token</span>
+          </div>
+          <span class="${chipClass(risk)}">${risk}</span>
+        </div>
+        <div class="wallet-token-balance">${escapeHtml(token.balance)} <span>${escapeHtml(symbol)}</span></div>
+        <div class="asset-row-head"><span>Issuer: ${escapeHtml(formatAddress(token.counterparty))}</span><span>Trust Line Active</span></div>
+        <div class="asset-row-values"><span>Limit: ${escapeHtml(token.limit || "0")}</span><span>24h estimate: ${change}</span></div>
         <div class="button-row"><button class="ghost" type="button">Send</button><button class="ghost" type="button">Swap</button><button class="ghost" type="button">View issuer</button></div>
       </div>
     `;
-  }).join("");
+  }).join("") + `</div>`;
   if (refs.tokenHoldings) refs.tokenHoldings.innerHTML = html;
   if (refs.tokensPagePanel) refs.tokensPagePanel.innerHTML = html;
 }
@@ -1450,6 +1482,10 @@ function setCachedTopIssuedAssets(items) {
 function renderTopIssuedTokens() {
   if (!refs.topIssuedTokensPanel) return;
   const { items, loading, error, fetchedAt } = state.topIssuedAssets;
+  if (refs.refreshTopIssuedTokensButton) {
+    refs.refreshTopIssuedTokensButton.disabled = loading;
+    refs.refreshTopIssuedTokensButton.textContent = loading ? "Loading..." : "Refresh";
+  }
 
   if (!items.length && loading) {
     refs.topIssuedTokensPanel.innerHTML = `
@@ -1474,8 +1510,16 @@ function renderTopIssuedTokens() {
   const totalMarketCap = items.reduce((sum, token) => sum + (Number.isFinite(token.marketCap) ? token.marketCap : 0), 0);
   const totalHolders = items.reduce((sum, token) => sum + (Number.isFinite(token.holders) ? token.holders : 0), 0);
   const updatedLabel = fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "cached";
+  const query = state.topIssuedFilter.trim().toLowerCase();
+  const filteredItems = query
+    ? items.filter((token) =>
+        token.symbol.toLowerCase().includes(query)
+        || token.currency.toLowerCase().includes(query)
+        || token.issuer.toLowerCase().includes(query)
+      )
+    : items;
 
-  const rows = items.slice(0, 50).map((token) => {
+  const rows = filteredItems.slice(0, 50).map((token) => {
     const changeClass = Number.isFinite(token.change24h) && token.change24h >= 0 ? "positive" : "negative";
     const sourceUrl = token.slug ? `https://xrpl.to/token/${encodeURIComponent(token.slug)}` : "";
     return `
@@ -1499,11 +1543,15 @@ function renderTopIssuedTokens() {
 
   refs.topIssuedTokensPanel.innerHTML = `
     <div class="market-token-summary">
-      <div><span>Assets</span><strong>${items.length}</strong></div>
+      <div><span>Showing</span><strong>${filteredItems.length}/${items.length}</strong></div>
       <div><span>Combined Market Cap</span><strong>${formatUsd(totalMarketCap)}</strong></div>
       <div><span>Holder Count</span><strong>${formatCompactNumber(totalHolders, 1)}</strong></div>
       <div><span>Updated</span><strong>${updatedLabel}</strong></div>
     </div>
+    <label class="market-token-filter">
+      <span>Filter assets</span>
+      <input id="topIssuedTokenFilter" type="search" placeholder="Search symbol or issuer..." value="${escapeHtml(state.topIssuedFilter)}" autocomplete="off" />
+    </label>
     ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
     <div class="issued-token-table-wrap" role="region" aria-label="Top 50 issued XRPL assets" tabindex="0">
       <table class="issued-token-table">
@@ -1521,10 +1569,16 @@ function renderTopIssuedTokens() {
             <th>Link</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rows || `<tr><td colspan="10" class="empty-table-cell">No issued assets match this filter.</td></tr>`}</tbody>
       </table>
     </div>
   `;
+
+  const filterInput = refs.topIssuedTokensPanel.querySelector("#topIssuedTokenFilter");
+  filterInput?.addEventListener("input", (event) => {
+    state.topIssuedFilter = event.target.value || "";
+    renderTopIssuedTokens();
+  });
 }
 
 async function loadTopIssuedAssets(forceRefresh = false) {
@@ -1604,8 +1658,12 @@ function nftFallbackMarkup(nft) {
   return `<div class="nft-thumb-fallback"><span>${escapeHtml(initials)}</span></div>`;
 }
 
+function nftDisplayName(nft) {
+  return nft?.metadata?.name || `NFT ${formatAddress(nft?.nftId || "")}`;
+}
+
 function resolveNftImageSource(nft) {
-  const uri = toIpfsGateway(nft?.uri || "");
+  const uri = toIpfsGateway(nft?.metadata?.imageUrl || nft?.imageUrl || nft?.uri || "");
   if (!uri) return { imageUrl: "", metadataUrl: "" };
   if (looksLikeImageUrl(uri)) return { imageUrl: uri, metadataUrl: "" };
   return { imageUrl: "", metadataUrl: uri };
@@ -1632,11 +1690,20 @@ async function fetchNftMetadata(nft) {
     const response = await fetch(initial.metadataUrl, { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("NFT metadata request failed.");
     const metadata = await response.json();
-    const imageUrl = toIpfsGateway(metadata.image || metadata.image_url || metadata.imageUrl || metadata.animation_url || "");
+    const imageUrl = toIpfsGateway(
+      metadata.image
+      || metadata.image_url
+      || metadata.imageUrl
+      || metadata.animation_url
+      || metadata.properties?.image
+      || metadata.image_data
+      || ""
+    );
     const result = {
       imageUrl,
       name: metadata.name || "",
-      description: metadata.description || ""
+      description: metadata.description || "",
+      raw: metadata
     };
     nftMetadataCache.set(cacheKey, result);
     return result;
@@ -1647,80 +1714,198 @@ async function fetchNftMetadata(nft) {
 }
 
 function hydrateNftImages(nfts) {
-  nfts.slice(0, 10).forEach((nft) => {
+  nfts.slice(0, 60).forEach((nft) => {
     void fetchNftMetadata(nft).then((metadata) => {
-      const item = document.querySelector(`[data-nft-id="${CSS.escape(nft.nftId)}"]`);
-      if (!item || !metadata.imageUrl) return;
-      const thumb = item.querySelector(".nft-thumb");
-      if (thumb) {
-        thumb.innerHTML = `<img src="${escapeHtml(metadata.imageUrl)}" alt="${escapeHtml(metadata.name || "XRPL NFT image")}" loading="lazy" referrerpolicy="no-referrer" />`;
-        thumb.classList.add("has-image");
-      }
-      const title = item.querySelector(".nft-title");
-      if (title && metadata.name) title.textContent = metadata.name;
+      const items = document.querySelectorAll(`[data-nft-id="${CSS.escape(nft.nftId)}"]`);
+      if (!items.length) return;
+
+      items.forEach((item) => {
+        const thumb = item.querySelector(".nft-thumb");
+        if (thumb && metadata.imageUrl) {
+          thumb.innerHTML = `<img src="${escapeHtml(metadata.imageUrl)}" alt="${escapeHtml(metadata.name || "XRPL NFT image")}" loading="lazy" referrerpolicy="no-referrer" />`;
+          thumb.classList.add("has-image");
+        }
+
+        const title = item.querySelector(".nft-title");
+        if (title && metadata.name) title.textContent = metadata.name;
+
+        const desc = item.querySelector(".nft-description, .nft-feature-description");
+        if (desc && metadata.description) desc.textContent = metadata.description;
+      });
     });
   });
+}
+
+function nftThumbMarkup(nft) {
+  const source = resolveNftImageSource(nft);
+  const thumb = source.imageUrl
+    ? `<img src="${escapeHtml(source.imageUrl)}" alt="${escapeHtml(nftDisplayName(nft))}" loading="lazy" referrerpolicy="no-referrer" />`
+    : nftFallbackMarkup(nft);
+  return `<div class="nft-thumb ${source.imageUrl ? "has-image" : ""}">${thumb}</div>`;
+}
+
+function nftOfferSummaryMarkup(nft) {
+  const offers = nft?.offers || {};
+  const sellOffers = Number.isFinite(offers.sellOffers) ? offers.sellOffers : 0;
+  const buyOffers = Number.isFinite(offers.buyOffers) ? offers.buyOffers : 0;
+  return `
+    <div class="nft-offer-strip">
+      <div><span>Sell Offers</span><strong>${sellOffers}</strong></div>
+      <div><span>Buy Offers</span><strong>${buyOffers}</strong></div>
+      <div><span>Lowest Sell</span><strong>${escapeHtml(offers.lowestSell || "None")}</strong></div>
+      <div><span>Highest Buy</span><strong>${escapeHtml(offers.highestBuy || "None")}</strong></div>
+    </div>
+  `;
+}
+
+function renderNftGalleryItem(nft, isSelected = false) {
+  const offers = nft?.offers || {};
+  const totalOffers = (offers.sellOffers || 0) + (offers.buyOffers || 0);
+  return `
+    <button class="nft-item nft-select ${isSelected ? "is-selected" : ""}" type="button" data-nft-select="${escapeHtml(nft.nftId)}" data-nft-id="${escapeHtml(nft.nftId)}">
+      ${nftThumbMarkup(nft)}
+      <span class="nft-title">${escapeHtml(nftDisplayName(nft))}</span>
+      <span class="nft-mini-meta">Taxon ${escapeHtml(nft.taxon)} | ${totalOffers} offers</span>
+      <span class="nft-mini-meta">Issuer ${escapeHtml(formatAddress(nft.issuer))}</span>
+    </button>
+  `;
+}
+
+function bindNftViewerEvents() {
+  refs.nftsPagePanel?.querySelectorAll("[data-nft-select]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedNftId = button.dataset.nftSelect || "";
+      renderNfts(getWalletState());
+    });
+  });
+}
+
+function renderNftViewer(nfts) {
+  const selected = nfts.find((nft) => nft.nftId === state.selectedNftId) || nfts[0];
+  state.selectedNftId = selected.nftId;
+  const offers = selected.offers || {};
+  const selectedHasOffers = (offers.sellOffers || 0) + (offers.buyOffers || 0) > 0;
+  const totalSellOffers = nfts.reduce((sum, nft) => sum + (nft.offers?.sellOffers || 0), 0);
+  const totalBuyOffers = nfts.reduce((sum, nft) => sum + (nft.offers?.buyOffers || 0), 0);
+  const source = resolveNftImageSource(selected);
+  const openUri = selected.uri ? toIpfsGateway(selected.uri) || selected.uri : "";
+
+  return `
+    <div class="nft-viewer-layout">
+      <section class="nft-feature" data-nft-id="${escapeHtml(selected.nftId)}">
+        <div class="nft-feature-image nft-thumb ${source.imageUrl ? "has-image" : ""}">
+          ${source.imageUrl
+            ? `<img src="${escapeHtml(source.imageUrl)}" alt="${escapeHtml(nftDisplayName(selected))}" loading="lazy" referrerpolicy="no-referrer" />`
+            : nftFallbackMarkup(selected)}
+        </div>
+        <div class="nft-feature-copy">
+          <div class="section-top compact">
+            <h3 class="nft-feature-title nft-title">${escapeHtml(nftDisplayName(selected))}</h3>
+            <span class="mode-pill">${selectedHasOffers ? "Offers live" : "Held NFT"}</span>
+          </div>
+          <p class="nft-feature-description muted">${escapeHtml(selected.metadata?.description || "Metadata loads from the NFT URI when available.")}</p>
+          ${nftOfferSummaryMarkup(selected)}
+          <div class="nft-detail-grid">
+            <div><span>Token ID</span><strong>${escapeHtml(formatAddress(selected.nftId))}</strong></div>
+            <div><span>Issuer</span><strong>${escapeHtml(formatAddress(selected.issuer))}</strong></div>
+            <div><span>Taxon</span><strong>${escapeHtml(selected.taxon)}</strong></div>
+            <div><span>Transfer Fee</span><strong>${escapeHtml(String(selected.transferFee ?? "-"))}</strong></div>
+            <div><span>Metadata URI</span><strong>${selected.uri ? escapeHtml(formatAddress(selected.uri)) : "None"}</strong></div>
+            <div><span>Media</span><strong>${source.imageUrl ? "Image ready" : source.metadataUrl ? "Metadata lookup" : "No media URI"}</strong></div>
+          </div>
+          <div class="button-row">
+            ${openUri ? `<a class="ghost table-link" href="${escapeHtml(openUri)}" target="_blank" rel="noopener noreferrer">Open URI</a>` : ""}
+            <button class="ghost" type="button">Create Listing</button>
+            <button class="ghost" type="button">Refresh Offers</button>
+          </div>
+        </div>
+      </section>
+      <section class="nft-gallery-panel">
+        <div class="nft-gallery-head">
+          <div><span>Inventory</span><strong>${nfts.length} NFTs</strong></div>
+          <div><span>Sell Offers</span><strong>${totalSellOffers}</strong></div>
+          <div><span>Buy Offers</span><strong>${totalBuyOffers}</strong></div>
+        </div>
+        <div class="nft-grid nft-gallery-grid">
+          ${nfts.slice(0, 60).map((nft) => renderNftGalleryItem(nft, nft.nftId === selected.nftId)).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderNftListingPanel(nfts) {
+  const offerNfts = nfts.filter((nft) => (nft.offers?.sellOffers || 0) + (nft.offers?.buyOffers || 0) > 0);
+
+  if (!offerNfts.length) {
+    return `
+      <div class="nft-listing-panel">
+        <div class="section-top compact">
+          <h3>Listings & Offers</h3>
+          <span class="mode-pill">No open offers</span>
+        </div>
+        <p class="muted">No sell offers or buy offers were found for the loaded NFT inventory.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="nft-listing-panel">
+      <div class="section-top compact">
+        <h3>Listings & Offers</h3>
+        <span class="mode-pill">Live offer scan</span>
+      </div>
+      <div class="nft-listing-grid">
+        ${offerNfts.slice(0, 12).map((nft) => `
+          <div class="nft-listing-row" data-nft-id="${escapeHtml(nft.nftId)}">
+            ${nftThumbMarkup(nft)}
+            <div>
+              <strong>${escapeHtml(nftDisplayName(nft))}</strong>
+              <span>${escapeHtml(formatAddress(nft.nftId))}</span>
+            </div>
+            <div><span>Sell</span><strong>${nft.offers?.sellOffers || 0}</strong></div>
+            <div><span>Buy</span><strong>${nft.offers?.buyOffers || 0}</strong></div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderNfts(walletState) {
   const nfts = walletState.snapshot?.nftItems || [];
   if (!nfts.length) {
-    if (refs.nftInventory) {
-      refs.nftInventory.innerHTML = "<p>No NFTs found for this XRPL account.</p>";
-    }
     if (refs.nftListingStatus) {
       refs.nftListingStatus.innerHTML = "<p>No active NFT listings, buy offers, or sell offers found.</p>";
     }
     if (refs.nftsPagePanel) {
-      refs.nftsPagePanel.innerHTML = "<p>NFT search, filters, and offer actions activate when inventory is found.</p>";
+      refs.nftsPagePanel.innerHTML = `
+        <div class="nft-empty-state">
+          <img src="./ikeledger/assets/images/ikenft.png" alt="" loading="lazy" />
+          <strong>No NFTs found for this XRPL account.</strong>
+          <p class="muted">NFT images, metadata, and offer details will appear here after an XLS-20 inventory is detected.</p>
+        </div>
+      `;
     }
     return;
   }
 
-  const nftGridHtml = nfts.slice(0, 10).map((nft) => {
-    const source = resolveNftImageSource(nft);
-    const thumb = source.imageUrl
-      ? `<img src="${escapeHtml(source.imageUrl)}" alt="XRPL NFT image" loading="lazy" referrerpolicy="no-referrer" />`
-      : nftFallbackMarkup(nft);
-    return `
-    <div class="nft-item" data-nft-id="${escapeHtml(nft.nftId)}">
-      <div class="nft-thumb ${source.imageUrl ? "has-image" : ""}">${thumb}</div>
-      <p class="nft-title">${escapeHtml(formatAddress(nft.nftId))}</p>
-      <p><strong>Issuer:</strong> ${escapeHtml(formatAddress(nft.issuer))}</p>
-      <p><strong>Collection:</strong> Taxon ${escapeHtml(nft.taxon)}</p>
-      <p><strong>Status:</strong> ${Number(nft.taxon) % 2 ? "Listed" : "Unlisted"}</p>
-      <p><strong>URI:</strong> ${nft.uri ? escapeHtml(formatAddress(nft.uri)) : "No metadata URI"}</p>
-      <div class="button-row"><button class="ghost" type="button">View details</button><button class="ghost" type="button">Create listing</button></div>
-    </div>
-  `;
-  }).join("");
-
-  if (refs.nftInventory) {
-    refs.nftInventory.innerHTML = nftGridHtml;
-  }
-
-  hydrateNftImages(nfts);
-
-  const nftListingHtml = `
-    <p><strong>Active Listings:</strong> ${Math.ceil(nfts.length / 2)}</p>
-    <p><strong>Incoming Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 3))}</p>
-    <p><strong>Outgoing Buy Offers:</strong> ${Math.max(1, Math.floor(nfts.length / 4))}</p>
-    <p><strong>Action Policy:</strong> Listing, accept, and cancel require transaction preview before wallet signing.</p>
-  `;
-
-  if (refs.nftListingStatus) {
-    refs.nftListingStatus.innerHTML = nftListingHtml;
-  }
+  const nftListingHtml = renderNftListingPanel(nfts);
+  if (refs.nftListingStatus) refs.nftListingStatus.innerHTML = nftListingHtml;
 
   if (refs.nftsPagePanel) {
     refs.nftsPagePanel.innerHTML = `
-      <div class="nft-grid">${nftGridHtml}</div>
+      ${renderNftViewer(nfts)}
+      ${nftListingHtml}
     `;
+    bindNftViewerEvents();
   }
 
   if (refs.nftListingsPagePanel) {
     refs.nftListingsPagePanel.innerHTML = nftListingHtml;
   }
+
+  hydrateNftImages(nfts);
 }
 
 function renderAmm(walletState) {
@@ -2204,17 +2389,23 @@ async function connectWithXumm() {
         walletAddress: account,
         createdAt: existingUser?.createdAt
       });
-      setCommandAuthStatus("Connected with Xumm.");
+      closeAuthModal();
+      renderAll();
+      setActivePage("profile");
+      setCommandAuthStatus("Signed in with Xumm. Profile and wallet refreshed.");
+      setFeedback("Signed in with Xumm. Your profile and wallet are loaded.");
     } else {
       clearXummSession();
       sessionStorage.removeItem("ike_wallet_provider");
       setWalletProvider("");
-      setCommandAuthStatus("Xumm approved, but the XRPL account could not be loaded yet. Try Refresh Account.", true);
+      setCommandAuthStatus("Xumm sign in was not successful. The XRPL account could not be loaded.", true);
     }
   } catch (err) {
-    clearXummSession();
-    sessionStorage.removeItem("ike_wallet_provider");
-    setWalletProvider("");
+    if (isExplicitXummRejection(err)) {
+      clearXummSession();
+      sessionStorage.removeItem("ike_wallet_provider");
+      setWalletProvider("");
+    }
     const message = friendlyXummError(err);
     setCommandAuthStatus(message, true);
     setFeedback(message, true);
