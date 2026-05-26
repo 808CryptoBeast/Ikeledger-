@@ -4284,6 +4284,29 @@ button.ghost:hover {
   padding: 0.24rem 0.5rem;
   text-decoration: none;
 }
+.amm-market-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.amm-pool-table-wrap {
+  max-height: 560px;
+}
+
+.amm-pool-table {
+  min-width: 1120px;
+}
+
+.table-link-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+}
+
+.market-token-badge.warning {
+  border-color: rgba(255, 212, 137, 0.42);
+  color: var(--warn) !important;
+  background: rgba(255, 212, 137, 0.1);
+}
 
 .empty-table-cell {
   text-align: center !important;
@@ -4529,4 +4552,511 @@ button.ghost:hover {
   .nft-listing-row > div:not(:nth-child(2)) span {
     text-align: left;
   }
+}
+/* Scrollbar, Glow, And AMM Position Visual Polish */
+:root {
+  --scroll-track: rgba(4, 9, 22, 0.72);
+  --scroll-thumb: linear-gradient(180deg, rgba(233, 199, 122, 0.82), rgba(70, 188, 255, 0.74));
+  --scroll-thumb-hover: linear-gradient(180deg, rgba(255, 222, 151, 0.96), rgba(66, 232, 213, 0.92));
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(233, 199, 122, 0.68) rgba(4, 9, 22, 0.38);
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid rgba(4, 9, 22, 0.92);
+  border-radius: 999px;
+  background: var(--scroll-thumb);
+  box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.22), 0 0 12px rgba(70, 188, 255, 0.18);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.28), 0 0 16px rgba(233, 199, 122, 0.24);
+}
+
+.glass-card {
+  isolation: isolate;
+  transform-style: preserve-3d;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), transparent 28%),
+    radial-gradient(circle at 16% 0%, rgba(233, 199, 122, 0.12), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(70, 188, 255, 0.11), transparent 32%),
+    linear-gradient(160deg, rgba(12, 22, 52, 0.82), rgba(5, 10, 28, 0.72));
+  box-shadow:
+    0 18px 26px rgba(0, 0, 0, 0.34),
+    0 2px 0 rgba(255, 255, 255, 0.05) inset,
+    0 -18px 38px rgba(0, 0, 0, 0.16) inset,
+    0 0 26px rgba(70, 188, 255, 0.08),
+    0 0 58px rgba(233, 199, 122, 0.045);
+}
+
+.glass-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(233, 199, 122, 0.22), transparent 34%),
+    radial-gradient(circle at 82% 4%, rgba(70, 188, 255, 0.2), transparent 34%);
+  filter: blur(18px);
+  opacity: 0.52;
+  transform: translate3d(0, 9px, -1px) scale(0.985);
+  transition: opacity 0.22s ease, filter 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+}
+
+.glass-card:hover::after,
+.glass-card:focus-within::after {
+  opacity: 0.86;
+  filter: blur(22px);
+  transform: translate3d(0, 11px, -1px) scale(1);
+}
+
+.glass-card:hover,
+.glass-card:focus-within {
+  transform: translateY(-2px);
+  box-shadow:
+    0 24px 34px rgba(0, 0, 0, 0.4),
+    0 2px 0 rgba(255, 255, 255, 0.07) inset,
+    0 -18px 42px rgba(0, 0, 0, 0.18) inset,
+    0 0 34px rgba(70, 188, 255, 0.13),
+    0 0 72px rgba(233, 199, 122, 0.07);
+}
+
+.pool-positions-card {
+  overflow: hidden;
+}
+
+.pool-positions-visual {
+  width: calc(100% + 2.3rem);
+  max-width: none;
+  height: clamp(180px, 24vw, 300px);
+  margin: -1rem -1.15rem 0.95rem;
+  border-width: 0 0 1px;
+  border-radius: var(--radius-xl) var(--radius-xl) 18px 18px;
+  object-fit: cover;
+  object-position: center;
+  background: rgba(5, 10, 26, 0.62);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.34),
+    0 0 28px rgba(70, 188, 255, 0.1);
+}
+
+.pool-positions-card .section-top,
+.pool-positions-card .card-content,
+.pool-positions-card .warning-inline {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 768px) {
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .glass-card:hover,
+  .glass-card:focus-within {
+    transform: none;
+  }
+
+  .pool-positions-visual {
+    width: calc(100% + 2rem);
+    height: clamp(150px, 42vw, 220px);
+    margin: -0.9rem -1rem 0.85rem;
+  }
+}
+/* AMM Background And Token Logo Polish */
+.amm-market-card {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(4, 8, 20, 0.68), rgba(3, 7, 18, 0.93) 42%, rgba(3, 7, 18, 0.98)),
+    radial-gradient(circle at 18% 10%, rgba(233, 199, 122, 0.2), transparent 34%),
+    radial-gradient(circle at 82% 0%, rgba(70, 188, 255, 0.18), transparent 36%),
+    url("../assets/images/ikeamm.png") center 34% / cover no-repeat;
+}
+
+.amm-market-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(3, 7, 18, 0.84), rgba(3, 7, 18, 0.34) 48%, rgba(3, 7, 18, 0.88)),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08), transparent 28%);
+  pointer-events: none;
+}
+
+.amm-market-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.amm-market-card .section-top {
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.amm-market-card .section-top h3 {
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.48);
+}
+
+.amm-market-card .market-token-summary div,
+.amm-market-card .market-token-filter input,
+.amm-market-card .issued-token-table-wrap {
+  background-color: rgba(3, 8, 22, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.market-token-identity {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.58rem;
+  min-width: 190px;
+}
+
+.market-token-identity > div {
+  min-width: 0;
+}
+
+.token-logo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 199, 122, 0.36);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.2), transparent 28%),
+    linear-gradient(145deg, rgba(233, 199, 122, 0.2), rgba(70, 188, 255, 0.18)),
+    rgba(5, 10, 26, 0.86);
+  color: var(--mana-gold);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), 0 0 18px rgba(70, 188, 255, 0.08);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.token-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: rgba(5, 10, 26, 0.92);
+}
+
+.token-logo.is-fallback img {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .amm-market-card {
+    background-position: center top;
+  }
+
+  .market-token-identity {
+    grid-template-columns: 32px minmax(0, 1fr);
+    min-width: 170px;
+  }
+
+  .token-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+}
+/* Tokens Page Background And Logo Rendering */
+.page-section[data-page="tokens"].active {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  padding: clamp(0.75rem, 2vw, 1.05rem);
+  background:
+    linear-gradient(180deg, rgba(3, 7, 18, 0.66), rgba(3, 7, 18, 0.94) 42%, rgba(3, 7, 18, 0.98)),
+    radial-gradient(circle at 16% 8%, rgba(233, 199, 122, 0.2), transparent 32%),
+    radial-gradient(circle at 82% 4%, rgba(70, 188, 255, 0.18), transparent 34%),
+    url("../assets/images/tokens.png") center 18% / cover no-repeat;
+}
+
+.page-section[data-page="tokens"].active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(3, 7, 18, 0.92), rgba(3, 7, 18, 0.38) 46%, rgba(3, 7, 18, 0.9)),
+    radial-gradient(circle at 48% 0%, rgba(255, 255, 255, 0.08), transparent 30%);
+  pointer-events: none;
+}
+
+.page-section[data-page="tokens"] .page-hero,
+.page-section[data-page="tokens"] .card-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.page-section[data-page="tokens"] .glass-card {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), transparent 28%),
+    radial-gradient(circle at 16% 0%, rgba(233, 199, 122, 0.12), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(70, 188, 255, 0.11), transparent 32%),
+    linear-gradient(160deg, rgba(5, 10, 26, 0.9), rgba(3, 8, 22, 0.82));
+}
+
+.page-section[data-page="tokens"] .market-token-summary div,
+.page-section[data-page="tokens"] .market-token-filter input,
+.page-section[data-page="tokens"] .issued-token-table-wrap {
+  background-color: rgba(3, 8, 22, 0.84);
+  backdrop-filter: blur(10px);
+}
+
+.token-logo img {
+  z-index: 1;
+}
+
+.token-logo:not(.is-fallback) span {
+  z-index: 0;
+}
+
+@media (max-width: 640px) {
+  .page-section[data-page="tokens"].active {
+    padding: 0.65rem;
+    background-position: center top;
+  }
+}
+/* Command Center Background Image Cards */
+.command-bg-card {
+  overflow: hidden;
+  min-height: 188px;
+}
+
+.command-bg-card > .card-visual,
+.market-card.command-bg-card > .wide-visual {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100% !important;
+  max-width: none;
+  height: 100% !important;
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.2;
+  filter: saturate(1.08) contrast(1.08);
+  pointer-events: none;
+}
+
+.command-bg-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: auto;
+  height: auto;
+  left: 0;
+  right: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(3, 7, 18, 0.88), rgba(3, 7, 18, 0.54) 46%, rgba(3, 7, 18, 0.9)),
+    radial-gradient(circle at 18% 0%, rgba(233, 199, 122, 0.16), transparent 30%),
+    radial-gradient(circle at 82% 8%, rgba(70, 188, 255, 0.13), transparent 34%);
+  pointer-events: none;
+}
+
+.command-bg-card > :not(.card-visual):not(.wide-visual) {
+  position: relative;
+  z-index: 1;
+}
+
+#commandOverviewCards .command-bg-card h3,
+.market-card.command-bg-card h3 {
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55);
+}
+
+#commandOverviewCards .command-bg-card .card-content,
+.market-card.command-bg-card .market-stats-grid p,
+.market-card.command-bg-card .chart-shell,
+.market-card.command-bg-card .network-icon-chip {
+  border-color: rgba(116, 202, 255, 0.18);
+  background-color: rgba(3, 8, 22, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.wallet-connection-card > .card-visual {
+  object-position: center 35%;
+  opacity: 0.24;
+}
+
+.recent-activity-card > .card-visual {
+  object-position: center 42%;
+  opacity: 0.22;
+}
+
+.security-signals-card > .card-visual {
+  object-position: center 35%;
+  opacity: 0.2;
+}
+
+.value-mix-card > .card-visual {
+  object-position: center 38%;
+  opacity: 0.22;
+}
+
+.market-card.command-bg-card {
+  min-height: 500px;
+}
+
+.market-card.command-bg-card > .wide-visual {
+  object-position: center 35%;
+  opacity: 0.18;
+}
+
+.market-card.command-bg-card .market-stats-grid p span {
+  display: inline-flex;
+  min-height: 1.28rem;
+  align-items: center;
+  font-weight: 800;
+  color: var(--ink-0);
+}
+
+#marketTps {
+  color: var(--turquoise) !important;
+}
+
+@media (max-width: 768px) {
+  .command-bg-card {
+    min-height: 170px;
+  }
+
+  .market-card.command-bg-card {
+    min-height: 0;
+  }
+}
+/* Market Table Load More Controls */
+.market-load-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 0.72rem;
+  border: 1px solid rgba(116, 202, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(3, 8, 22, 0.62);
+  padding: 0.58rem 0.68rem;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  backdrop-filter: blur(8px);
+}
+
+.market-load-row button {
+  min-height: 34px;
+  padding: 0.34rem 0.72rem;
+}
+
+.market-load-complete {
+  color: var(--turquoise);
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .market-load-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .market-load-row button {
+    width: 100%;
+  }
+}
+/* Source Status, Risk, And Watchlist Controls */
+.market-source-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  color: var(--ink-2);
+  font-size: 0.76rem;
+}
+
+.market-source-row > span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(116, 202, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(3, 8, 22, 0.68);
+  padding: 0.22rem 0.58rem;
+  backdrop-filter: blur(8px);
+}
+
+.source-chip.is-live {
+  border-color: rgba(66, 232, 213, 0.34);
+  color: var(--turquoise);
+}
+
+.source-chip.is-cached {
+  border-color: rgba(233, 199, 122, 0.32);
+  color: var(--mana-gold);
+}
+
+.source-chip.is-warning {
+  border-color: rgba(255, 212, 137, 0.4);
+  color: var(--warn);
+}
+
+.market-token-badge.danger {
+  border-color: rgba(255, 95, 109, 0.42);
+  color: var(--danger) !important;
+  background: rgba(255, 95, 109, 0.1);
+}
+
+.watch-toggle {
+  border-color: rgba(116, 202, 255, 0.22) !important;
+  color: var(--ink-1) !important;
+}
+
+.watch-toggle.is-watched {
+  border-color: rgba(233, 199, 122, 0.48) !important;
+  color: var(--mana-gold) !important;
+  background: rgba(233, 199, 122, 0.11) !important;
+}
+.market-risk-reasons {
+  display: block;
+  max-width: 150px;
+  margin-top: 0.2rem;
+  color: var(--ink-2);
+  font-size: 0.68rem;
+  line-height: 1.28;
+  white-space: normal !important;
+}
+
+.issued-token-table:has(.watch-toggle) {
+  min-width: 1080px;
+}
+
+.amm-pool-table:has(.watch-toggle) {
+  min-width: 1280px;
 }

@@ -1,4 +1,4 @@
-# IkeLedger
+﻿# IkeLedger
 
 > Where ancestral knowledge meets verifiable value.
 
@@ -10,6 +10,8 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 
 ### Command Center and sign-in
 - Command Center is the user landing page for XRPL network, XRP market, AMM, and liquidity overview metrics
+- XRP Market Overview includes live source chips, last-updated time, and a cached fallback so brief API misses do not blank the panel
+- Issued asset and AMM / LP market tables include load-more pagination, watchlist buttons, and risk scoring
 - Xumm/email sign-in appears in a popup overlay instead of replacing the dashboard
 - Email/password profile sign-in through Supabase Auth with email verification
 - Email profiles are profile-only until an XRPL wallet is connected or created
@@ -27,6 +29,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - Token holdings and issued token display
 - NFT viewer with decoded XRPL NFT URI support, IPFS/HTTP metadata lookup, and image thumbnails
 - AMM / LP position viewer
+- Optional market proxy/cache server for XRPL.to, CoinGecko, and token image requests
 - DEX access panel with order entry scaffold
 - Transaction consent modal before any signing flow
 
@@ -113,6 +116,8 @@ ikeledger/
     ikeledger-xumm.js             - Official Xumm SDK sign-in and Xaman transaction payloads
     ikeledger-supabase.js         — Optional Supabase sync client
     ikeledger-cdn.js              — CDN import helper with fallback chain
+  server/
+    market-proxy.mjs              — Optional local market/image cache proxy
   assets/images/                  — App icons and network imagery
   docs/                           — Security, wallet-flow, credential model docs
   supabase/                       — SQL migrations and deploy order

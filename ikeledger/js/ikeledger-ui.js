@@ -1,4 +1,4 @@
-import { DEFAULT_NETWORK, NETWORKS, RISK_LEVELS, STORAGE_KEYS, XAMAN_API_KEY, XRPL_ADDRESS_PATTERN } from "./ikeledger-config.js";
+﻿import { DEFAULT_NETWORK, NETWORKS, RISK_LEVELS, STORAGE_KEYS, XAMAN_API_KEY, XRPL_ADDRESS_PATTERN } from "./ikeledger-config.js";
 import {
   assessRisk,
   getSecurityEvents,
@@ -19,7 +19,7 @@ import {
   updateProfileState
 } from "./ikeledger-wallet.js";
 import { getManaSummary } from "./ikeledger-rewards.js";
-import { buildPaymentTx } from "./ikeledger-xaman.js";
+import { buildPaymentTx, xrpToDrops } from "./ikeledger-xaman.js";
 import { initXumm, signInWithXumm, createTxFlow, resetXumm, clearXummSession } from "./ikeledger-xumm.js";
 import { generateXrplWallet, isKeygenSupported } from "./ikeledger-keygen.js";
 import {
@@ -35,9 +35,21 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
-const TOP_ISSUED_ASSETS_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc&limit=50";
-const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v1";
-const TOP_ISSUED_ASSETS_CACHE_MS = 15 * 60 * 1000;
+const MARKET_RESULT_LIMIT = 100;
+const MARKET_VISIBLE_STEP = 50;
+const TOP_ISSUED_ASSETS_URL = `https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc&limit=${MARKET_RESULT_LIMIT}`;
+const TOP_AMM_POOLS_URL = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_RESULT_LIMIT}`;
+const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v3";
+const TOP_AMM_POOLS_CACHE_KEY = "ike_top_amm_pools_v3";
+const TOP_ISSUED_ASSETS_CACHE_MS = 6 * 60 * 60 * 1000;
+const TOP_AMM_POOLS_CACHE_MS = 6 * 60 * 60 * 1000;
+const TOP_AMM_POOLS_BACKOFF_MS = 5 * 60 * 1000;
+const DEX_BOOK_LIMIT = 20;
+const OFFER_CREATE_FLAGS = {
+  passive: 0x00010000,
+  ioc: 0x00020000,
+  fok: 0x00040000
+};
 
 let heroSendXamanUrl = "";
 
@@ -50,6 +62,11 @@ const state = {
   activePage: "dashboard",
   selectedNftId: "",
   topIssuedFilter: "",
+  topAmmFilter: "",
+  topIssuedVisibleCount: MARKET_VISIBLE_STEP,
+  topAmmVisibleCount: MARKET_VISIBLE_STEP,
+  tokenWatchlist: new Set(),
+  ammWatchlist: new Set(),
   chartTimeframe: "24H",
   marketTimer: null,
   marketCache: {
@@ -62,6 +79,34 @@ const state = {
     items: [],
     loading: false,
     error: ""
+  },
+  topAmmPools: {
+    fetchedAt: 0,
+    items: [],
+    loading: false,
+    error: "",
+    backoffUntil: 0
+  },
+  dex: {
+    selectedTokenId: "",
+    side: "buy",
+    currency: "",
+    issuer: "",
+    amount: "",
+    price: "",
+    orderStyle: "limit",
+    slippage: "1",
+    stopLoss: "",
+    takeProfit: "",
+    latestTx: null,
+    signing: false,
+    orderBook: {
+      loading: false,
+      error: "",
+      bids: [],
+      asks: [],
+      updatedAt: 0
+    }
   }
 };
 
@@ -91,6 +136,10 @@ const refs = {
   marketLedgerIndex: document.getElementById("marketLedgerIndex"),
   marketTps: document.getElementById("marketTps"),
   marketFee: document.getElementById("marketFee"),
+  marketLastUpdated: document.getElementById("marketLastUpdated"),
+  marketSourceCoinGecko: document.getElementById("marketSourceCoinGecko"),
+  marketSourceXrpl: document.getElementById("marketSourceXrpl"),
+  marketSourceXrplTo: document.getElementById("marketSourceXrplTo"),
   authModal: document.getElementById("authModal"),
   closeAuthModalButton: document.getElementById("closeAuthModalButton"),
   commandOpenAuthButton: document.getElementById("commandOpenAuthButton"),
@@ -105,6 +154,7 @@ const refs = {
   commandEmailSignUpButton: document.getElementById("commandEmailSignUpButton"),
   commandEmailSignInButton: document.getElementById("commandEmailSignInButton"),
   commandXummSignInButton: document.getElementById("commandXummSignInButton"),
+  commandXummModeHint: document.getElementById("commandXummModeHint"),
   commandAuthStatus: document.getElementById("commandAuthStatus"),
   xrpNavPrice: document.getElementById("xrpNavPrice"),
   xrpPriceStat: document.getElementById("xrpPriceStat"),
@@ -116,9 +166,33 @@ const refs = {
   tokensPagePanel: document.getElementById("tokensPagePanel"),
   topIssuedTokensPanel: document.getElementById("topIssuedTokensPanel"),
   refreshTopIssuedTokensButton: document.getElementById("refreshTopIssuedTokensButton"),
+  topAmmPoolsPanel: document.getElementById("topAmmPoolsPanel"),
+  refreshTopAmmPoolsButton: document.getElementById("refreshTopAmmPoolsButton"),
   nftsPagePanel: document.getElementById("nftsPagePanel"),
   nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
   dexPagePanel: document.getElementById("dexPagePanel"),
+  dexAccessBadge: document.getElementById("dexAccessBadge"),
+  dexAssetSelect: document.getElementById("dexAssetSelect"),
+  dexSideSelect: document.getElementById("dexSideSelect"),
+  dexCurrencyInput: document.getElementById("dexCurrencyInput"),
+  dexIssuerInput: document.getElementById("dexIssuerInput"),
+  dexAmountInput: document.getElementById("dexAmountInput"),
+  dexPriceInput: document.getElementById("dexPriceInput"),
+  dexOrderStyleSelect: document.getElementById("dexOrderStyleSelect"),
+  dexSlippageInput: document.getElementById("dexSlippageInput"),
+  dexStopLossInput: document.getElementById("dexStopLossInput"),
+  dexTakeProfitInput: document.getElementById("dexTakeProfitInput"),
+  dexAnalyzeButton: document.getElementById("dexAnalyzeButton"),
+  dexSignOfferButton: document.getElementById("dexSignOfferButton"),
+  dexRefreshBookButton: document.getElementById("dexRefreshBookButton"),
+  dexTicketStatus: document.getElementById("dexTicketStatus"),
+  dexBookUpdated: document.getElementById("dexBookUpdated"),
+  dexStatsPanel: document.getElementById("dexStatsPanel"),
+  dexOrderBookPanel: document.getElementById("dexOrderBookPanel"),
+  dexAnalysisChart: document.getElementById("dexAnalysisChart"),
+  dexRiskRewardPanel: document.getElementById("dexRiskRewardPanel"),
+  dexExecutionPlanPanel: document.getElementById("dexExecutionPlanPanel"),
+  dexSafetyPanel: document.getElementById("dexSafetyPanel"),
   ammPagePanel: document.getElementById("ammPagePanel"),
   credentialsPagePanel: document.getElementById("credentialsPagePanel"),
   profilePagePanel: document.getElementById("profilePagePanel"),
@@ -188,6 +262,10 @@ const refs = {
   saveSupabaseButton: document.getElementById("saveSupabaseButton"),
   testSupabaseButton: document.getElementById("testSupabaseButton"),
   supabaseStatus: document.getElementById("supabaseStatus"),
+  marketProxyUrlInput: document.getElementById("marketProxyUrlInput"),
+  saveMarketProxyButton: document.getElementById("saveMarketProxyButton"),
+  clearMarketProxyButton: document.getElementById("clearMarketProxyButton"),
+  marketProxyStatus: document.getElementById("marketProxyStatus"),
   securityEventLog: document.getElementById("securityEventLog"),
   settingsPageOpenDrawerButton: document.getElementById("settingsPageOpenDrawerButton"),
   settingsPageClearButton: document.getElementById("settingsPageClearButton"),
@@ -384,6 +462,85 @@ function formatPercent(value) {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+function formatUnsignedPercent(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "n/a";
+  return `${n.toFixed(2)}%`;
+}
+
+function formatAmmFee(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "n/a";
+  const percent = Number.isInteger(n) ? n / 1000 : n;
+  return `${percent.toFixed(Math.abs(percent) < 1 ? 3 : 2)}%`;
+}
+
+function imageProxyUrl(url = "") {
+  const clean = String(url || "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("./") || clean.startsWith("/")) return clean;
+  if (!/^https?:\/\//i.test(clean)) return "";
+  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
+  if (proxyBase) {
+    return `${proxyBase}/image?url=${encodeURIComponent(clean)}&w=96&h=96`;
+  }
+  return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=96&h=96&fit=cover&output=webp`;
+}
+
+function normalizeLogoSource(value = "") {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("ipfs://") || clean.startsWith("ar://") || /^https?:\/\//i.test(clean)) {
+    return toIpfsGateway(clean);
+  }
+  if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]+)$/i.test(clean)) {
+    return `https://ipfs.io/ipfs/${clean}`;
+  }
+  return "";
+}
+
+function tokenLogoUrl(token = {}) {
+  const localLogo = String(token.localLogo || token.localLogoUrl || "").trim();
+  if (localLogo.startsWith("./") || localLogo.startsWith("/")) return localLogo;
+
+  const directLogo = normalizeLogoSource(
+    token.tomlIcon
+    || token.icon
+    || token.logo
+    || token.logoUrl
+    || token.image
+    || token.imageUrl
+    || ""
+  );
+  if (directLogo) return imageProxyUrl(directLogo);
+
+  const md5 = String(token.md5 || token._id || "").trim();
+  if (!/^[a-f0-9]{32}$/i.test(md5)) return "";
+  const version = token.imgUpdated || token.time || token.lastModified || token.dateon || "";
+  const versionQuery = version ? `&t=${encodeURIComponent(String(version))}` : "";
+  return imageProxyUrl(`https://www.xrpl.to/api/proxy/api/thumb/${encodeURIComponent(md5)}?w=96${versionQuery}`);
+}
+
+function tokenLogoMarkup(token = {}, label = "") {
+  const initials = String(label || "?").replace(/[^a-z0-9]/gi, "").slice(0, 3).toUpperCase() || "?";
+  const logoUrl = String(token.logoUrl || "").trim();
+  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
+  const safeLogoUrl = logoUrl.startsWith("./")
+    || logoUrl.startsWith("/")
+    || logoUrl.startsWith("https://wsrv.nl/")
+    || (proxyBase && logoUrl.startsWith(`${proxyBase}/image?`))
+    ? logoUrl : "";
+  if (!safeLogoUrl) {
+    return `<span class="token-logo is-fallback"><span>${escapeHtml(initials)}</span></span>`;
+  }
+  return `
+    <span class="token-logo">
+      <span>${escapeHtml(initials)}</span>
+      <img src="${escapeHtml(safeLogoUrl)}" alt="${escapeHtml(label)} logo" loading="lazy" onerror="this.parentElement.classList.add('is-fallback'); this.remove();" />
+    </span>
+  `;
+}
+
 function decodeCurrencyCode(currency = "") {
   const value = String(currency || "").trim();
   if (/^[A-Fa-f0-9]{40}$/.test(value)) {
@@ -414,6 +571,21 @@ function hasSigningWallet() {
   const walletState = getWalletState();
   const provider = walletState.provider || sessionStorage.getItem("ike_wallet_provider");
   return Boolean(walletState.publicAddress && (provider === "xaman" || provider === "created"));
+}
+
+function isLikelyMobileDevice() {
+  return window.matchMedia?.("(max-width: 760px), (pointer: coarse)")?.matches
+    || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+}
+
+function xummSignInButtonLabel() {
+  return isLikelyMobileDevice() ? "Open Xumm / Xaman" : "Sign In with Xumm";
+}
+
+function xummSignInGuidance() {
+  return isLikelyMobileDevice()
+    ? "Same-phone sign in opens Xumm/Xaman, then returns here after approval. Keep this browser tab open."
+    : "Desktop sign in shows the official Xumm QR flow. Scan it with Xumm/Xaman on your phone.";
 }
 
 function pageAccessMessage(page) {
@@ -587,6 +759,19 @@ function setActivePage(page) {
   refs.sidebarPanel?.querySelectorAll(".sidebar-btn").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.page === page);
   });
+
+  if (page === "tokens") {
+    void loadTopIssuedAssets();
+  }
+
+  if (page === "dex") {
+    void loadTopIssuedAssets();
+    void loadDexOrderBook();
+  }
+
+  if (page === "amm") {
+    void loadTopAmmPools();
+  }
 }
 
 function timeframeToDays(timeframe) {
@@ -601,6 +786,18 @@ async function fetchJson(url) {
   const response = await fetch(url, { headers: { accept: "application/json" } });
   if (!response.ok) {
     throw new Error(`Market API failed (${response.status})`);
+  }
+  return response.json();
+}
+
+async function fetchMarketJson(url) {
+  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
+  const requestUrl = proxyBase ? `${proxyBase}/market?url=${encodeURIComponent(url)}` : url;
+  const response = await fetch(requestUrl, { headers: { accept: "application/json" } });
+  if (!response.ok) {
+    const error = new Error(`Market API failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -661,6 +858,10 @@ async function requestXrplCommand(networkKey, command) {
         if (payload?.id !== 1) return;
         clearTimeout(timeoutId);
         ws.close();
+        if (payload.status === "error" || payload.error) {
+          reject(new Error(payload.error_message || payload.error || "XRPL metric request failed."));
+          return;
+        }
         resolve(payload.result || {});
       } catch {
         // ignore malformed events
@@ -674,6 +875,23 @@ async function requestXrplCommand(networkKey, command) {
   });
 }
 
+function ledgerTransactionCount(ledgerResult = {}) {
+  const transactions = ledgerResult?.ledger?.transactions;
+  if (Array.isArray(transactions)) return transactions.length;
+  const count = Number(ledgerResult?.ledger?.txn_count ?? ledgerResult?.ledger?.transaction_count);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function ledgerCloseTime(ledgerResult = {}) {
+  const closeTime = Number(ledgerResult?.ledger?.close_time || 0);
+  return Number.isFinite(closeTime) ? closeTime : 0;
+}
+
+function formatLiveTps(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${value.toFixed(value >= 10 ? 1 : 2)} tx/s`;
+}
+
 async function fetchXrplNetworkMetrics() {
   const walletState = getWalletState();
   const networkKey = walletState.network || DEFAULT_NETWORK;
@@ -682,9 +900,37 @@ async function fetchXrplNetworkMetrics() {
     requestXrplCommand(networkKey, { command: "fee" })
   ]);
 
+  const ledgerIndex = Number(serverInfoResult?.info?.validated_ledger?.seq || 0);
+  let tps = "n/a";
+  if (ledgerIndex > 1) {
+    try {
+      const [latestLedger, previousLedger] = await Promise.all([
+        requestXrplCommand(networkKey, {
+          command: "ledger",
+          ledger_index: ledgerIndex,
+          transactions: true,
+          expand: false
+        }),
+        requestXrplCommand(networkKey, {
+          command: "ledger",
+          ledger_index: ledgerIndex - 1,
+          transactions: false,
+          expand: false
+        })
+      ]);
+      const txCount = ledgerTransactionCount(latestLedger);
+      const latestClose = ledgerCloseTime(latestLedger);
+      const previousClose = ledgerCloseTime(previousLedger);
+      const seconds = latestClose > previousClose ? latestClose - previousClose : 3.8;
+      tps = formatLiveTps(txCount / seconds);
+    } catch {
+      tps = "n/a";
+    }
+  }
+
   return {
-    ledgerIndex: Number(serverInfoResult?.info?.validated_ledger?.seq || 0),
-    tps: "n/a",
+    ledgerIndex,
+    tps,
     feeDrops: String(feeResult?.drops?.open_ledger_fee || feeResult?.drops?.minimum_fee || "n/a")
   };
 }
@@ -743,6 +989,75 @@ function drawMarketChart(points) {
   ctx.fill(fill);
 }
 
+function setSourceChip(el, label, status = "Loading") {
+  if (!el) return;
+  const normalized = String(status || "Loading");
+  el.textContent = `${label}: ${normalized}`;
+  el.classList.toggle("is-live", normalized === "Live");
+  el.classList.toggle("is-cached", normalized === "Cached" || normalized === "On demand");
+  el.classList.toggle("is-warning", normalized === "Degraded" || normalized === "Loading");
+}
+
+function renderMarketSourceStatus(snapshot, fallbackStatus = "Loading") {
+  const updatedAt = snapshot?.fetchedAt || state.marketCache.fetchedAt || 0;
+  if (refs.marketLastUpdated) {
+    refs.marketLastUpdated.textContent = updatedAt
+      ? `Updated: ${new Date(updatedAt).toLocaleTimeString()}`
+      : "Updated: -";
+  }
+
+  const sources = snapshot?.sources || {};
+  setSourceChip(refs.marketSourceCoinGecko, "CoinGecko", sources.coingecko || fallbackStatus);
+  setSourceChip(refs.marketSourceXrpl, "XRPL WS", sources.xrpl || fallbackStatus);
+  setSourceChip(refs.marketSourceXrplTo, "XRPL.to", sources.xrplTo || "On demand");
+}
+
+function syncXrplToSourceStatus(status = "Cached") {
+  if (!state.marketCache.snapshot) {
+    setSourceChip(refs.marketSourceXrplTo, "XRPL.to", status);
+    return;
+  }
+  state.marketCache.snapshot = {
+    ...state.marketCache.snapshot,
+    sources: {
+      ...state.marketCache.snapshot.sources,
+      xrplTo: status
+    }
+  };
+  renderMarketSourceStatus(state.marketCache.snapshot);
+}
+
+function renderMarketSnapshot(snapshot) {
+  if (!snapshot) return;
+  if (Array.isArray(snapshot.points) && snapshot.points.length) {
+    drawMarketChart(snapshot.points);
+  }
+
+  const price = toFiniteNumber(snapshot.price, Number.NaN);
+  const volume = toFiniteNumber(snapshot.volume, Number.NaN);
+  const marketCap = toFiniteNumber(snapshot.marketCap, Number.NaN);
+  const changePercent = toFiniteNumber(snapshot.changePercent, Number.NaN);
+  const feeDrops = snapshot.feeDrops || "n/a";
+  const changePrefix = changePercent >= 0 ? "+" : "";
+  const changeText = Number.isFinite(changePercent) ? `${changePrefix}${changePercent.toFixed(2)}%` : "n/a";
+
+  if (refs.marketPrice) refs.marketPrice.textContent = Number.isFinite(price) ? `$${price.toFixed(4)}` : "n/a";
+  if (refs.marketVolume) refs.marketVolume.textContent = Number.isFinite(volume) ? `$${Math.round(volume).toLocaleString()}` : "n/a";
+  if (refs.marketCap) refs.marketCap.textContent = Number.isFinite(marketCap) ? `$${Math.round(marketCap).toLocaleString()}` : "n/a";
+  if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = snapshot.ledgerIndex ? snapshot.ledgerIndex.toLocaleString() : "n/a";
+  if (refs.marketTps) refs.marketTps.textContent = snapshot.tps || "n/a";
+  if (refs.marketFee) refs.marketFee.textContent = feeDrops === "n/a" ? "n/a" : `${feeDrops} drops`;
+  if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = Number.isFinite(price) ? `$${price.toFixed(4)}` : "n/a";
+  if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = changeText;
+  if (refs.xrpNavPrice) {
+    refs.xrpNavPrice.textContent = Number.isFinite(price) ? `$${price.toFixed(4)} ${changeText}` : "n/a";
+    refs.xrpNavPrice.style.color = !Number.isFinite(changePercent)
+      ? "var(--ink-2)"
+      : changePercent >= 0 ? "var(--emerald)" : "var(--danger)";
+  }
+  renderMarketSourceStatus(snapshot);
+}
+
 async function renderMarketOverview(forceRefresh = false) {
   try {
     const cacheKey = state.chartTimeframe;
@@ -756,50 +1071,55 @@ async function renderMarketOverview(forceRefresh = false) {
       const [overview, points, networkMetrics] = await Promise.all([
         fetchXrpOverview(),
         fetchXrpChartPoints(state.chartTimeframe),
-        fetchXrplNetworkMetrics().catch(() => ({ ledgerIndex: 0, tps: "n/a", feeDrops: "n/a" }))
+        fetchXrplNetworkMetrics()
+          .then((metrics) => ({ ...metrics, sourceOk: true }))
+          .catch(() => ({ ledgerIndex: 0, tps: "n/a", feeDrops: "n/a", sourceOk: false }))
       ]);
+      const fetchedAt = Date.now();
 
       snapshot = {
         ...overview,
         ...networkMetrics,
-        points
+        points,
+        fetchedAt,
+        sources: {
+          coingecko: "Live",
+          xrpl: networkMetrics.sourceOk ? "Live" : "Degraded",
+          xrplTo: state.topIssuedAssets.items.length || state.topAmmPools.items.length ? "Cached" : "On demand"
+        }
       };
       state.marketCache = {
         key: cacheKey,
-        fetchedAt: Date.now(),
+        fetchedAt,
         snapshot
       };
     }
 
     if (!snapshot) return;
-    drawMarketChart(snapshot.points);
-
-    const changePrefix = snapshot.changePercent >= 0 ? "+" : "";
-    const changeText = `${changePrefix}${snapshot.changePercent.toFixed(2)}%`;
-
-    if (refs.marketPrice) refs.marketPrice.textContent = `$${snapshot.price.toFixed(4)}`;
-    if (refs.marketVolume) refs.marketVolume.textContent = `$${Math.round(snapshot.volume).toLocaleString()}`;
-    if (refs.marketCap) refs.marketCap.textContent = `$${Math.round(snapshot.marketCap).toLocaleString()}`;
-    if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = snapshot.ledgerIndex ? snapshot.ledgerIndex.toLocaleString() : "n/a";
-    if (refs.marketTps) refs.marketTps.textContent = snapshot.tps;
-    if (refs.marketFee) refs.marketFee.textContent = snapshot.feeDrops === "n/a" ? "n/a" : `${snapshot.feeDrops} drops`;
-    if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = `$${snapshot.price.toFixed(4)}`;
-    if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = changeText;
-    if (refs.xrpNavPrice) {
-      const sign = snapshot.changePercent >= 0 ? "+" : "";
-      refs.xrpNavPrice.textContent = `$${snapshot.price.toFixed(4)} ${sign}${snapshot.changePercent.toFixed(2)}%`;
-      refs.xrpNavPrice.style.color = snapshot.changePercent >= 0 ? "var(--emerald)" : "var(--danger)";
-    }
+    renderMarketSnapshot(snapshot);
   } catch {
-    if (refs.marketPrice) refs.marketPrice.textContent = "Unavailable";
-    if (refs.marketVolume) refs.marketVolume.textContent = "Unavailable";
-    if (refs.marketCap) refs.marketCap.textContent = "Unavailable";
-    if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = "Unavailable";
-    if (refs.marketTps) refs.marketTps.textContent = "Unavailable";
-    if (refs.marketFee) refs.marketFee.textContent = "Unavailable";
-    if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = "Unavailable";
-    if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = "Unavailable";
-    if (refs.xrpNavPrice) refs.xrpNavPrice.textContent = "—";
+    if (state.marketCache.snapshot) {
+      state.marketCache.snapshot = {
+        ...state.marketCache.snapshot,
+        sources: {
+          ...state.marketCache.snapshot.sources,
+          coingecko: "Cached",
+          xrpl: state.marketCache.snapshot.sources?.xrpl || "Cached"
+        }
+      };
+      renderMarketSnapshot(state.marketCache.snapshot);
+      return;
+    }
+    if (refs.marketPrice) refs.marketPrice.textContent = "Loading...";
+    if (refs.marketVolume) refs.marketVolume.textContent = "Loading...";
+    if (refs.marketCap) refs.marketCap.textContent = "Loading...";
+    if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = "Loading...";
+    if (refs.marketTps) refs.marketTps.textContent = "Loading...";
+    if (refs.marketFee) refs.marketFee.textContent = "Loading...";
+    if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = "Loading...";
+    if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = "Loading...";
+    if (refs.xrpNavPrice) refs.xrpNavPrice.textContent = "-";
+    renderMarketSourceStatus(null, "Loading");
   }
 }
 
@@ -875,6 +1195,10 @@ function renderCommandCenterAuth() {
 
   if (refs.openSignGateButton) refs.openSignGateButton.disabled = !canSign;
   if (refs.sendButton) refs.sendButton.disabled = !canSign;
+  if (refs.commandXummModeHint) refs.commandXummModeHint.textContent = xummSignInGuidance();
+  if (refs.commandXummSignInButton && !refs.commandXummSignInButton.disabled) {
+    refs.commandXummSignInButton.textContent = xummSignInButtonLabel();
+  }
 
   const sidebarButtons = refs.sidebarPanel ? Array.from(refs.sidebarPanel.querySelectorAll(".sidebar-btn")) : [];
   const gatedButtons = [...refs.topLinks, ...refs.bottomLinks, ...sidebarButtons];
@@ -1440,18 +1764,27 @@ function renderTokenHoldings(walletState) {
 
 function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
   const symbol = decodeCurrencyCode(token.name || token.currency || "");
+  const issuer = token.issuer || "";
+  const currency = decodeCurrencyCode(token.currency || symbol);
+  const id = token.slug || watchKey([issuer, token.currency || currency]);
   return {
     rank: index + 1,
     symbol,
-    currency: decodeCurrencyCode(token.currency || symbol),
-    issuer: token.issuer || "",
+    currency,
+    rawCurrency: token.currency || currency,
+    issuer,
+    id,
     priceUsd: toFiniteNumber(token.usd, Number.NaN),
     change24h: toFiniteNumber(token.pro24h ?? token.p24h, Number.NaN),
     marketCap: toFiniteNumber(token.marketcap, Number.NaN),
     holders: toFiniteNumber(token.holders, Number.NaN),
     trustlines: toFiniteNumber(token.trustlines, Number.NaN),
     volume24h: toFiniteNumber(token.vol24hxrp ?? token.vol24h, Number.NaN),
+    holderConcentration: toFiniteNumber(token.top10 ?? token.top20 ?? token.top50, Number.NaN),
+    lowLiquidity: Boolean(token.lowLiquidity),
+    freezeFlag: Boolean(token.globalFreeze || token.freeze || token.frozen || token.canFreeze),
     verified: Boolean(token.verified || token.kyc),
+    logoUrl: tokenLogoUrl(token),
     slug: token.slug || "",
     updatedAt: token.lastUpdated || token.updatedAt || ""
   };
@@ -1477,6 +1810,126 @@ function setCachedTopIssuedAssets(items) {
   } catch {
     // Cache is optional.
   }
+}
+
+function watchKey(parts = []) {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(":");
+}
+
+function getStoredWatchlist(key) {
+  try {
+    const values = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(values) ? values.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function storeWatchlist(key, set) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
+  } catch {
+    // Local persistence is optional.
+  }
+}
+
+function toggleWatchlist(type, id) {
+  if (!id) return;
+  const set = type === "amm" ? state.ammWatchlist : state.tokenWatchlist;
+  const storageKey = type === "amm" ? STORAGE_KEYS.ammWatchlist : STORAGE_KEYS.tokenWatchlist;
+  if (set.has(id)) {
+    set.delete(id);
+  } else {
+    set.add(id);
+  }
+  storeWatchlist(storageKey, set);
+  if (type === "amm") {
+    renderTopAmmPools();
+  } else {
+    renderTopIssuedTokens();
+  }
+}
+
+function watchButtonMarkup(type, id, isWatched) {
+  const attr = type === "amm" ? "data-watch-amm" : "data-watch-token";
+  return `<button class="ghost table-link watch-toggle ${isWatched ? "is-watched" : ""}" type="button" ${attr}="${escapeHtml(id)}">${isWatched ? "Watching" : "Watch"}</button>`;
+}
+
+function riskBadgeMarkup(level, reasons = []) {
+  const normalized = String(level || "Tracked");
+  const className = normalized === "Lower Risk" ? "verified"
+    : normalized === "High Risk" ? "danger"
+      : normalized === "Medium Risk" ? "warning"
+        : "";
+  const title = reasons.length ? ` title="${escapeHtml(reasons.join(" | "))}"` : "";
+  const detail = reasons.length
+    ? `<span class="market-risk-reasons">${escapeHtml(reasons.slice(0, 2).join(" • "))}</span>`
+    : "";
+  return `<span class="market-token-badge ${className}"${title}>${escapeHtml(normalized)}</span>${detail}`;
+}
+
+function scoreIssuedAssetRisk(token = {}) {
+  const reasons = [];
+  let score = 0;
+  if (!token.verified) {
+    score += 2;
+    reasons.push("Unverified issuer");
+  } else {
+    reasons.push("Verified issuer");
+  }
+  if (Number.isFinite(token.trustlines) && token.trustlines < 250) {
+    score += 1;
+    reasons.push("Low trust line count");
+  }
+  if (Number.isFinite(token.holders) && token.holders < 150) {
+    score += 1;
+    reasons.push("Low holder count");
+  }
+  if (Number.isFinite(token.volume24h) && token.volume24h < 1000) {
+    score += 1;
+    reasons.push("Thin 24h volume");
+  }
+  if (Number.isFinite(token.holderConcentration) && token.holderConcentration >= 80) {
+    score += 2;
+    reasons.push("High holder concentration");
+  }
+  if (token.lowLiquidity) {
+    score += 2;
+    reasons.push("Low liquidity flag");
+  }
+  if (token.freezeFlag) {
+    score += 2;
+    reasons.push("Issuer freeze flag");
+  }
+  const level = score >= 4 ? "High Risk" : score >= 2 ? "Medium Risk" : "Lower Risk";
+  return { level, score, reasons };
+}
+
+function scoreAmmPoolRisk(pool = {}) {
+  const reasons = [];
+  let score = 0;
+  if (!pool.verified) {
+    score += 1;
+    reasons.push("Unverified paired asset");
+  }
+  if (pool.lowLiquidity || (Number.isFinite(pool.tvl) && pool.tvl < 50000)) {
+    score += 2;
+    reasons.push("Low TVL/liquidity");
+  }
+  if (Number.isFinite(pool.volume24hAmm) && pool.volume24hAmm < 1000) {
+    score += 1;
+    reasons.push("Thin AMM volume");
+  }
+  if (Number.isFinite(pool.lpHolders) && pool.lpHolders < 50) {
+    score += 1;
+    reasons.push("Few LP holders");
+  }
+  if (Number.isFinite(pool.lpBurnedPercent) && pool.lpBurnedPercent > 40) {
+    score += 1;
+    reasons.push("Large LP burn concentration");
+  }
+  const level = score >= 4 ? "High Risk" : score >= 2 ? "Medium Risk" : "Lower Risk";
+  return { level, score, reasons };
 }
 
 function renderTopIssuedTokens() {
@@ -1519,15 +1972,23 @@ function renderTopIssuedTokens() {
       )
     : items;
 
-  const rows = filteredItems.slice(0, 50).map((token) => {
+  const visibleItems = filteredItems.slice(0, state.topIssuedVisibleCount);
+  const rows = visibleItems.map((token) => {
     const changeClass = Number.isFinite(token.change24h) && token.change24h >= 0 ? "positive" : "negative";
     const sourceUrl = token.slug ? `https://xrpl.to/token/${encodeURIComponent(token.slug)}` : "";
+    const risk = scoreIssuedAssetRisk(token);
+    const watched = state.tokenWatchlist.has(token.id);
     return `
       <tr>
         <td class="rank-cell">${token.rank}</td>
         <td>
-          <strong>${escapeHtml(token.symbol)}</strong>
-          <span>${escapeHtml(formatAddress(token.issuer))}</span>
+          <div class="market-token-identity">
+            ${tokenLogoMarkup(token, token.symbol)}
+            <div>
+              <strong>${escapeHtml(token.symbol)}</strong>
+              <span>${escapeHtml(formatAddress(token.issuer))}</span>
+            </div>
+          </div>
         </td>
         <td>${formatUsd(token.priceUsd)}</td>
         <td class="${changeClass}">${formatPercent(token.change24h)}</td>
@@ -1536,6 +1997,8 @@ function renderTopIssuedTokens() {
         <td>${formatCompactNumber(token.trustlines, 1)}</td>
         <td>${formatCompactNumber(token.volume24h, 1)} XRP</td>
         <td>${token.verified ? '<span class="market-token-badge verified">Verified</span>' : '<span class="market-token-badge">Unverified</span>'}</td>
+        <td>${riskBadgeMarkup(risk.level, risk.reasons)}</td>
+        <td>${watchButtonMarkup("token", token.id, watched)}</td>
         <td>${sourceUrl ? `<a class="ghost table-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer">View</a>` : "-"}</td>
       </tr>
     `;
@@ -1543,7 +2006,7 @@ function renderTopIssuedTokens() {
 
   refs.topIssuedTokensPanel.innerHTML = `
     <div class="market-token-summary">
-      <div><span>Showing</span><strong>${filteredItems.length}/${items.length}</strong></div>
+      <div><span>Showing</span><strong>${visibleItems.length}/${filteredItems.length}</strong></div>
       <div><span>Combined Market Cap</span><strong>${formatUsd(totalMarketCap)}</strong></div>
       <div><span>Holder Count</span><strong>${formatCompactNumber(totalHolders, 1)}</strong></div>
       <div><span>Updated</span><strong>${updatedLabel}</strong></div>
@@ -1553,7 +2016,7 @@ function renderTopIssuedTokens() {
       <input id="topIssuedTokenFilter" type="search" placeholder="Search symbol or issuer..." value="${escapeHtml(state.topIssuedFilter)}" autocomplete="off" />
     </label>
     ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
-    <div class="issued-token-table-wrap" role="region" aria-label="Top 50 issued XRPL assets" tabindex="0">
+    <div class="issued-token-table-wrap" role="region" aria-label="XRPL issued assets" tabindex="0">
       <table class="issued-token-table">
         <thead>
           <tr>
@@ -1566,23 +2029,43 @@ function renderTopIssuedTokens() {
             <th>Trust Lines</th>
             <th>Volume</th>
             <th>Status</th>
+            <th>Risk</th>
+            <th>Watch</th>
             <th>Link</th>
           </tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="10" class="empty-table-cell">No issued assets match this filter.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="12" class="empty-table-cell">No issued assets match this filter.</td></tr>`}</tbody>
       </table>
+    </div>
+    <div class="market-load-row">
+      <span>${items.length} assets loaded from the market feed. ${state.tokenWatchlist.size} watched.</span>
+      ${visibleItems.length < filteredItems.length
+        ? `<button id="loadMoreTopIssuedTokensButton" class="ghost" type="button">Load ${Math.min(MARKET_VISIBLE_STEP, filteredItems.length - visibleItems.length)} more</button>`
+        : '<span class="market-load-complete">All matching assets shown</span>'}
     </div>
   `;
 
   const filterInput = refs.topIssuedTokensPanel.querySelector("#topIssuedTokenFilter");
   filterInput?.addEventListener("input", (event) => {
     state.topIssuedFilter = event.target.value || "";
+    state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
     renderTopIssuedTokens();
+  });
+
+  const loadMoreButton = refs.topIssuedTokensPanel.querySelector("#loadMoreTopIssuedTokensButton");
+  loadMoreButton?.addEventListener("click", () => {
+    state.topIssuedVisibleCount = Math.min(state.topIssuedVisibleCount + MARKET_VISIBLE_STEP, filteredItems.length);
+    renderTopIssuedTokens();
+  });
+
+  refs.topIssuedTokensPanel.querySelectorAll("[data-watch-token]").forEach((button) => {
+    button.addEventListener("click", () => toggleWatchlist("token", button.dataset.watchToken || ""));
   });
 }
 
 async function loadTopIssuedAssets(forceRefresh = false) {
   if (!refs.topIssuedTokensPanel || state.topIssuedAssets.loading) return;
+  if (forceRefresh) state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
 
   if (!forceRefresh && state.topIssuedAssets.items.length) {
     renderTopIssuedTokens();
@@ -1606,15 +2089,9 @@ async function loadTopIssuedAssets(forceRefresh = false) {
   renderTopIssuedTokens();
 
   try {
-    const response = await fetch(TOP_ISSUED_ASSETS_URL, { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(response.status === 429
-        ? "Market API rate limit reached. Try refresh again in a moment."
-        : "Could not load issued asset market data.");
-    }
-    const data = await response.json();
+    const data = await fetchMarketJson(TOP_ISSUED_ASSETS_URL);
     const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-    const items = tokens.slice(0, 50).map(normalizeIssuedAssetMarketToken);
+    const items = tokens.slice(0, MARKET_RESULT_LIMIT).map(normalizeIssuedAssetMarketToken);
     state.topIssuedAssets = {
       fetchedAt: Date.now(),
       items,
@@ -1622,17 +2099,300 @@ async function loadTopIssuedAssets(forceRefresh = false) {
       error: ""
     };
     setCachedTopIssuedAssets(items);
+    syncXrplToSourceStatus("Cached");
   } catch (error) {
     const cachedFallback = getCachedTopIssuedAssets();
     state.topIssuedAssets = {
       fetchedAt: cachedFallback?.fetchedAt || 0,
       items: cachedFallback?.items || state.topIssuedAssets.items || [],
       loading: false,
-      error: error instanceof Error ? error.message : "Could not load issued asset market data."
+      error: error?.status === 429
+        ? "Market API rate limit reached. Showing cached data when available."
+        : error instanceof Error ? error.message : "Could not load issued asset market data."
     };
+    if (cachedFallback?.items?.length || state.topIssuedAssets.items.length) {
+      syncXrplToSourceStatus("Cached");
+    } else {
+      syncXrplToSourceStatus("Degraded");
+    }
   }
 
   renderTopIssuedTokens();
+  renderDex();
+}
+
+function normalizeAmmPoolMarketToken(token = {}, index = 0) {
+  const symbol = decodeCurrencyCode(token.name || token.currency || "");
+  const issuer = token.issuer || "";
+  const currency = decodeCurrencyCode(token.currency || symbol);
+  const id = token.AMM || token.slug || watchKey([issuer, token.currency || currency, "amm"]);
+  return {
+    rank: index + 1,
+    symbol,
+    currency,
+    issuer,
+    id,
+    ammAccount: token.AMM || "",
+    tvl: toFiniteNumber(token.tvl, Number.NaN),
+    volume24hAmm: toFiniteNumber(token.vol24hxrpAMM ?? token.vol24hAMM, Number.NaN),
+    tradingFee: toFiniteNumber(token.tradingFee, Number.NaN),
+    lpHolders: toFiniteNumber(token.lpHolderCount, Number.NaN),
+    lpBurnedPercent: toFiniteNumber(token.lpBurnedPercent, Number.NaN),
+    holders: toFiniteNumber(token.holders, Number.NaN),
+    trustlines: toFiniteNumber(token.trustlines, Number.NaN),
+    lowLiquidity: Boolean(token.lowLiquidity),
+    verified: Boolean(token.verified || token.kyc),
+    logoUrl: tokenLogoUrl(token),
+    slug: token.slug || ""
+  };
+}
+
+function getCachedTopAmmPools() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(TOP_AMM_POOLS_CACHE_KEY) || "null");
+    if (!cached?.items?.length || !cached.fetchedAt) return null;
+    if (Date.now() - cached.fetchedAt > TOP_AMM_POOLS_CACHE_MS) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedTopAmmPools(items) {
+  try {
+    localStorage.setItem(TOP_AMM_POOLS_CACHE_KEY, JSON.stringify({
+      fetchedAt: Date.now(),
+      items
+    }));
+  } catch {
+    // Cache is optional.
+  }
+}
+
+function renderTopAmmPools() {
+  if (!refs.topAmmPoolsPanel) return;
+  const { items, loading, error, fetchedAt } = state.topAmmPools;
+  if (refs.refreshTopAmmPoolsButton) {
+    refs.refreshTopAmmPoolsButton.disabled = loading;
+    refs.refreshTopAmmPoolsButton.textContent = loading ? "Loading..." : "Refresh";
+  }
+
+  if (!items.length && loading) {
+    refs.topAmmPoolsPanel.innerHTML = `
+      <div class="market-token-empty">
+        <strong>Loading top AMM / LP pools...</strong>
+        <p class="muted">Fetching TVL, AMM volume, trading fee, LP holder, and trust line data.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!items.length) {
+    refs.topAmmPoolsPanel.innerHTML = `
+      <div class="market-token-empty">
+        <strong>${error ? "Top AMM / LP pools unavailable" : "Top AMM / LP pools loading soon"}</strong>
+        <p class="muted">${error ? escapeHtml(error) : "Live XRPL AMM pool data will appear here."}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const query = state.topAmmFilter.trim().toLowerCase();
+  const filteredItems = query
+    ? items.filter((pool) =>
+        pool.symbol.toLowerCase().includes(query)
+        || pool.currency.toLowerCase().includes(query)
+        || pool.issuer.toLowerCase().includes(query)
+        || pool.ammAccount.toLowerCase().includes(query)
+      )
+    : items;
+
+  const totalTvl = items.reduce((sum, pool) => sum + (Number.isFinite(pool.tvl) ? pool.tvl : 0), 0);
+  const totalAmmVolume = items.reduce((sum, pool) => sum + (Number.isFinite(pool.volume24hAmm) ? pool.volume24hAmm : 0), 0);
+  const totalLpHolders = items.reduce((sum, pool) => sum + (Number.isFinite(pool.lpHolders) ? pool.lpHolders : 0), 0);
+  const updatedLabel = fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "cached";
+
+  const visibleItems = filteredItems.slice(0, state.topAmmVisibleCount);
+  const rows = visibleItems.map((pool) => {
+    const sourceUrl = pool.slug ? `https://xrpl.to/token/${encodeURIComponent(pool.slug)}` : "";
+    const ammUrl = pool.ammAccount ? `https://xrpscan.com/account/${encodeURIComponent(pool.ammAccount)}` : "";
+    const risk = scoreAmmPoolRisk(pool);
+    const watched = state.ammWatchlist.has(pool.id);
+    const status = pool.lowLiquidity
+      ? '<span class="market-token-badge warning">Low Liquidity</span>'
+      : pool.verified
+        ? '<span class="market-token-badge verified">Verified</span>'
+        : '<span class="market-token-badge">Tracked</span>';
+    return `
+      <tr>
+        <td class="rank-cell">${pool.rank}</td>
+        <td>
+          <div class="market-token-identity">
+            ${tokenLogoMarkup(pool, pool.symbol)}
+            <div>
+              <strong>${escapeHtml(pool.symbol)} / XRP</strong>
+              <span>Issuer ${escapeHtml(formatAddress(pool.issuer))}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <strong>${escapeHtml(formatAddress(pool.ammAccount))}</strong>
+          <span>AMM account</span>
+        </td>
+        <td>${formatUsd(pool.tvl)}</td>
+        <td>${formatCompactNumber(pool.volume24hAmm, 1)} XRP</td>
+        <td>${formatAmmFee(pool.tradingFee)}</td>
+        <td>${formatCompactNumber(pool.lpHolders, 1)}</td>
+        <td>${formatUnsignedPercent(pool.lpBurnedPercent)}</td>
+        <td>${formatCompactNumber(pool.holders, 1)}</td>
+        <td>${formatCompactNumber(pool.trustlines, 1)}</td>
+        <td>${status}</td>
+        <td>${riskBadgeMarkup(risk.level, risk.reasons)}</td>
+        <td>${watchButtonMarkup("amm", pool.id, watched)}</td>
+        <td>
+          <div class="table-link-stack">
+            ${sourceUrl ? `<a class="ghost table-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer">Token</a>` : ""}
+            ${ammUrl ? `<a class="ghost table-link" href="${ammUrl}" target="_blank" rel="noopener noreferrer">Pool</a>` : ""}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  refs.topAmmPoolsPanel.innerHTML = `
+    <div class="market-token-summary amm-market-summary">
+      <div><span>Showing</span><strong>${visibleItems.length}/${filteredItems.length}</strong></div>
+      <div><span>Combined TVL</span><strong>${formatUsd(totalTvl)}</strong></div>
+      <div><span>24h AMM Volume</span><strong>${formatCompactNumber(totalAmmVolume, 1)} XRP</strong></div>
+      <div><span>LP Holders</span><strong>${formatCompactNumber(totalLpHolders, 1)}</strong></div>
+      <div><span>Updated</span><strong>${updatedLabel}</strong></div>
+    </div>
+    <label class="market-token-filter">
+      <span>Filter pools</span>
+      <input id="topAmmPoolFilter" type="search" placeholder="Search pair, issuer, or AMM account..." value="${escapeHtml(state.topAmmFilter)}" autocomplete="off" />
+    </label>
+    ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
+    <div class="issued-token-table-wrap amm-pool-table-wrap" role="region" aria-label="XRPL AMM and LP pools" tabindex="0">
+      <table class="issued-token-table amm-pool-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Pool Pair</th>
+            <th>AMM Account</th>
+            <th>TVL</th>
+            <th>24h AMM Volume</th>
+            <th>Fee</th>
+            <th>LP Holders</th>
+            <th>LP Burned</th>
+            <th>Holders</th>
+            <th>Trust Lines</th>
+            <th>Status</th>
+            <th>Risk</th>
+            <th>Watch</th>
+            <th>Links</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="14" class="empty-table-cell">No AMM pools match this filter.</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div class="market-load-row">
+      <span>${items.length} AMM / LP pools loaded from the market feed. ${state.ammWatchlist.size} watched.</span>
+      ${visibleItems.length < filteredItems.length
+        ? `<button id="loadMoreTopAmmPoolsButton" class="ghost" type="button">Load ${Math.min(MARKET_VISIBLE_STEP, filteredItems.length - visibleItems.length)} more</button>`
+        : '<span class="market-load-complete">All matching pools shown</span>'}
+    </div>
+  `;
+
+  const filterInput = refs.topAmmPoolsPanel.querySelector("#topAmmPoolFilter");
+  filterInput?.addEventListener("input", (event) => {
+    state.topAmmFilter = event.target.value || "";
+    state.topAmmVisibleCount = MARKET_VISIBLE_STEP;
+    renderTopAmmPools();
+  });
+
+  const loadMoreButton = refs.topAmmPoolsPanel.querySelector("#loadMoreTopAmmPoolsButton");
+  loadMoreButton?.addEventListener("click", () => {
+    state.topAmmVisibleCount = Math.min(state.topAmmVisibleCount + MARKET_VISIBLE_STEP, filteredItems.length);
+    renderTopAmmPools();
+  });
+
+  refs.topAmmPoolsPanel.querySelectorAll("[data-watch-amm]").forEach((button) => {
+    button.addEventListener("click", () => toggleWatchlist("amm", button.dataset.watchAmm || ""));
+  });
+}
+
+async function loadTopAmmPools(forceRefresh = false) {
+  if (!refs.topAmmPoolsPanel || state.topAmmPools.loading) return;
+  if (forceRefresh) state.topAmmVisibleCount = MARKET_VISIBLE_STEP;
+
+  if (!forceRefresh && state.topAmmPools.items.length) {
+    renderTopAmmPools();
+    return;
+  }
+
+  const backoffUntil = state.topAmmPools.backoffUntil || 0;
+  const cached = !forceRefresh ? getCachedTopAmmPools() : null;
+  if (cached) {
+    state.topAmmPools = {
+      fetchedAt: cached.fetchedAt,
+      items: cached.items,
+      loading: false,
+      error: "",
+      backoffUntil
+    };
+    renderTopAmmPools();
+    return;
+  }
+
+  if (backoffUntil > Date.now()) {
+    const seconds = Math.ceil((backoffUntil - Date.now()) / 1000);
+    state.topAmmPools.error = `AMM market API rate limit reached. Retry in about ${seconds} seconds.`;
+    renderTopAmmPools();
+    return;
+  }
+
+  state.topAmmPools.loading = true;
+  state.topAmmPools.error = "";
+  renderTopAmmPools();
+
+  try {
+    const data = await fetchMarketJson(TOP_AMM_POOLS_URL);
+    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+    const items = tokens
+      .filter((token) => token.AMM || Number.parseFloat(token.tvl || "0") > 0)
+      .slice(0, MARKET_RESULT_LIMIT)
+      .map(normalizeAmmPoolMarketToken);
+    state.topAmmPools = {
+      fetchedAt: Date.now(),
+      items,
+      loading: false,
+      error: "",
+      backoffUntil: 0
+    };
+    setCachedTopAmmPools(items);
+    syncXrplToSourceStatus("Cached");
+  } catch (error) {
+    const cachedFallback = getCachedTopAmmPools();
+    if (error?.status === 429) {
+      state.topAmmPools.backoffUntil = Date.now() + TOP_AMM_POOLS_BACKOFF_MS;
+    }
+    state.topAmmPools = {
+      fetchedAt: cachedFallback?.fetchedAt || 0,
+      items: cachedFallback?.items || state.topAmmPools.items || [],
+      loading: false,
+      error: error?.status === 429
+        ? "AMM market API rate limit reached. Showing cached data when available."
+        : error instanceof Error ? error.message : "Could not load AMM / LP pool market data.",
+      backoffUntil: state.topAmmPools.backoffUntil || backoffUntil
+    };
+    if (cachedFallback?.items?.length || state.topAmmPools.items.length) {
+      syncXrplToSourceStatus("Cached");
+    } else {
+      syncXrplToSourceStatus("Degraded");
+    }
+  }
+
+  renderTopAmmPools();
 }
 
 function renderIssuedTokens(walletState) {
@@ -2150,6 +2910,7 @@ function renderAll() {
   renderIssuedTokens(walletState);
   renderNfts(walletState);
   renderAmm(walletState);
+  renderTopAmmPools();
   renderValueMix(walletState);
   renderTxHistory(walletState);
   renderTxPreview(walletState);
@@ -2364,16 +3125,21 @@ function onCopyAddress() {
 }
 
 async function connectWithXumm() {
-  setFeedback("Opening Xumm sign in...");
-  setCommandAuthStatus("Opening Xumm sign in. Approve the request in Xaman to continue.");
+  const mobile = isLikelyMobileDevice();
+  setFeedback(mobile ? "Opening Xumm/Xaman on this device..." : "Opening Xumm sign in...");
+  setCommandAuthStatus(mobile
+    ? "Opening Xumm/Xaman. Approve the sign-in request, then return to IkeLedger."
+    : "Opening Xumm sign in. Approve the request in Xaman to continue.");
   logSecurityEvent("xumm_signin_started", RISK_LEVELS.LOW, { context: "connect_wallet_button" });
   if (refs.connectXamanButton) refs.connectXamanButton.disabled = true;
   if (refs.commandXummSignInButton) refs.commandXummSignInButton.disabled = true;
 
   try {
-    if (refs.commandXummSignInButton) refs.commandXummSignInButton.textContent = "Waiting for Xumm...";
+    if (refs.commandXummSignInButton) refs.commandXummSignInButton.textContent = mobile ? "Opening Xumm..." : "Waiting for Xumm...";
     const xumm = await initXumm(getXamanApiKey());
-    setCommandAuthStatus("Waiting for wallet approval in Xaman...");
+    setCommandAuthStatus(mobile
+      ? "Waiting for approval. If Xumm opened, complete the request there and come back here."
+      : "Waiting for wallet approval in Xaman...");
     const account = await signInWithXumm(xumm);
     setCommandAuthStatus("Xumm approved. Loading your XRPL account...");
     const verified = await verifyXummAccount(account);
@@ -2413,7 +3179,7 @@ async function connectWithXumm() {
     if (refs.connectXamanButton) refs.connectXamanButton.disabled = false;
     if (refs.commandXummSignInButton) {
       refs.commandXummSignInButton.disabled = false;
-      refs.commandXummSignInButton.textContent = "Sign In with Xumm";
+      refs.commandXummSignInButton.textContent = xummSignInButtonLabel();
     }
   }
 }
@@ -2660,6 +3426,36 @@ async function onTestSupabase() {
 
   const result = await testSupabaseConnection();
   setSupabaseStatus(result.message, !result.ok);
+}
+
+function setMarketProxyStatus(text, isError = false) {
+  if (!refs.marketProxyStatus) return;
+  refs.marketProxyStatus.textContent = text;
+  refs.marketProxyStatus.style.color = isError ? "#ffb9c3" : "#a9ffe6";
+}
+
+function onSaveMarketProxy() {
+  const value = refs.marketProxyUrlInput?.value.trim().replace(/\/$/, "") || "";
+  if (!value) {
+    localStorage.removeItem(STORAGE_KEYS.marketProxyBaseUrl);
+    setMarketProxyStatus("Direct public APIs enabled.");
+    return;
+  }
+
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/.test(url.protocol)) throw new Error("Use http or https.");
+    localStorage.setItem(STORAGE_KEYS.marketProxyBaseUrl, url.href.replace(/\/$/, ""));
+    setMarketProxyStatus("Market proxy saved. Refresh market tables to use it.");
+  } catch {
+    setMarketProxyStatus("Enter a valid proxy URL, for example http://127.0.0.1:8788", true);
+  }
+}
+
+function onClearMarketProxy() {
+  localStorage.removeItem(STORAGE_KEYS.marketProxyBaseUrl);
+  if (refs.marketProxyUrlInput) refs.marketProxyUrlInput.value = "";
+  setMarketProxyStatus("Direct public APIs enabled.");
 }
 
 // In-memory only — NEVER persisted to localStorage or any storage
@@ -2935,6 +3731,7 @@ function initEventHandlers() {
   bindClick(refs.commandEmailSignUpButton, () => { void onEmailProfileSignUp(); });
   bindClick(refs.commandEmailSignInButton, () => { void onEmailProfileSignIn(); });
   bindClick(refs.refreshTopIssuedTokensButton, () => { void loadTopIssuedAssets(true); });
+  bindClick(refs.refreshTopAmmPoolsButton, () => { void loadTopAmmPools(true); });
   bindClick(refs.toggleRawJsonButton, toggleRawJson);
 
   bindClick(refs.openSignGateButton, openSignGateModal);
@@ -3041,6 +3838,8 @@ function initEventHandlers() {
   bindClick(refs.adminLockButton, onLockAdmin);
   bindClick(refs.saveSupabaseButton, onSaveSupabase);
   bindClick(refs.testSupabaseButton, onTestSupabase);
+  bindClick(refs.saveMarketProxyButton, onSaveMarketProxy);
+  bindClick(refs.clearMarketProxyButton, onClearMarketProxy);
   refs.settingsDrawer?.addEventListener("click", (event) => {
     if (event.target === refs.settingsDrawer) closeSettingsDrawer();
   });
@@ -3148,6 +3947,8 @@ function boot() {
 
   state.adminMode = localStorage.getItem(STORAGE_KEYS.adminMode) === "true";
   state.appUser = getStoredAppUser();
+  state.tokenWatchlist = getStoredWatchlist(STORAGE_KEYS.tokenWatchlist);
+  state.ammWatchlist = getStoredWatchlist(STORAGE_KEYS.ammWatchlist);
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
   setActivePage("dashboard");
 
@@ -3155,6 +3956,7 @@ function boot() {
   if (refs.addressInput) refs.addressInput.value = walletState.publicAddress || "";
   if (refs.supabaseUrlInput) refs.supabaseUrlInput.value = supabaseConfig.url;
   if (refs.supabaseAnonKeyInput) refs.supabaseAnonKeyInput.value = supabaseConfig.anonKey;
+  if (refs.marketProxyUrlInput) refs.marketProxyUrlInput.value = localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "";
 
   setSupabaseStatus(
     hasSupabaseConfig()
@@ -3184,7 +3986,6 @@ function boot() {
     void renderMarketOverview(true);
   }, 15000);
   renderAll();
-  void loadTopIssuedAssets();
 }
 
 boot();

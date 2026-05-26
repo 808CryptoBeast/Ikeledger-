@@ -196,7 +196,7 @@
             </article>
 
             <section id="commandOverviewCards" class="card-grid overview-grid">
-              <article class="glass-card">
+              <article class="glass-card command-bg-card wallet-connection-card">
                 <img class="card-visual" src="./ikeledger/assets/images/ikewallet.png" alt="Wallet connection" loading="lazy" />
                 <h3>Connection Plan</h3>
                 <div class="card-content">
@@ -209,9 +209,9 @@
                   </div>
                 </div>
               </article>
-              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/ikenotifications.png" alt="Recent activity" loading="lazy" /><h3>Recent Activity</h3><div id="dashboardActivity" class="card-content"></div></article>
-              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/NLF.png" alt="Security signals" loading="lazy" /><h3>Security Signals</h3><div id="securityStatus" class="card-content"></div></article>
-              <article class="glass-card"><img class="card-visual" src="./ikeledger/assets/images/manapoints.png" alt="Value mix" loading="lazy" /><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
+              <article class="glass-card command-bg-card recent-activity-card"><img class="card-visual" src="./ikeledger/assets/images/ikenotifications.png" alt="Recent activity" loading="lazy" /><h3>Recent Activity</h3><div id="dashboardActivity" class="card-content"></div></article>
+              <article class="glass-card command-bg-card security-signals-card"><img class="card-visual" src="./ikeledger/assets/images/NLF.png" alt="Security signals" loading="lazy" /><h3>Security Signals</h3><div id="securityStatus" class="card-content"></div></article>
+              <article class="glass-card command-bg-card value-mix-card"><img class="card-visual" src="./ikeledger/assets/images/manapoints.png" alt="Value mix" loading="lazy" /><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
             </section>
 
             <section id="commandSafetyGuide" class="card-grid command-safety-grid" aria-label="Web3 safety best practices">
@@ -313,7 +313,7 @@
             </section>
 
             <section id="commandStructuredGrid" class="card-grid structured-grid">
-              <article class="glass-card market-card wide">
+              <article class="glass-card market-card command-bg-card wide">
                 <img class="section-visual wide-visual" src="./ikeledger/assets/images/digitslverse.png" alt="Digital XRPL market overview" loading="lazy" />
                 <div class="section-top">
                   <h3>XRP Market Overview</h3>
@@ -338,6 +338,12 @@
                   <p><strong>Ledger Index:</strong> <span id="marketLedgerIndex">-</span></p>
                   <p><strong>TPS:</strong> <span id="marketTps">-</span></p>
                   <p><strong>Average Fee:</strong> <span id="marketFee">-</span></p>
+                </div>
+                <div class="market-source-row" aria-label="Market data sources">
+                  <span id="marketLastUpdated">Updated: -</span>
+                  <span id="marketSourceCoinGecko" class="source-chip">CoinGecko: -</span>
+                  <span id="marketSourceXrpl" class="source-chip">XRPL WS: -</span>
+                  <span id="marketSourceXrplTo" class="source-chip">XRPL.to: On demand</span>
                 </div>
                 <div class="chart-shell">
                   <canvas id="marketChart" width="1200" height="360" aria-label="XRP market chart"></canvas>
@@ -405,7 +411,7 @@
               <article class="glass-card wide">
                 <div class="section-top">
                   <div>
-                    <h3>Top 50 Issued Assets</h3>
+                    <h3>Issued Asset Market</h3>
                     <p class="muted">XRPL issued assets ranked by live market data, with price, 24h change, market cap, holders, and trust lines.</p>
                   </div>
                   <button id="refreshTopIssuedTokensButton" class="ghost" type="button">Refresh</button>
@@ -446,29 +452,126 @@
               <h2>DEX Access</h2>
               <p class="muted">On-chain order book trading via the XRPL native decentralized exchange.</p>
             </div>
-            <div class="card-grid structured-grid">
-              <article class="glass-card wide">
+            <div class="card-grid structured-grid dex-grid">
+              <article class="glass-card wide dex-command-card">
                 <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikedex.png" alt="XRPL DEX order book" loading="lazy" />
                 <div class="section-top">
-                  <h3>Order Book</h3>
-                  <span class="mode-pill">OfferCreate / OfferCancel</span>
+                  <div>
+                    <h3>Trading Command</h3>
+                    <p class="muted">Build an XRPL DEX offer, review the numbers, then send the payload to Xumm for signing.</p>
+                  </div>
+                  <span id="dexAccessBadge" class="mode-pill">Wallet required</span>
                 </div>
-                <div id="dexPagePanel" class="card-content scroll"></div>
-                <div class="section-top">
-                  <h4>Transaction Preview</h4>
-                  <button id="openSignGateButton" type="button">Preview Before Signing</button>
+
+                <div id="dexPagePanel" class="dex-access-panel"></div>
+
+                <div class="dex-trading-layout">
+                  <section class="dex-ticket-panel" aria-label="DEX trade ticket">
+                    <div class="section-top compact">
+                      <h4>Trade Ticket</h4>
+                      <span class="mode-pill">OfferCreate</span>
+                    </div>
+                    <div class="dex-ticket-grid">
+                      <label>
+                        Asset
+                        <select id="dexAssetSelect">
+                          <option value="">Select a top issued asset</option>
+                        </select>
+                      </label>
+                      <label>
+                        Side
+                        <select id="dexSideSelect">
+                          <option value="buy">Buy with XRP</option>
+                          <option value="sell">Sell for XRP</option>
+                        </select>
+                      </label>
+                      <label>
+                        Currency
+                        <input id="dexCurrencyInput" type="text" placeholder="USDC or 40-char hex" autocomplete="off" spellcheck="false" />
+                      </label>
+                      <label>
+                        Issuer
+                        <input id="dexIssuerInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
+                      </label>
+                      <label>
+                        Token Amount
+                        <input id="dexAmountInput" type="number" min="0" step="0.000001" placeholder="100" inputmode="decimal" />
+                      </label>
+                      <label>
+                        Limit Price
+                        <input id="dexPriceInput" type="number" min="0" step="0.000001" placeholder="0.50" inputmode="decimal" />
+                        <span class="field-hint">XRP per token</span>
+                      </label>
+                      <label>
+                        Order Style
+                        <select id="dexOrderStyleSelect">
+                          <option value="limit">Limit resting order</option>
+                          <option value="ioc">Immediate or cancel</option>
+                          <option value="fok">Fill or kill</option>
+                          <option value="passive">Passive maker order</option>
+                        </select>
+                      </label>
+                      <label>
+                        Slippage Guard
+                        <input id="dexSlippageInput" type="number" min="0" max="50" step="0.1" value="1" inputmode="decimal" />
+                        <span class="field-hint">Percent tolerance for planning</span>
+                      </label>
+                      <label>
+                        Stop Loss
+                        <input id="dexStopLossInput" type="number" min="0" step="0.000001" placeholder="Optional" inputmode="decimal" />
+                        <span class="field-hint">Planning only, not automatic</span>
+                      </label>
+                      <label>
+                        Take Profit
+                        <input id="dexTakeProfitInput" type="number" min="0" step="0.000001" placeholder="Optional" inputmode="decimal" />
+                        <span class="field-hint">Planning only, not automatic</span>
+                      </label>
+                    </div>
+                    <div class="button-row dex-action-row">
+                      <button id="dexAnalyzeButton" type="button">Analyze Trade</button>
+                      <button id="dexSignOfferButton" type="button">Create Xumm Sign Request</button>
+                      <button id="dexRefreshBookButton" type="button" class="ghost">Refresh Book</button>
+                    </div>
+                    <p id="dexTicketStatus" class="feedback" aria-live="polite"></p>
+                  </section>
+
+                  <section class="dex-market-panel" aria-label="DEX market statistics">
+                    <div class="section-top compact">
+                      <h4>Trading Statistics</h4>
+                      <span id="dexBookUpdated" class="mode-pill">Not loaded</span>
+                    </div>
+                    <div id="dexStatsPanel" class="dex-stat-grid"></div>
+                    <div id="dexOrderBookPanel" class="dex-orderbook"></div>
+                  </section>
                 </div>
-                <div id="txPreview" class="card-content"></div>
               </article>
-              <article class="glass-card">
-                <h3>DEX Safety</h3>
-                <div class="card-content">
-                  <p><strong>Slippage:</strong> Market orders may execute at different prices than shown.</p>
-                  <p><strong>Issuer risk:</strong> Always verify token issuers before trading.</p>
-                  <p><strong>Partial fills:</strong> XRPL orders may partially fill across multiple ledgers.</p>
-                  <p><strong>Fees:</strong> Each transaction costs drops. Review before submitting.</p>
-                  <p class="warning-inline">All DEX actions require transaction preview and wallet signing.</p>
+
+              <article class="glass-card wide dex-analysis-card">
+                <div class="section-top">
+                  <div>
+                    <h3>Chart Analysis &amp; Risk / Reward</h3>
+                    <p class="muted">Visualize entry, stop, take-profit, spread, and execution quality before opening Xumm.</p>
+                  </div>
+                  <button id="openSignGateButton" type="button" class="ghost">Preview Current Transaction</button>
                 </div>
+                <div class="dex-analysis-layout">
+                  <div class="dex-chart-shell">
+                    <canvas id="dexAnalysisChart" width="900" height="300" aria-label="DEX risk reward chart"></canvas>
+                  </div>
+                  <div id="dexRiskRewardPanel" class="dex-risk-panel"></div>
+                </div>
+                <div id="txPreview" class="card-content dex-tx-preview"></div>
+              </article>
+
+              <article class="glass-card dex-execution-card">
+                <h3>Triggered Execution Plan</h3>
+                <div id="dexExecutionPlanPanel" class="card-content"></div>
+                <p class="warning-inline">XRPL DEX does not provide native stop-loss automation. IkeLedger can prepare trigger plans, but each transaction still needs wallet approval.</p>
+              </article>
+
+              <article class="glass-card dex-safety-card">
+                <h3>What To Watch Out For</h3>
+                <div id="dexSafetyPanel" class="card-content"></div>
               </article>
             </div>
           </section>
@@ -480,14 +583,24 @@
               <p class="muted">Automated market maker pools and liquidity provider positions on XRPL.</p>
             </div>
             <div class="card-grid structured-grid">
-              <article class="glass-card wide">
-                <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM pool positions" loading="lazy" />
+              <article class="glass-card wide pool-positions-card">
+                <img class="section-visual wide-visual pool-positions-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM pool positions" loading="lazy" />
                 <div class="section-top">
                   <h3>Pool Positions</h3>
                   <span class="mode-pill">XLS-30 Standard</span>
                 </div>
                 <div id="ammPagePanel" class="card-content scroll"></div>
                 <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
+              </article>
+              <article class="glass-card wide amm-market-card">
+                <div class="section-top">
+                  <div>
+                    <h3>AMM / LP Pools</h3>
+                    <p class="muted">XRPL AMM pools ranked by TVL, with volume, trading fee, LP holders, trust lines, and pool links.</p>
+                  </div>
+                  <button id="refreshTopAmmPoolsButton" class="ghost" type="button">Refresh</button>
+                </div>
+                <div id="topAmmPoolsPanel" class="card-content"></div>
               </article>
               <article class="glass-card">
                 <h3>AMM Risk Notice</h3>
@@ -839,6 +952,21 @@
                   <p class="muted">Switch networks via the selector in the top navigation bar.</p>
                 </div>
               </article>
+              <article class="glass-card">
+                <h3>Market Proxy</h3>
+                <div class="card-content">
+                  <p>Optional cache/proxy endpoint for XRPL.to, CoinGecko, and token images.</p>
+                  <label>
+                    <span>Proxy Base URL</span>
+                    <input id="marketProxyUrlInput" type="url" placeholder="http://127.0.0.1:8788" autocomplete="off" />
+                  </label>
+                  <div class="button-row">
+                    <button id="saveMarketProxyButton" type="button">Save Proxy</button>
+                    <button id="clearMarketProxyButton" type="button" class="ghost">Use Direct APIs</button>
+                  </div>
+                  <p id="marketProxyStatus" class="feedback" aria-live="polite"></p>
+                </div>
+              </article>
             </div>
           </section>
         </section>
@@ -936,7 +1064,7 @@
         <div class="command-auth-grid">
           <div class="command-auth-card">
             <h3>Sign in with Xumm</h3>
-            <p class="muted">Opens the official Xumm flow, then loads your XRPL account for wallet features.</p>
+            <p id="commandXummModeHint" class="muted">Opens the official Xumm flow, then loads your XRPL account for wallet features.</p>
             <button id="commandXummSignInButton" type="button">Sign In with Xumm</button>
           </div>
           <div class="command-auth-card">

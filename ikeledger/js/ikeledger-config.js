@@ -51,7 +51,10 @@ export const STORAGE_KEYS = {
   avatarGlowIntensity: "ikeledger.avatarGlowIntensity",
   avatarBorderColor: "ikeledger.avatarBorderColor",
   avatarBorderShape: "ikeledger.avatarBorderShape",
-  avatarBorderWidth: "ikeledger.avatarBorderWidth"
+  avatarBorderWidth: "ikeledger.avatarBorderWidth",
+  tokenWatchlist: "ikeledger.tokenWatchlist",
+  ammWatchlist: "ikeledger.ammWatchlist",
+  marketProxyBaseUrl: "ikeledger.marketProxyBaseUrl"
 };
 
 export const RISK_LEVELS = {
