@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>IkeLedger</title>
     <meta name="application-name" content="IkeLedger" />
+    <meta name="description" content="Where ancestral knowledge meets verifiable value. XRPL wallet, DEX, NFTs, and live wallet tracker." />
+    <meta property="og:title" content="IkeLedger" />
     <meta property="og:site_name" content="IkeLedger" />
+    <meta property="og:description" content="XRPL wallet tracker — watch every address, every move, in real time." />
+    <meta name="theme-color" content="#f5c76b" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./ikeledger/css/ikeledger.css" />
   </head>
   <body>
@@ -43,16 +48,23 @@
           </div>
           <nav class="sidebar-nav" aria-label="Section navigation">
             <button class="sidebar-btn is-active" data-page="dashboard" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/Ikeledger.png" alt="" /></span>Command Center</button>
+
+            <div class="nav-section-label">Wallet</div>
             <button class="sidebar-btn" data-page="wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikewallet.png" alt="" /></span>Wallet Status</button>
+            <button class="sidebar-btn" data-page="tracker" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeledger2.png" alt="" /></span>Live Tracker</button>
+            <button class="sidebar-btn" data-page="create-wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikewallet.png" alt="" /></span>Create Wallet</button>
+
+            <div class="nav-section-label">Markets</div>
             <button class="sidebar-btn" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/tokens.png" alt="" /></span>Tokens</button>
             <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikenft.png" alt="" /></span>NFTs & Listings</button>
             <button class="sidebar-btn" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikedex.png" alt="" /></span>DEX Access</button>
             <button class="sidebar-btn" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeamm.png" alt="" /></span>AMM / LP</button>
             <button class="sidebar-btn" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/activity.png" alt="" /></span>Activity</button>
+
+            <div class="nav-section-label">Account</div>
             <button class="sidebar-btn" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/manapoints.png" alt="" /></span>Credentials & Mana</button>
             <button class="sidebar-btn" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/NLF.png" alt="" /></span>Security Center</button>
             <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeprofile.png" alt="" /></span>Profile</button>
-            <button class="sidebar-btn" data-page="create-wallet" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikewallet.png" alt="" /></span>Create Wallet</button>
             <button class="sidebar-btn" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/settings.png" alt="" /></span>Settings</button>
           </nav>
           <div class="sidebar-footer">
@@ -398,34 +410,25 @@
             <div class="page-hero">
               <img class="page-visual" src="./ikeledger/assets/images/tokens.png" alt="Issued tokens" loading="lazy" />
               <h2>Tokens</h2>
-              <p class="muted">Issued tokens, trust lines, and XRP balance on the XRPL.</p>
+              <p class="muted">Live XRPL issued asset market — prices, volume, trends, and your holdings.</p>
             </div>
             <div class="card-grid structured-grid">
               <article class="glass-card wide">
                 <div class="section-top">
-                  <h3>Token Holdings</h3>
+                  <h3>Holdings</h3>
                   <span class="mode-pill">Trust line based</span>
                 </div>
                 <div id="tokensPagePanel" class="card-content scroll"></div>
               </article>
-              <article class="glass-card wide">
+              <article class="glass-card wide tokens-market-card">
                 <div class="section-top">
                   <div>
-                    <h3>Issued Asset Market</h3>
-                    <p class="muted">XRPL issued assets ranked by live market data, with price, 24h change, market cap, holders, and trust lines.</p>
+                    <h3>XRPL Token Market</h3>
+                    <p class="muted">Ranked by market cap · prices in XRP · data via xrpl.to</p>
                   </div>
                   <button id="refreshTopIssuedTokensButton" class="ghost" type="button">Refresh</button>
                 </div>
-                <div id="topIssuedTokensPanel" class="card-content"></div>
-              </article>
-              <article class="glass-card">
-                <h3>Trust Line Safety</h3>
-                <div class="card-content">
-                  <p><strong>What is a trust line?</strong> A voluntary agreement to hold a token issued by another XRPL account.</p>
-                  <p><strong>Issuer risk:</strong> Issuers can freeze or modify tokens. Only trust known issuers.</p>
-                  <p><strong>No rippling:</strong> Recommended for wallets not acting as market makers.</p>
-                  <p><strong>Reserve cost:</strong> Each trust line reserves 2 XRP from your balance.</p>
-                </div>
+                <div id="topIssuedTokensPanel" class="card-content tokens-market-panel"></div>
               </article>
             </div>
           </section>
@@ -624,6 +627,15 @@
               <div id="txHistory" class="card-content scroll"></div>
               <pre id="txRawJson" class="raw-json hidden" aria-label="Raw transaction JSON"></pre>
             </article>
+          </section>
+
+          <section class="page-section" data-page="tracker">
+            <div class="page-hero">
+              <img class="page-visual" src="./ikeledger/assets/images/Ikeledger.png" alt="Live Tracker" loading="lazy" />
+              <h2>Live Tracker</h2>
+              <p class="muted">Watch any wallet, stream every transaction in real time.</p>
+            </div>
+            <div id="trackerPage" class="tracker-layout"></div>
           </section>
 
           <section class="page-section" data-page="credentials">
