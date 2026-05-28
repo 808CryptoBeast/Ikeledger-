@@ -644,7 +644,7 @@ button.ghost:hover {
   padding: 0.46rem 0.62rem;
 }
 
-/* Active sidebar item � left gold accent bar */
+/* Active sidebar item � left gold accent bar */
 .sidebar-btn.is-active {
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--mana-gold);
@@ -2170,7 +2170,7 @@ button.ghost:hover {
   padding-top: 0.7rem;
 }
 
-/* Connect Wallet � primary action */
+/* Connect Wallet � primary action */
 .sidebar-connect-btn {
   width: 100%;
   justify-content: center;
@@ -2548,7 +2548,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Profile � Wallet Card
+   Profile � Wallet Card
    --------------------------------------------- */
 
 .profile-wallet-empty {
@@ -2706,7 +2706,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Responsive � 1200px
+   Responsive � 1200px
    --------------------------------------------- */
 
 @media (max-width: 1200px) {
@@ -2728,7 +2728,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Responsive � 1100px
+   Responsive � 1100px
    --------------------------------------------- */
 
 @media (max-width: 1100px) {
@@ -2763,7 +2763,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Responsive � 900px
+   Responsive � 900px
    --------------------------------------------- */
 
 @media (max-width: 900px) {
@@ -2791,7 +2791,7 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
-  /* Profile identity in hero is accessible via Profile page � hide on tablet/mobile */
+  /* Profile identity in hero is accessible via Profile page � hide on tablet/mobile */
   .profile-status-block { display: none; }
   .avatar-upload-hint { display: none; }
 
@@ -2800,7 +2800,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Responsive � 768px (Mobile)
+   Responsive � 768px (Mobile)
    --------------------------------------------- */
 
 @media (max-width: 768px) {
@@ -2879,14 +2879,14 @@ button.ghost:hover {
   /* Shrink oversized network icon images */
   .network-icon-chip img { width: 2.8rem; height: 2.8rem; }
 
-  /* Hide secondary hero buttons on mobile � accessible via sidebar/settings */
+  /* Hide secondary hero buttons on mobile � accessible via sidebar/settings */
   #demoButton,
   #copyAddressButton,
   #clearSessionButton { display: none; }
 }
 
 /* ---------------------------------------------
-   Responsive � 480px
+   Responsive � 480px
    --------------------------------------------- */
 
 @media (max-width: 480px) {
@@ -2923,7 +2923,7 @@ button.ghost:hover {
 }
 
 /* ---------------------------------------------
-   Responsive � 380px
+   Responsive � 380px
    --------------------------------------------- */
 
 /* ---------------------------------------------
@@ -3017,7 +3017,7 @@ button.ghost:hover {
 
 .hero-send-summary strong { color: var(--gold); }
 
-/* Hero QR container � used for both Send and Receive tabs */
+/* Hero QR container � used for both Send and Receive tabs */
 .hero-qr-wrap {
   display: flex;
   justify-content: center;
@@ -5059,4 +5059,300 @@ button.ghost:hover {
 
 .amm-pool-table:has(.watch-toggle) {
   min-width: 1280px;
+}
+
+/* ── DEX ──────────────────────────────────────────────────────── */
+.dex-grid {
+  grid-template-columns: 1fr;
+}
+.dex-command-card {
+  container-type: inline-size;
+}
+.dex-trading-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+@container (max-width: 700px) {
+  .dex-trading-layout { grid-template-columns: 1fr; }
+}
+.dex-ticket-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+@container (max-width: 500px) {
+  .dex-ticket-grid { grid-template-columns: 1fr; }
+}
+.dex-action-row {
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.dex-access-panel {
+  padding: 0.75rem 0;
+}
+.dex-access-connected {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.dex-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0;
+}
+.dex-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.82rem;
+}
+.dex-label {
+  font-size: 0.7rem;
+  color: var(--ink-2, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dex-orderbook {
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+.book-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--ink-2, #888);
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border, #333);
+  margin-bottom: 0.25rem;
+}
+.book-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.15rem 0;
+}
+.book-row.ask { color: var(--color-error, #ef4444); }
+.book-row.bid { color: var(--color-success, #22c55e); }
+.book-mid {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--ink-2, #888);
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border, #333);
+  margin: 0.25rem 0;
+}
+.book-asks { display: flex; flex-direction: column-reverse; }
+.dex-analysis-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 1rem;
+  align-items: start;
+  margin-top: 0.75rem;
+}
+@media (max-width: 760px) {
+  .dex-analysis-layout { grid-template-columns: 1fr; }
+}
+.dex-chart-shell {
+  width: 100%;
+  overflow-x: auto;
+}
+.dex-chart-shell canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: var(--glass-bg, rgba(255,255,255,0.04));
+}
+.dex-risk-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.dex-tx-preview {
+  margin-top: 1rem;
+}
+.dex-preview-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.dex-preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border, #222);
+}
+.dex-preview-row:last-child { border-bottom: none; }
+.mono { font-family: var(--mono, monospace); font-size: 0.78rem; word-break: break-all; }
+.warning-inline {
+  font-size: 0.8rem;
+  color: var(--color-warning, #f59e0b);
+  margin: 0.3rem 0;
+}
+
+/* ── DEX trading chart controls ───────────────────────────────── */
+.dex-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0 0.5rem;
+  border-bottom: 1px solid rgba(104,139,197,0.15);
+  margin-bottom: 0.5rem;
+}
+.dex-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.dex-tf-btn,
+.dex-type-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.6;
+}
+.dex-tf-btn:hover,
+.dex-type-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.85);
+}
+.dex-tf-btn.is-active,
+.dex-type-btn.is-active {
+  background: rgba(41,98,255,0.2);
+  border-color: rgba(41,98,255,0.6);
+  color: #2962ff;
+}
+.dex-ind-group {
+  gap: 0.5rem;
+}
+.dex-ind-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.dex-ind-label input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: #2962ff;
+  cursor: pointer;
+}
+.dex-ind-label:hover {
+  color: rgba(255,255,255,0.85);
+}
+
+/* Chart canvas shell */
+.dex-chart-shell {
+  width: 100%;
+  overflow-x: auto;
+  position: relative;
+}
+.dex-chart-shell canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  border-radius: 4px;
+  cursor: crosshair;
+}
+
+/* Fit button */
+.dex-fit-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 3px;
+  color: rgba(255,255,255,0.55);
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.dex-fit-btn:hover { color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.25); }
+
+/* Asset picker */
+.dex-asset-picker-group { position: relative; }
+.dex-asset-btn {
+  background: rgba(41,98,255,0.12);
+  border: 1px solid rgba(41,98,255,0.35);
+  border-radius: 3px;
+  color: #c8d0e0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dex-asset-btn:hover { border-color: rgba(41,98,255,0.7); color: #fff; }
+.dex-asset-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: #1a2035;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  width: 260px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dex-asset-dropdown.hidden { display: none; }
+.dex-asset-search {
+  background: rgba(255,255,255,0.05);
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: #c8d0e0;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+.dex-asset-list {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dex-asset-item {
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.dex-asset-item:hover { background: rgba(255,255,255,0.06); }
+.dex-asset-item.is-active { background: rgba(41,98,255,0.15); }
+.dex-asset-item-label { font-size: 0.8rem; font-weight: 600; color: #c8d0e0; }
+.dex-asset-item-sub   { font-size: 0.68rem; color: rgba(255,255,255,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 600px) {
+  .dex-chart-controls { gap: 0.4rem 0.6rem; }
+  .dex-ind-group { gap: 0.3rem; }
+  .dex-tf-btn, .dex-type-btn { padding: 0.15rem 0.4rem; font-size: 0.7rem; }
+  .dex-asset-btn { max-width: 110px; font-size: 0.72rem; }
+  .dex-asset-dropdown { width: 220px; }
 }

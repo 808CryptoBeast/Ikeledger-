@@ -106,6 +106,18 @@ const state = {
       bids: [],
       asks: [],
       updatedAt: 0
+    },
+    chart: {
+      candles: [],
+      loading: false,
+      error: "",
+      label: "",
+      tokenId: "",
+      cacheKey: "",
+      fetchedAt: 0,
+      timeframe: "1D",
+      chartType: "candle",
+      indicators: { ma20: true, ma50: true, ema20: false, bb: false, volume: true, rsi: false }
     }
   }
 };
@@ -767,6 +779,7 @@ function setActivePage(page) {
   if (page === "dex") {
     void loadTopIssuedAssets();
     void loadDexOrderBook();
+    void loadDexChart();
   }
 
   if (page === "amm") {
@@ -790,88 +803,199 @@ async function fetchJson(url) {
   return response.json();
 }
 
+const _mjCache          = new Map(); // url → { data, ts }
+const _mjInFlight       = new Map(); // url → Promise
+const _domainTail       = new Map(); // hostname → tail of sequential queue
+const _rateLimitedUntil = new Map(); // hostname → timestamp: don't request before this
+const MJ_TTL = 120_000;              // 2-minute cache
+
+// Serialize all requests to the same host so we never fire concurrent fetches
+function _queuedFetch(url, fn) {
+  let host = "";
+  try { host = new URL(url).hostname; } catch { /* noop */ }
+  const prev = _domainTail.get(host) ?? Promise.resolve();
+  const task = prev.then(fn);
+  _domainTail.set(host, task.then(() => {}, () => {})); // tail never rejects
+  return task;
+}
+
 async function fetchMarketJson(url) {
+  const hit = _mjCache.get(url);
+  if (hit && Date.now() - hit.ts < MJ_TTL) return hit.data;
+  if (_mjInFlight.has(url)) return _mjInFlight.get(url);
+
   const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
   const requestUrl = proxyBase ? `${proxyBase}/market?url=${encodeURIComponent(url)}` : url;
-  const response = await fetch(requestUrl, { headers: { accept: "application/json" } });
-  if (!response.ok) {
-    const error = new Error(`Market API failed (${response.status})`);
-    error.status = response.status;
-    throw error;
+
+  let reqHost = "";
+  try { reqHost = new URL(requestUrl).hostname; } catch { /* noop */ }
+
+  const doFetch = async () => {
+    // Adaptive rate-limit backoff — if recently 429'd, wait it out
+    const rlUntil = _rateLimitedUntil.get(reqHost) || 0;
+    if (Date.now() < rlUntil) await new Promise((r) => setTimeout(r, rlUntil - Date.now()));
+
+    const response = await fetch(requestUrl, { headers: { accept: "application/json" } });
+    if (response.status === 429) {
+      _rateLimitedUntil.set(reqHost, Date.now() + 4000); // 4-second cooldown for this host
+      const error = new Error("Market API rate limited (429)");
+      error.status = 429;
+      throw error;
+    }
+    if (!response.ok) {
+      const error = new Error(`Market API failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    const data = await response.json();
+    _mjCache.set(url, { data, ts: Date.now() });
+    return data;
+  };
+
+  const promise = _queuedFetch(url, doFetch).finally(() => { _mjInFlight.delete(url); });
+  _mjInFlight.set(url, promise);
+  return promise;
+}
+
+// USD stablecoins on XRPL DEX (tried in order for XRP spot price)
+const XRP_USD_PAIRS = [
+  // RLUSD — Ripple's official USD stablecoin on XRPL mainnet
+  { currency: "524C555344000000000000000000000000000000", issuer: "rMxCKbEDwqr96QEkjFd7AgfnH6PBicCzgE" },
+  // USD — Gatehub, long-established XRPL issuer
+  { currency: "USD", issuer: "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq" },
+];
+
+async function fetchXrpSpotPrice() {
+  const walletState = getWalletState();
+  const network = walletState.network || DEFAULT_NETWORK;
+  for (const usd of XRP_USD_PAIRS) {
+    try {
+      // book_offers taker_gets=XRP, taker_pays=USD → asks (selling XRP for USD)
+      const result = await requestXrplCommand(network, {
+        command: "book_offers",
+        taker_gets: { currency: "XRP" },
+        taker_pays: usd,
+        limit: 5
+      });
+      const offers = result?.offers || [];
+      if (!offers.length) continue;
+      const o = offers[0];
+      const drops = Number(o.TakerGets || 0);
+      const usdVal = Number(o.TakerPays?.value || 0);
+      if (drops > 0 && usdVal > 0) return usdVal / (drops / 1e6);
+    } catch { /* try next pair */ }
   }
-  return response.json();
+  return 0;
+}
+
+// ── Kraken — XRP/USD only (CORS-friendly, globally accessible) ───────
+// All issued XRPL tokens use xrpl.to. Kraken is used only for XRP itself.
+async function fetchKrakenXrpOhlcv(krakenInterval, limit) {
+  const since = Math.floor(Date.now() / 1000) - krakenInterval * 60 * (limit + 2);
+  const url = `https://api.kraken.com/0/public/OHLC?pair=XRPUSD&interval=${krakenInterval}&since=${since}`;
+  const json = await fetchMarketJson(url);
+  if (json.error?.length) throw new Error(`Kraken: ${json.error[0]}`);
+  const key = Object.keys(json.result || {}).find((k) => k !== "last");
+  const rows = json.result?.XXRPZUSD ?? json.result?.XRPUSD ?? json.result?.[key] ?? [];
+  return (Array.isArray(rows) ? rows : [])
+    .map((k) => ({ t: Number(k[0]) * 1000, o: Number(k[1]), h: Number(k[2]), l: Number(k[3]), c: Number(k[4]), v: Number(k[6]) }))
+    .filter((c) => c.c > 0)
+    .slice(-limit);
 }
 
 async function fetchXrpOverview() {
-  const data = await fetchJson(
-    "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true"
-  );
-  const row = data?.ripple || {};
-  return {
-    price: Number(row.usd || 0),
-    changePercent: Number(row.usd_24h_change || 0),
-    volume: Number(row.usd_24h_vol || 0),
-    marketCap: Number(row.usd_market_cap || 0)
-  };
+  try {
+    const json = await fetchMarketJson("https://api.kraken.com/0/public/Ticker?pair=XRPUSD");
+    if (!json.error?.length) {
+      const key = Object.keys(json.result || {}).find((k) => k !== "last");
+      const t = json.result?.XXRPZUSD ?? json.result?.XRPUSD ?? json.result?.[key];
+      if (t) {
+        const price = Number(t.c?.[0] || 0);
+        const open  = Number(t.o || 0);
+        const changePercent = open > 0 ? (price - open) / open * 100 : 0;
+        const volume = Number(t.v?.[1] || 0) * price;
+        return { price, changePercent, volume, marketCap: price * 57_670_000_000 };
+      }
+    }
+  } catch { /* fall through to XRPL book_offers */ }
+  const price = await fetchXrpSpotPrice();
+  return { price, changePercent: 0, volume: 0, marketCap: price * 57_670_000_000 };
 }
 
 async function fetchXrpChartPoints(timeframe) {
-  const days = timeframeToDays(timeframe);
-  let url = "";
-
-  if (days) {
-    url = `https://api.coingecko.com/api/v3/coins/ripple/market_chart?vs_currency=usd&days=${days}`;
-  } else {
-    const to = Math.floor(Date.now() / 1000);
-    const from = to - 3600;
-    url = `https://api.coingecko.com/api/v3/coins/ripple/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
-  }
-
-  const data = await fetchJson(url);
-  const points = (data?.prices || []).map((point) => Number(point[1])).filter((v) => Number.isFinite(v));
-  if (!points.length) {
-    throw new Error("Market chart data unavailable.");
-  }
+  const [ki, limit] =
+    timeframe === "1H"  ? [5,    12 ] :
+    timeframe === "24H" ? [15,   96 ] :
+    timeframe === "7D"  ? [60,   168] :
+    timeframe === "30D" ? [240,  90 ] :
+                          [1440, 120];
+  const candles = await fetchKrakenXrpOhlcv(ki, limit);
+  const points = candles.map((c) => c.c);
+  if (!points.length) throw new Error("XRP chart data unavailable.");
   return points;
 }
 
-async function requestXrplCommand(networkKey, command) {
+// ── XRPL WebSocket connection pool (one persistent socket per network) ──
+const _xrplWs      = new Map(); // networkKey → WebSocket
+const _xrplPending = new Map(); // networkKey → Map<id, {resolve, reject, timer}>
+let   _xrplNextId  = 1;
+
+function _xrplEnsureConnection(networkKey) {
+  const existing = _xrplWs.get(networkKey);
+  if (existing && existing.readyState <= WebSocket.OPEN) return; // CONNECTING(0) or OPEN(1)
+
   const network = NETWORKS[networkKey] || NETWORKS[DEFAULT_NETWORK];
+  const ws      = new WebSocket(network.endpoint);
+  const pending  = new Map();
+
+  _xrplWs.set(networkKey, ws);
+  _xrplPending.set(networkKey, pending);
+
+  ws.addEventListener("message", (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      const entry   = pending.get(payload?.id);
+      if (!entry) return;
+      pending.delete(payload.id);
+      clearTimeout(entry.timer);
+      if (payload.status === "error" || payload.error) {
+        entry.reject(new Error(payload.error_message || payload.error || "XRPL request failed."));
+      } else {
+        entry.resolve(payload.result || {});
+      }
+    } catch { /* ignore */ }
+  });
+
+  const cleanup = (msg) => {
+    if (_xrplPending.get(networkKey) !== pending) return; // already replaced
+    for (const { reject, timer } of pending.values()) { clearTimeout(timer); reject(new Error(msg)); }
+    pending.clear();
+    _xrplPending.delete(networkKey);
+    _xrplWs.delete(networkKey);
+  };
+
+  ws.addEventListener("error", () => cleanup("XRPL WebSocket error."));
+  ws.addEventListener("close", () => cleanup("XRPL WebSocket closed."));
+}
+
+async function requestXrplCommand(networkKey, command) {
+  _xrplEnsureConnection(networkKey);
+  const ws      = _xrplWs.get(networkKey);
+  const pending  = _xrplPending.get(networkKey);
+  if (!ws || !pending) return Promise.reject(new Error("No XRPL connection available."));
+
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(network.endpoint);
-    const timeoutId = setTimeout(() => {
-      try {
-        ws.close();
-      } catch {
-        // noop
-      }
-      reject(new Error("XRPL metric request timeout."));
-    }, 8000);
+    const id    = _xrplNextId++;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error("XRPL metric request timeout.")); }, 8000);
 
-    ws.addEventListener("open", () => {
-      ws.send(JSON.stringify({ id: 1, ...command }));
-    });
+    pending.set(id, { resolve, reject, timer });
 
-    ws.addEventListener("message", (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload?.id !== 1) return;
-        clearTimeout(timeoutId);
-        ws.close();
-        if (payload.status === "error" || payload.error) {
-          reject(new Error(payload.error_message || payload.error || "XRPL metric request failed."));
-          return;
-        }
-        resolve(payload.result || {});
-      } catch {
-        // ignore malformed events
-      }
-    });
-
-    ws.addEventListener("error", () => {
-      clearTimeout(timeoutId);
-      reject(new Error("XRPL metric request failed."));
-    });
+    const send = () => ws.send(JSON.stringify({ id, ...command }));
+    if (ws.readyState === WebSocket.OPEN) {
+      send();
+    } else {
+      ws.addEventListener("open", send, { once: true });
+    }
   });
 }
 
@@ -1083,7 +1207,7 @@ async function renderMarketOverview(forceRefresh = false) {
         points,
         fetchedAt,
         sources: {
-          coingecko: "Live",
+          coingecko: "XRPL DEX",
           xrpl: networkMetrics.sourceOk ? "Live" : "Degraded",
           xrplTo: state.topIssuedAssets.items.length || state.topAmmPools.items.length ? "Cached" : "On demand"
         }
@@ -1786,6 +1910,7 @@ function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
     verified: Boolean(token.verified || token.kyc),
     logoUrl: tokenLogoUrl(token),
     slug: token.slug || "",
+    md5: String(token.md5 || token._id || "").trim(),
     updatedAt: token.lastUpdated || token.updatedAt || ""
   };
 }
@@ -2069,6 +2194,7 @@ async function loadTopIssuedAssets(forceRefresh = false) {
 
   if (!forceRefresh && state.topIssuedAssets.items.length) {
     renderTopIssuedTokens();
+    renderDex();
     return;
   }
 
@@ -2081,6 +2207,7 @@ async function loadTopIssuedAssets(forceRefresh = false) {
       error: ""
     };
     renderTopIssuedTokens();
+    renderDex();
     return;
   }
 
@@ -2812,31 +2939,1410 @@ function renderTxPreview(walletState) {
   `;
 }
 
-function renderExtendedPanels(walletState) {
-  const dexHtml = hasSigningWallet()
-    ? `
-      <p><strong>Pair Selector:</strong> XRP / USDC</p>
-      <p><strong>Order Book:</strong> Ready for live bids/asks integration.</p>
-      <p><strong>Open Orders:</strong> ${walletState.snapshot?.txItems?.filter((tx) => tx.type === "OfferCreate").length || 0}</p>
-      <p><strong>Risk Labels:</strong> Issuer and slippage warnings enabled.</p>
-      <div class="button-row"><button class="ghost" type="button">Create Offer</button><button class="ghost" type="button">Cancel Offer</button><button class="ghost" type="button">Set Trust Line</button></div>
-    `
-    : `
-      <p><strong>DEX locked:</strong> Connect Xumm or load a wallet created in IkeLedger to access transaction tools.</p>
-      <p class="muted">Email-only profiles can view the Command Center overview, but cannot create offers or sign transactions.</p>
-      <div class="button-row"><button id="dexAuthPromptButton" type="button">Sign In / Connect</button><button class="ghost profile-wallet-nav-btn" data-nav="create-wallet" type="button">Create Wallet</button></div>
-    `;
+// ── DEX helpers ──────────────────────────────────────────────────
 
-  if (refs.dexStatus) refs.dexStatus.innerHTML = dexHtml;
+function setDexTicketStatus(msg, isError = false) {
+  if (!refs.dexTicketStatus) return;
+  refs.dexTicketStatus.textContent = msg;
+  refs.dexTicketStatus.classList.toggle("error", isError);
+}
 
-  if (refs.dexPagePanel) {
-    refs.dexPagePanel.innerHTML = dexHtml;
-    refs.dexPagePanel.querySelector("#dexAuthPromptButton")?.addEventListener("click", openAuthModal);
-    refs.dexPagePanel.querySelectorAll(".profile-wallet-nav-btn[data-nav]").forEach((button) => {
-      button.addEventListener("click", () => setActivePage(button.dataset.nav));
-    });
+function decimalString(n, decimals = 6) {
+  return Number.isFinite(n) ? n.toFixed(decimals).replace(/\.?0+$/, "") || "0" : "0";
+}
+
+function dexTokenOptions() {
+  return state.topIssuedAssets.items.slice(0, 50);
+}
+
+function getDexSelectedToken() {
+  const id = state.dex.selectedTokenId;
+  if (!id) return null;
+  return dexTokenOptions().find((t) => t.id === id) || null;
+}
+
+function estimateDexXrpPrice() {
+  const { bids, asks } = state.dex.orderBook;
+  if (asks.length) return asks[0].price;
+  if (bids.length) return bids[0].price;
+  return 0;
+}
+
+function populateDexAssetSelect() {
+  if (!refs.dexAssetSelect) return;
+  const options = dexTokenOptions();
+  const current = refs.dexAssetSelect.value;
+  const firstOption = refs.dexAssetSelect.options[0];
+  const placeholder = firstOption && firstOption.value === "" ? firstOption : new Option("Select a top issued asset", "");
+  refs.dexAssetSelect.innerHTML = "";
+  refs.dexAssetSelect.append(placeholder);
+  options.forEach((token) => {
+    const label = `${token.symbol} — ${token.issuer.slice(0, 8)}…`;
+    refs.dexAssetSelect.append(new Option(label, token.id));
+  });
+  if (current) refs.dexAssetSelect.value = current;
+}
+
+function applyDexToken(token) {
+  if (!token) return;
+  state.dex.currency = token.currency;
+  state.dex.issuer = token.issuer;
+  if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = token.currency;
+  if (refs.dexIssuerInput) refs.dexIssuerInput.value = token.issuer;
+}
+
+function syncDexStateFromInputs() {
+  state.dex.currency = refs.dexCurrencyInput?.value.trim() || "";
+  state.dex.issuer = refs.dexIssuerInput?.value.trim() || "";
+  state.dex.amount = refs.dexAmountInput?.value || "";
+  state.dex.price = refs.dexPriceInput?.value || "";
+  state.dex.side = refs.dexSideSelect?.value || "buy";
+  state.dex.orderStyle = refs.dexOrderStyleSelect?.value || "limit";
+  state.dex.slippage = refs.dexSlippageInput?.value || "1";
+  state.dex.stopLoss = refs.dexStopLossInput?.value || "";
+  state.dex.takeProfit = refs.dexTakeProfitInput?.value || "";
+}
+
+function dexIssuedAsset() {
+  return { currency: state.dex.currency, issuer: state.dex.issuer, value: state.dex.amount };
+}
+
+function dexXrpAsset() {
+  const xrp = toFiniteNumber(state.dex.amount, 0) * toFiniteNumber(state.dex.price, 0);
+  return xrpToDrops(decimalString(xrp, 6));
+}
+
+function xrplAmountNumber(amount) {
+  if (typeof amount === "string") return toFiniteNumber(amount, 0) / 1e6;
+  if (amount && typeof amount === "object") return toFiniteNumber(amount.value, 0);
+  return 0;
+}
+
+function normalizeDexBookOffer(offer, side) {
+  const takerGets = xrplAmountNumber(offer.taker_gets);
+  const takerPays = xrplAmountNumber(offer.taker_pays);
+  const price = side === "asks"
+    ? (takerGets > 0 ? takerPays / takerGets : 0)
+    : (takerPays > 0 ? takerGets / takerPays : 0);
+  return { price, amount: side === "asks" ? takerGets : takerPays, raw: offer };
+}
+
+function dexOrderStats() {
+  const { bids, asks } = state.dex.orderBook;
+  if (!bids.length && !asks.length) return null;
+  const bestBid = bids[0]?.price || 0;
+  const bestAsk = asks[0]?.price || 0;
+  const spread = bestAsk - bestBid;
+  const spreadPct = bestBid > 0 ? (spread / bestBid) * 100 : 0;
+  const midPrice = (bestBid + bestAsk) / 2 || bestBid || bestAsk;
+  const bidDepth = bids.reduce((sum, o) => sum + o.amount, 0);
+  const askDepth = asks.reduce((sum, o) => sum + o.amount, 0);
+  return { bestBid, bestAsk, spread, spreadPct, midPrice, bidDepth, askDepth };
+}
+
+function buildDexOfferTx() {
+  const { side, orderStyle, currency, issuer } = state.dex;
+  if (!currency || !issuer) return null;
+  const amount = toFiniteNumber(state.dex.amount, 0);
+  const price = toFiniteNumber(state.dex.price, 0);
+  if (amount <= 0 || price <= 0) return null;
+
+  const xrpDrops = xrpToDrops(decimalString(amount * price, 6));
+  const issuedValue = decimalString(amount, 6);
+
+  let flags = 0;
+  if (orderStyle === "passive") flags |= OFFER_CREATE_FLAGS.passive;
+  if (orderStyle === "ioc") flags |= OFFER_CREATE_FLAGS.ioc;
+  if (orderStyle === "fok") flags |= OFFER_CREATE_FLAGS.ioc | OFFER_CREATE_FLAGS.fok;
+
+  const walletState = getWalletState();
+  const tx = {
+    TransactionType: "OfferCreate",
+    Account: walletState.publicAddress || "",
+    Flags: flags
+  };
+
+  if (side === "buy") {
+    tx.TakerGets = xrpDrops;
+    tx.TakerPays = { currency, issuer, value: issuedValue };
+  } else {
+    tx.TakerGets = { currency, issuer, value: issuedValue };
+    tx.TakerPays = xrpDrops;
   }
 
+  return tx;
+}
+
+function dexPreviewFromTx(tx) {
+  if (!tx) return null;
+  const gets = typeof tx.TakerGets === "string"
+    ? `${(Number(tx.TakerGets) / 1e6).toFixed(6)} XRP`
+    : `${tx.TakerGets.value} ${tx.TakerGets.currency}`;
+  const pays = typeof tx.TakerPays === "string"
+    ? `${(Number(tx.TakerPays) / 1e6).toFixed(6)} XRP`
+    : `${tx.TakerPays.value} ${tx.TakerPays.currency}`;
+  return {
+    side: state.dex.side === "buy" ? "BUY" : "SELL",
+    takerGets: gets,
+    takerPays: pays,
+    orderStyle: state.dex.orderStyle,
+    price: state.dex.price,
+    currency: state.dex.currency,
+    issuer: state.dex.issuer,
+    slippage: state.dex.slippage,
+    stopLoss: state.dex.stopLoss,
+    takeProfit: state.dex.takeProfit,
+    account: tx.Account
+  };
+}
+
+function renderDexTxPreview(preview) {
+  const el = document.getElementById("txPreview");
+  if (!el) return;
+  if (!preview) {
+    el.innerHTML = `<p class="muted">Fill the trade ticket and click Analyze Trade to see the transaction preview.</p>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="dex-preview-grid">
+      <div class="dex-preview-row"><span class="dex-label">Direction</span><span class="chip chip-${preview.side === "BUY" ? "safe" : "medium"}">${preview.side}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">TakerGets</span><span>${preview.takerGets}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">TakerPays</span><span>${preview.takerPays}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Order Style</span><span>${preview.orderStyle}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Limit Price</span><span>${preview.price} XRP per token</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Slippage Guard</span><span>${preview.slippage}%</span></div>
+      ${preview.stopLoss ? `<div class="dex-preview-row"><span class="dex-label">Stop Loss</span><span>${preview.stopLoss} XRP</span></div>` : ""}
+      ${preview.takeProfit ? `<div class="dex-preview-row"><span class="dex-label">Take Profit</span><span>${preview.takeProfit} XRP</span></div>` : ""}
+      <div class="dex-preview-row"><span class="dex-label">Account</span><span class="mono">${preview.account || "—"}</span></div>
+    </div>
+  `;
+}
+
+function renderDexAccessPanel() {
+  if (!refs.dexPagePanel) return;
+  if (hasSigningWallet()) {
+    const walletState = getWalletState();
+    refs.dexPagePanel.innerHTML = `
+      <div class="dex-access-connected">
+        <span class="chip chip-safe">Connected</span>
+        <span class="muted">${walletState.publicAddress || ""}</span>
+      </div>
+    `;
+  } else {
+    refs.dexPagePanel.innerHTML = `
+      <p><strong>DEX locked:</strong> Connect Xumm/Xaman or load a wallet created in IkeLedger to sign transactions.</p>
+      <p class="muted">You can analyze and preview trades without signing, but submitting requires a signing wallet.</p>
+      <div class="button-row">
+        <button id="dexAuthPromptButton" type="button">Sign In / Connect</button>
+        <button class="ghost profile-wallet-nav-btn" data-nav="create-wallet" type="button">Create Wallet</button>
+      </div>
+    `;
+    refs.dexPagePanel.querySelector("#dexAuthPromptButton")?.addEventListener("click", openAuthModal);
+    refs.dexPagePanel.querySelectorAll(".profile-wallet-nav-btn[data-nav]").forEach((btn) => {
+      btn.addEventListener("click", () => setActivePage(btn.dataset.nav));
+    });
+  }
+  if (refs.dexAccessBadge) {
+    refs.dexAccessBadge.textContent = hasSigningWallet() ? "Connected" : "Wallet required";
+    refs.dexAccessBadge.classList.toggle("chip-safe", hasSigningWallet());
+  }
+}
+
+function renderDexStatsPanel() {
+  if (!refs.dexStatsPanel) return;
+  const stats = dexOrderStats();
+  const { loading, error, updatedAt } = state.dex.orderBook;
+
+  if (loading) {
+    refs.dexStatsPanel.innerHTML = `<p class="muted">Loading order book…</p>`;
+    if (refs.dexBookUpdated) refs.dexBookUpdated.textContent = "Loading…";
+    return;
+  }
+  if (error) {
+    refs.dexStatsPanel.innerHTML = `<p class="error">${error}</p>`;
+    if (refs.dexBookUpdated) refs.dexBookUpdated.textContent = "Error";
+    return;
+  }
+  if (!stats) {
+    refs.dexStatsPanel.innerHTML = `<p class="muted">No order book data. Select a token and click Refresh Book.</p>`;
+    if (refs.dexBookUpdated) refs.dexBookUpdated.textContent = "Not loaded";
+    return;
+  }
+
+  refs.dexStatsPanel.innerHTML = `
+    <div class="dex-stat"><span class="dex-label">Best Bid</span><span>${decimalString(stats.bestBid, 6)} XRP</span></div>
+    <div class="dex-stat"><span class="dex-label">Best Ask</span><span>${decimalString(stats.bestAsk, 6)} XRP</span></div>
+    <div class="dex-stat"><span class="dex-label">Spread</span><span>${decimalString(stats.spread, 6)} XRP (${decimalString(stats.spreadPct, 2)}%)</span></div>
+    <div class="dex-stat"><span class="dex-label">Mid Price</span><span>${decimalString(stats.midPrice, 6)} XRP</span></div>
+    <div class="dex-stat"><span class="dex-label">Bid Depth</span><span>${formatCompactNumber(stats.bidDepth)}</span></div>
+    <div class="dex-stat"><span class="dex-label">Ask Depth</span><span>${formatCompactNumber(stats.askDepth)}</span></div>
+  `;
+
+  if (refs.dexBookUpdated) {
+    refs.dexBookUpdated.textContent = updatedAt
+      ? `Updated ${new Date(updatedAt).toLocaleTimeString()}`
+      : "Not loaded";
+  }
+}
+
+function renderDexOrderBookPanel() {
+  if (!refs.dexOrderBookPanel) return;
+  const { bids, asks, loading } = state.dex.orderBook;
+  if (loading) {
+    refs.dexOrderBookPanel.innerHTML = `<p class="muted">Loading…</p>`;
+    return;
+  }
+  if (!bids.length && !asks.length) {
+    refs.dexOrderBookPanel.innerHTML = `<p class="muted">No book data. Select a token and refresh.</p>`;
+    return;
+  }
+  const rowHtml = (items, cls) => items.slice(0, 8).map((o) =>
+    `<div class="book-row ${cls}"><span>${decimalString(o.price, 6)}</span><span>${formatCompactNumber(o.amount)}</span></div>`
+  ).join("");
+  const mid = dexOrderStats()?.midPrice;
+  refs.dexOrderBookPanel.innerHTML = `
+    <div class="book-header"><span>Price (XRP)</span><span>Amount</span></div>
+    <div class="book-asks">${rowHtml(asks, "ask")}</div>
+    ${mid ? `<div class="book-mid">${decimalString(mid, 6)} mid</div>` : ""}
+    <div class="book-bids">${rowHtml(bids, "bid")}</div>
+  `;
+}
+
+function renderDexRiskRewardPanel() {
+  if (!refs.dexRiskRewardPanel) return;
+  const { price, stopLoss, takeProfit, slippage, amount, side } = state.dex;
+  const entry = toFiniteNumber(price, 0);
+  const sl = toFiniteNumber(stopLoss, 0);
+  const tp = toFiniteNumber(takeProfit, 0);
+  const qty = toFiniteNumber(amount, 0);
+
+  if (!entry || !qty) {
+    refs.dexRiskRewardPanel.innerHTML = `<p class="muted">Enter price and amount to see risk/reward metrics.</p>`;
+    return;
+  }
+
+  const riskXrp = sl > 0 && side === "buy" ? (entry - sl) * qty : 0;
+  const rewardXrp = tp > 0 && side === "buy" ? (tp - entry) * qty : 0;
+  const rrRatio = riskXrp > 0 ? (rewardXrp / riskXrp).toFixed(2) : "—";
+  const totalCost = entry * qty;
+  const slipAmt = totalCost * (toFiniteNumber(slippage, 1) / 100);
+
+  refs.dexRiskRewardPanel.innerHTML = `
+    <div class="dex-stat"><span class="dex-label">Entry Price</span><span>${decimalString(entry, 6)} XRP</span></div>
+    <div class="dex-stat"><span class="dex-label">Total Cost</span><span>${decimalString(totalCost, 4)} XRP</span></div>
+    ${sl > 0 ? `<div class="dex-stat"><span class="dex-label">Risk (stop-loss)</span><span style="color:var(--color-error,#ef4444)">${decimalString(riskXrp, 4)} XRP</span></div>` : ""}
+    ${tp > 0 ? `<div class="dex-stat"><span class="dex-label">Reward (take-profit)</span><span style="color:var(--color-success,#22c55e)">${decimalString(rewardXrp, 4)} XRP</span></div>` : ""}
+    <div class="dex-stat"><span class="dex-label">R/R Ratio</span><span>${rrRatio}</span></div>
+    <div class="dex-stat"><span class="dex-label">Slippage Allowance</span><span>${decimalString(slipAmt, 4)} XRP (${slippage}%)</span></div>
+  `;
+}
+
+// ── Trading chart — indicator math ───────────────────────────────
+
+function chartSma(data, n) {
+  return data.map((_, i) => {
+    if (i < n - 1) return NaN;
+    let s = 0;
+    for (let j = i - n + 1; j <= i; j++) s += data[j];
+    return s / n;
+  });
+}
+
+function chartEma(data, n) {
+  const k = 2 / (n + 1);
+  const out = new Array(data.length).fill(NaN);
+  let sum = 0, cnt = 0, started = false, prev = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i];
+    if (!Number.isFinite(v)) continue;
+    if (!started) {
+      sum += v;
+      cnt++;
+      if (cnt === n) { prev = sum / n; out[i] = prev; started = true; }
+    } else {
+      prev = v * k + prev * (1 - k);
+      out[i] = prev;
+    }
+  }
+  return out;
+}
+
+function chartBB(closes, n = 20, mult = 2) {
+  const mid = chartSma(closes, n);
+  return closes.map((_, i) => {
+    if (!Number.isFinite(mid[i])) return { mid: NaN, upper: NaN, lower: NaN };
+    let variance = 0;
+    for (let j = i - n + 1; j <= i; j++) variance += (closes[j] - mid[i]) ** 2;
+    const sd = Math.sqrt(variance / n);
+    return { mid: mid[i], upper: mid[i] + mult * sd, lower: mid[i] - mult * sd };
+  });
+}
+
+function chartRsi(closes, n = 14) {
+  const out = new Array(closes.length).fill(NaN);
+  if (closes.length <= n) return out;
+  let ag = 0, al = 0;
+  for (let i = 1; i <= n; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) ag += d; else al -= d;
+  }
+  ag /= n; al /= n;
+  for (let i = n; i < closes.length; i++) {
+    out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    if (i < closes.length - 1) {
+      const d = closes[i + 1] - closes[i];
+      ag = (ag * (n - 1) + Math.max(d, 0)) / n;
+      al = (al * (n - 1) + Math.max(-d, 0)) / n;
+    }
+  }
+  return out;
+}
+
+// ── Trading chart — data fetching ─────────────────────────────────
+
+function dexTfParams(tf) {
+  // Each timeframe = candle period (TradingView convention), limit = bars fetched
+  if (tf === "5M")  return { krakenInterval: 5,     xrplPeriod: "5m",  limit: 500 };  // ~40h
+  if (tf === "15M") return { krakenInterval: 15,    xrplPeriod: "15m", limit: 500 };  // ~5 days
+  if (tf === "1H")  return { krakenInterval: 60,    xrplPeriod: "1h",  limit: 720 };  // 30 days
+  if (tf === "4H")  return { krakenInterval: 240,   xrplPeriod: "4h",  limit: 500 };  // ~80 days
+  if (tf === "1W")  return { krakenInterval: 10080, xrplPeriod: "1w",  limit: 200 };  // ~4 years
+  return                   { krakenInterval: 1440,  xrplPeriod: "1d",  limit: 730 };  // 1D: ~2 years
+}
+
+async function fetchDexChartData(token, tf = "1D") {
+  const { krakenInterval, xrplPeriod, limit } = dexTfParams(tf);
+
+  if (!token) {
+    // XRP/USD — Kraken public API (CORS-friendly, XRP is native so not on xrpl.to)
+    const candles = await fetchKrakenXrpOhlcv(krakenInterval, limit);
+    if (!candles.length) throw new Error("No XRP/USD data from Kraken.");
+    return { candles, label: `XRP / USD — ${tf}` };
+  }
+
+  // ── Issued token — multi-source OHLCV with XRPL live fallback ────
+  const { md5, slug, rawCurrency, issuer, symbol, currency } = token;
+  const chartLabel = `${symbol || currency} / XRP — ${tf}`;
+
+  const parseOhlcv = (raw) =>
+    (Array.isArray(raw) ? raw : []).map((k) => {
+      if (Array.isArray(k)) {
+        const [t, o, h, l, c, v = 0] = k;
+        return { t: toFiniteNumber(t, 0), o: toFiniteNumber(o, 0), h: toFiniteNumber(h, 0), l: toFiniteNumber(l, 0), c: toFiniteNumber(c, 0), v: toFiniteNumber(v, 0) };
+      }
+      return { t: toFiniteNumber(k.t ?? k.time ?? k.date ?? k.timestamp ?? 0, 0), o: toFiniteNumber(k.o ?? k.open ?? 0, 0), h: toFiniteNumber(k.h ?? k.high ?? 0, 0), l: toFiniteNumber(k.l ?? k.low ?? 0, 0), c: toFiniteNumber(k.c ?? k.close ?? k.last ?? 0, 0), v: toFiniteNumber(k.v ?? k.vol ?? k.volume ?? k.base_volume ?? k.counter_volume ?? 0, 0) };
+    }).filter((c) => c.c > 0);
+
+  const tryFetch = async (url) => {
+    const data = await fetchMarketJson(url);
+    return parseOhlcv(Array.isArray(data) ? data : (data?.data ?? data?.ohlcv ?? data?.result ?? []));
+  };
+
+  // Source 1 — xrpl.to by currency+issuer (xrpl.to requires decoded code, not 40-char hex)
+  const urlCurrency = currency || symbol; // decoded form (e.g. "CULT" not "43554C54...")
+  if (urlCurrency && issuer) {
+    try {
+      const c = await tryFetch(`https://api.xrpl.to/v1/tokens/${encodeURIComponent(urlCurrency)}+${encodeURIComponent(issuer)}/ohlcv?period=${xrplPeriod}&limit=${limit}`);
+      if (c.length) return { candles: c, label: chartLabel };
+    } catch { /* try next */ }
+  }
+
+  // Source 2 — xrpl.to by md5 hash (when available and is a real 32-char hex)
+  if (md5 && /^[a-f0-9]{32}$/i.test(md5)) {
+    try {
+      const c = await tryFetch(`https://api.xrpl.to/v1/tokens/${md5}/ohlcv?period=${xrplPeriod}&limit=${limit}`);
+      if (c.length) return { candles: c, label: chartLabel };
+    } catch { /* try next */ }
+  }
+
+  // Source 3 — XRPL ledger live price via amm_info + book_offers (no history — single point)
+  const livePrice = await fetchTokenSpotFromXrpl(token);
+  if (livePrice > 0) {
+    const now = Date.now();
+    return {
+      candles: [{ t: now, o: livePrice, h: livePrice, l: livePrice, c: livePrice, v: 0 }],
+      label: `${chartLabel} · live only`
+    };
+  }
+
+  throw new Error(`No chart data for ${symbol || currency}. The token may have low trading volume.`);
+}
+
+async function fetchTokenSpotFromXrpl(token) {
+  const walletState = getWalletState();
+  const network = walletState.network || DEFAULT_NETWORK;
+  const { rawCurrency, issuer } = token;
+  if (!rawCurrency || !issuer) return 0;
+
+  // Try AMM pool first (amm_info — XRPL native)
+  try {
+    const result = await requestXrplCommand(network, {
+      command: "amm_info",
+      asset:  { currency: "XRP" },
+      asset2: { currency: rawCurrency, issuer }
+    });
+    const amm = result?.amm;
+    if (amm) {
+      const xrp   = Number(amm.amount || 0) / 1e6;
+      const token = Number(amm.amount2?.value || 0);
+      if (xrp > 0 && token > 0) return xrp / token;
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: best ask from book_offers (XRPL native order book)
+  try {
+    const result = await requestXrplCommand(network, {
+      command: "book_offers",
+      taker_pays: { currency: "XRP" },
+      taker_gets: { currency: rawCurrency, issuer },
+      limit: 5
+    });
+    const offers = result?.offers || [];
+    if (offers.length) {
+      const o = offers[0];
+      const xrp   = Number(o.TakerPays || 0) / 1e6;
+      const tok   = Number(o.TakerGets?.value || 0);
+      if (xrp > 0 && tok > 0) return xrp / tok;
+    }
+  } catch { /* */ }
+
+  return 0;
+}
+
+let _dexChartLoadId = 0; // incremented on every load; stale results are discarded
+
+async function loadDexChart(force = false) {
+  const token = getDexSelectedToken();
+  const tokenId = token?.id || "";
+  const tf = state.dex.chart.timeframe;
+  const cacheKey = `${tokenId}:${tf}`;
+
+  if (
+    !force
+    && state.dex.chart.cacheKey === cacheKey
+    && state.dex.chart.fetchedAt
+    && Date.now() - state.dex.chart.fetchedAt < 5 * 60 * 1000
+  ) return;
+
+  const myId = ++_dexChartLoadId;
+  state.dex.chart.loading = true;
+  state.dex.chart.error = "";
+  state.dex.chart.cacheKey = cacheKey;
+  state.dex.chart.tokenId = tokenId;
+  drawDexAnalysisChart();
+
+  try {
+    const { candles, label } = await fetchDexChartData(token, tf);
+    if (myId !== _dexChartLoadId) return; // superseded by a newer selection
+    state.dex.chart = {
+      ...state.dex.chart,
+      candles,
+      label,
+      loading: false,
+      error: "",
+      cacheKey,
+      tokenId,
+      fetchedAt: Date.now()
+    };
+    dexChartBarsVis = Math.min(80, candles.length);
+    dexChartOffset  = 0;
+  } catch (err) {
+    if (myId !== _dexChartLoadId) return;
+    state.dex.chart.loading = false;
+    state.dex.chart.error = err instanceof Error ? err.message : "Chart unavailable.";
+    state.dex.chart.candles = [];
+  }
+
+  drawDexAnalysisChart();
+}
+
+// ── Trading chart — controls injection (runs once per session) ────
+
+let dexChartReady    = false;
+let dexMouseX        = -1;
+let dexMouseY        = -1;
+let dexChartBarsVis  = 60;    // zoom: how many candles are visible
+let dexChartOffset   = 0;     // pan: bars from right edge that are scrolled past
+let dexChartDragging = false;
+let dexChartDragX    = 0;
+let dexChartDragOff  = 0;
+
+function ensureDexChartControls() {
+  if (dexChartReady) return;
+  const canvas = refs.dexAnalysisChart;
+  const shell = canvas?.parentElement;
+  if (!shell) return;
+  dexChartReady = true;
+
+  const { timeframe, chartType, indicators } = state.dex.chart;
+
+  // ── Controls bar ──────────────────────────────────────────────
+  const ctrl = document.createElement("div");
+  ctrl.className = "dex-chart-controls";
+  ctrl.innerHTML = `
+    <div class="dex-ctrl-group dex-asset-picker-group">
+      <button class="dex-asset-btn" title="Change chart asset">XRP / USD ▾</button>
+      <div class="dex-asset-dropdown hidden">
+        <input type="text" class="dex-asset-search" placeholder="Search token…" autocomplete="off">
+        <div class="dex-asset-list"></div>
+      </div>
+    </div>
+    <div class="dex-ctrl-divider"></div>
+    <div class="dex-ctrl-group">
+      ${["5M","15M","1H","4H","1D","1W"].map((tf) =>
+        `<button class="dex-tf-btn${tf === timeframe ? " is-active" : ""}" data-tf="${tf}">${tf}</button>`
+      ).join("")}
+    </div>
+    <div class="dex-ctrl-divider"></div>
+    <div class="dex-ctrl-group">
+      ${[["candle","Candles"],["ohlc","Bars"],["line","Line"],["area","Area"]].map(([t,l]) =>
+        `<button class="dex-type-btn${t === chartType ? " is-active" : ""}" data-type="${t}">${l}</button>`
+      ).join("")}
+    </div>
+    <div class="dex-ctrl-divider"></div>
+    <div class="dex-ctrl-group dex-ind-group">
+      ${[["ma20","MA 20"],["ma50","MA 50"],["ema20","EMA 20"],["bb","BB"],["volume","Vol"],["rsi","RSI"]].map(([k,l]) =>
+        `<label class="dex-ind-label"><input type="checkbox" data-ind="${k}"${indicators[k] ? " checked" : ""}><span>${l}</span></label>`
+      ).join("")}
+    </div>
+    <div class="dex-ctrl-divider"></div>
+    <div class="dex-ctrl-group">
+      <button class="dex-fit-btn" title="Fit all data">↔</button>
+    </div>
+  `;
+  shell.insertBefore(ctrl, canvas);
+
+  // ── Asset picker ───────────────────────────────────────────────
+  const assetBtn      = ctrl.querySelector(".dex-asset-btn");
+  const assetDropdown = ctrl.querySelector(".dex-asset-dropdown");
+  const assetSearch   = ctrl.querySelector(".dex-asset-search");
+  const assetList     = ctrl.querySelector(".dex-asset-list");
+
+  function renderAssetList(filter = "") {
+    const q = filter.toLowerCase();
+    const items = [
+      { id: "", label: "XRP / USD", sub: "Native — Kraken data" },
+      ...state.topIssuedAssets.items
+        .filter((t) => !q || t.name?.toLowerCase().includes(q) || t.symbol?.toLowerCase().includes(q) || t.currency?.toLowerCase().includes(q))
+        .slice(0, 30)
+        .map((t) => ({ id: t.id || t.md5 || "", label: `${t.symbol || t.currency} / XRP`, sub: t.name || t.issuer || "" }))
+    ];
+    assetList.innerHTML = items.map((it) =>
+      `<div class="dex-asset-item${it.id === (state.dex.selectedTokenId || "") ? " is-active" : ""}" data-id="${it.id}">
+        <span class="dex-asset-item-label">${it.label}</span>
+        <span class="dex-asset-item-sub">${it.sub}</span>
+      </div>`
+    ).join("");
+  }
+
+  assetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    assetDropdown.classList.toggle("hidden");
+    if (!assetDropdown.classList.contains("hidden")) {
+      renderAssetList();
+      assetSearch.focus();
+    }
+  });
+  assetSearch.addEventListener("input", () => renderAssetList(assetSearch.value));
+  assetList.addEventListener("click", (e) => {
+    const item = e.target.closest(".dex-asset-item");
+    if (!item) return;
+    const id = item.dataset.id;
+    state.dex.selectedTokenId = id;
+    if (!id) {
+      assetBtn.textContent = "XRP / USD ▾";
+      state.dex.currency = ""; state.dex.issuer = "";
+    } else {
+      const tok = state.topIssuedAssets.items.find((t) => (t.id || t.md5 || "") === id);
+      if (tok) {
+        assetBtn.textContent = `${tok.symbol || tok.currency} / XRP ▾`;
+        applyDexToken(tok);
+      }
+    }
+    assetDropdown.classList.add("hidden");
+    assetSearch.value = "";
+    clearTimeout(_tfDebounce);
+    _tfDebounce = setTimeout(() => void loadDexChart(true), 350);
+  });
+  document.addEventListener("click", () => assetDropdown.classList.add("hidden"));
+
+  // ── Timeframe buttons ──────────────────────────────────────────
+  let _tfDebounce;
+  ctrl.querySelectorAll(".dex-tf-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.dex.chart.timeframe = btn.dataset.tf;
+      ctrl.querySelectorAll(".dex-tf-btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      clearTimeout(_tfDebounce);
+      _tfDebounce = setTimeout(() => void loadDexChart(true), 350);
+    });
+  });
+
+  // ── Chart type buttons ─────────────────────────────────────────
+  ctrl.querySelectorAll(".dex-type-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.dex.chart.chartType = btn.dataset.type;
+      ctrl.querySelectorAll(".dex-type-btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      drawDexAnalysisChart();
+    });
+  });
+
+  // ── Indicator checkboxes ───────────────────────────────────────
+  ctrl.querySelectorAll("[data-ind]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      state.dex.chart.indicators[cb.dataset.ind] = cb.checked;
+      drawDexAnalysisChart();
+    });
+  });
+
+  // ── Fit button ─────────────────────────────────────────────────
+  ctrl.querySelector(".dex-fit-btn")?.addEventListener("click", () => {
+    const total = state.dex.chart.candles.length;
+    dexChartBarsVis = total || 60;
+    dexChartOffset  = 0;
+    drawDexAnalysisChart();
+  });
+
+  // ── Canvas: crosshair (mouse position) ────────────────────────
+  canvas.addEventListener("mousemove", (e) => {
+    const r = canvas.getBoundingClientRect();
+    dexMouseX = (e.clientX - r.left) * (canvas.width / r.width);
+    dexMouseY = (e.clientY - r.top) * (canvas.height / r.height);
+    if (dexChartDragging) {
+      const dxPx    = e.clientX - dexChartDragX;
+      const plotPx  = Math.max(r.width - 76, 1); // plot area in CSS pixels (W - RP - LP)
+      const barsPerPx = dexChartBarsVis / plotPx;
+      const delta   = Math.round(-dxPx * barsPerPx);
+      const total   = state.dex.chart.candles.length;
+      dexChartOffset = Math.max(0, Math.min(Math.max(0, total - dexChartBarsVis), dexChartDragOff + delta));
+    }
+    drawDexAnalysisChart();
+  });
+  canvas.addEventListener("mouseleave", () => {
+    if (!dexChartDragging) { dexMouseX = -1; dexMouseY = -1; }
+    drawDexAnalysisChart();
+  });
+
+  // ── Canvas: drag to pan ────────────────────────────────────────
+  canvas.addEventListener("mousedown", (e) => {
+    dexChartDragging = true;
+    dexChartDragX    = e.clientX;
+    dexChartDragOff  = dexChartOffset;
+    canvas.style.cursor = "grabbing";
+  });
+  window.addEventListener("mouseup", () => {
+    if (dexChartDragging) {
+      dexChartDragging = false;
+      canvas.style.cursor = "crosshair";
+    }
+  });
+
+  // ── Canvas: scroll wheel to zoom ───────────────────────────────
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const total = state.dex.chart.candles.length;
+    if (!total) return;
+    const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18;
+    dexChartBarsVis = Math.round(Math.max(5, Math.min(total, dexChartBarsVis * factor)));
+    dexChartOffset  = Math.max(0, Math.min(total - dexChartBarsVis, dexChartOffset));
+    drawDexAnalysisChart();
+  }, { passive: false });
+
+  // ── Touch: pinch zoom + swipe pan ─────────────────────────────
+  let touchDist0 = 0, touchOff0 = 0, touchX0 = 0;
+  canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchDist0 = Math.hypot(dx, dy);
+      touchOff0  = dexChartBarsVis;
+    } else if (e.touches.length === 1) {
+      touchX0   = e.touches[0].clientX;
+      dexChartDragOff = dexChartOffset;
+    }
+  }, { passive: true });
+  canvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const total = state.dex.chart.candles.length;
+      if (touchDist0 > 0 && total) {
+        dexChartBarsVis = Math.round(Math.max(5, Math.min(total, touchOff0 * (touchDist0 / dist))));
+        dexChartOffset  = Math.max(0, Math.min(total - dexChartBarsVis, dexChartOffset));
+        drawDexAnalysisChart();
+      }
+    } else if (e.touches.length === 1) {
+      const dxPx   = e.touches[0].clientX - touchX0;
+      const tr     = canvas.getBoundingClientRect();
+      const plotPx = Math.max(tr.width - 76, 1);
+      const delta  = Math.round(-dxPx * (dexChartBarsVis / plotPx));
+      const total  = state.dex.chart.candles.length;
+      dexChartOffset = Math.max(0, Math.min(Math.max(0, total - dexChartBarsVis), dexChartDragOff + delta));
+      drawDexAnalysisChart();
+    }
+  }, { passive: false });
+}
+
+// ── Trading chart — draw ──────────────────────────────────────────
+
+function drawDexAnalysisChart() {
+  const canvas = refs.dexAnalysisChart;
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+
+  ensureDexChartControls();
+
+  const { loading, error, label } = state.dex.chart;
+
+  // ── Viewport: slice candles based on zoom + pan ───────────────
+  const allCandles = state.dex.chart.candles;
+  const totalBars  = allCandles.length;
+  const barsVis    = Math.max(5, Math.min(totalBars || 5, dexChartBarsVis));
+  const viewOff    = Math.max(0, Math.min(Math.max(0, totalBars - barsVis), dexChartOffset));
+  const startIdx   = Math.max(0, totalBars - barsVis - viewOff);
+  const endIdx     = Math.max(0, totalBars - viewOff);
+  const candles    = allCandles.slice(startIdx, endIdx || undefined);
+
+  // ── Layout constants ──────────────────────────────────────────
+  const { volume, rsi } = state.dex.chart.indicators;
+  const INFO = 36;   // top OHLCV info bar
+  const MAIN = 380;  // main price area
+  const SUB  = 80;   // volume / RSI sub-panel height
+  const XBAR = 24;   // bottom time axis
+  const LP   = 4;    // left margin (tiny — axis is on right)
+  const RP   = 72;   // right price axis width
+
+  const dpr   = window.devicePixelRatio || 1;
+  const W     = Math.max((canvas.parentElement?.clientWidth || 900), 300);
+  const H     = INFO + MAIN + (volume ? SUB : 0) + (rsi ? SUB : 0) + XBAR;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width  = W + "px";
+  canvas.style.height = H + "px";
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+
+  const mainTop    = INFO;
+  const mainBottom = INFO + MAIN;
+  const volTop     = mainBottom;
+  const volBottom  = volTop + (volume ? SUB : 0);
+  const rsiTop     = volume ? volBottom : mainBottom;
+  const rsiBottom  = rsiTop + (rsi ? SUB : 0);
+  const xTop       = rsi ? rsiBottom : (volume ? volBottom : mainBottom);
+  const plotL      = LP;
+  const plotR      = W - RP;
+
+  // ── TradingView color palette ─────────────────────────────────
+  const C = {
+    bg:       "#131722",
+    panelBg:  "#131722",
+    axisStrip:"#1a2035",
+    grid:     "rgba(255,255,255,0.038)",
+    sep:      "rgba(255,255,255,0.07)",
+    axisText: "#848e9c",
+    candleUp:   "#26a69a",
+    candleDown: "#ef5350",
+    fillUp:   "rgba(38,166,154,0.88)",
+    fillDown: "rgba(239,83,80,0.88)",
+    volUp:    "rgba(38,166,154,0.4)",
+    volDown:  "rgba(239,83,80,0.4)",
+    lineBlue: "#2962ff",
+    ma20:     "#f6c85b",
+    ma50:     "#7b7fdb",
+    ema20:    "#f06292",
+    bb:       "#9966cc",
+    rsiLine:  "#c084fc",
+  };
+
+  // ── Background ────────────────────────────────────────────────
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Right Y-axis strip
+  ctx.fillStyle = C.axisStrip;
+  ctx.fillRect(plotR, 0, RP, H);
+
+  // Bottom X-axis strip
+  ctx.fillStyle = C.axisStrip;
+  ctx.fillRect(0, xTop, W, XBAR);
+
+  if (loading) {
+    ctx.fillStyle = C.axisText;
+    ctx.font = "13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Loading chart data…", (plotL + plotR) / 2, mainTop + MAIN / 2);
+    return;
+  }
+  if (!candles.length) {
+    ctx.fillStyle = C.axisText;
+    ctx.font = "13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(error || "Open the DEX page to load chart data", (plotL + plotR) / 2, mainTop + MAIN / 2 - 8);
+    if (error) {
+      ctx.font = "10px system-ui";
+      ctx.fillText("Try a different timeframe or wait a moment for rate limits to clear.", (plotL + plotR) / 2, mainTop + MAIN / 2 + 12);
+    }
+    return;
+  }
+
+  // Live-price-only fallback — single flat candle, no historical data
+  const isLiveOnly = candles.length === 1 && candles[0].o === candles[0].h && candles[0].h === candles[0].l && candles[0].l === candles[0].c;
+  if (isLiveOnly) {
+    const liveP = candles[0].c;
+    const midX  = (plotL + plotR) / 2;
+    const midY  = (mainTop + mainBottom) / 2;
+    ctx.strokeStyle = C.lineBlue; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(plotL, midY); ctx.lineTo(plotR, midY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = C.lineBlue; ctx.font = "bold 15px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(`${decimalString(liveP, liveP < 0.001 ? 8 : 6)} XRP`, midX, midY - 18);
+    ctx.fillStyle = C.axisText; ctx.font = "11px system-ui";
+    ctx.fillText("Live price — no OHLCV history on xrpl.to for this token", midX, midY + 14);
+    ctx.fillText("Low volume tokens may not have tracked trade history.", midX, midY + 30);
+    return;
+  }
+
+  // ── Core geometry ─────────────────────────────────────────────
+  const closes  = candles.map((c) => c.c);
+  const inds    = state.dex.chart.indicators;
+  const ma20v   = inds.ma20  ? chartSma(closes, 20)   : [];
+  const ma50v   = inds.ma50  ? chartSma(closes, 50)   : [];
+  const ema20v  = inds.ema20 ? chartEma(closes, 20)   : [];
+  const bbv     = inds.bb    ? chartBB(closes, 20, 2) : [];
+  const rsiVals = inds.rsi   ? chartRsi(closes, 14)   : [];
+
+  const allP = [
+    ...candles.map((c) => c.h), ...candles.map((c) => c.l),
+    ...(inds.ma20  ? ma20v.filter(Number.isFinite)                              : []),
+    ...(inds.ma50  ? ma50v.filter(Number.isFinite)                              : []),
+    ...(inds.ema20 ? ema20v.filter(Number.isFinite)                             : []),
+    ...(inds.bb    ? bbv.flatMap((b) => [b.upper, b.lower]).filter(Number.isFinite) : [])
+  ].filter(Number.isFinite);
+  const rawMin = Math.min(...allP), rawMax = Math.max(...allP);
+  const pad5   = (rawMax - rawMin) * 0.04 || rawMax * 0.01 || 0.0001;
+  const minP   = rawMin - pad5, maxP = rawMax + pad5;
+  const priceRange = maxP - minP || 1;
+
+  const count = candles.length;
+  // Future space: empty bars on the right when viewing the most recent data
+  const futureBars  = viewOff === 0 ? Math.max(4, Math.round(count * 0.07)) : 0;
+  const displaySlots = count + futureBars;
+  const barW  = (plotR - plotL) / Math.max(displaySlots, 1);
+  const bodyW = Math.max(barW * 0.7, 1);
+
+  const toX   = (i) => plotL + i * barW + barW / 2;
+  const mToY  = (p) => mainBottom - ((p - minP) / priceRange) * MAIN;
+  const subToY = (v, t, b, lo, hi) => b - ((v - lo) / (hi - lo || 1)) * (b - t);
+
+  // ── Vertical grid ─────────────────────────────────────────────
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  const vStep = Math.max(1, Math.floor(count / 7));
+  candles.forEach((_, i) => {
+    if (i % vStep !== 0) return;
+    const x = toX(i);
+    if (x < plotL + 16 || x > plotR - 16) return;
+    ctx.beginPath();
+    ctx.moveTo(x, mainTop);
+    ctx.lineTo(x, xTop);
+    ctx.stroke();
+  });
+
+  // ── Horizontal grid + right Y-axis labels ─────────────────────
+  const GRID_N = 5;
+  for (let i = 0; i <= GRID_N; i++) {
+    const frac  = i / GRID_N;
+    const price = maxP - frac * priceRange;
+    const y     = mainTop + frac * MAIN;
+    ctx.strokeStyle = C.grid;
+    ctx.lineWidth = 1;
+    if (i > 0 && i < GRID_N) {
+      ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke();
+    }
+    if (y >= mainTop + 4 && y <= mainBottom - 4) {
+      const lbl = decimalString(price, price < 0.01 ? 6 : price < 1 ? 4 : 2);
+      ctx.fillStyle = C.axisText;
+      ctx.font = "10px system-ui";
+      ctx.textAlign = "left";
+      ctx.fillText(lbl, plotR + 6, y + 3);
+    }
+  }
+
+  // ── X-axis time labels ────────────────────────────────────────
+  ctx.font = "10px system-ui"; ctx.textAlign = "center";
+  candles.forEach((c, i) => {
+    if (i % vStep !== 0) return;
+    const x = toX(i);
+    if (x < plotL + 28 || x > plotR - 28) return;
+    const ms  = c.t > 1e12 ? c.t : c.t * 1000;
+    const d   = new Date(ms);
+    const tf  = state.dex.chart.timeframe;
+    const lbl = (tf === "5M" || tf === "15M")
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : (tf === "1H" || tf === "4H")
+        ? d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : d.toLocaleDateString([], { month: "short", day: "numeric" });
+    ctx.fillStyle = C.axisText;
+    ctx.fillText(lbl, x, xTop + 15);
+  });
+
+  // ── Bollinger Bands (drawn before price so candles render on top) ──
+  if (inds.bb && bbv.length) {
+    const fillP = new Path2D(); let uf = false;
+    bbv.forEach((b, i) => {
+      if (!Number.isFinite(b.upper)) return;
+      if (!uf) { fillP.moveTo(toX(i), mToY(b.upper)); uf = true; }
+      else fillP.lineTo(toX(i), mToY(b.upper));
+    });
+    for (let i = bbv.length - 1; i >= 0; i--) {
+      if (Number.isFinite(bbv[i].lower)) fillP.lineTo(toX(i), mToY(bbv[i].lower));
+    }
+    fillP.closePath();
+    ctx.fillStyle = "rgba(153,102,204,0.06)";
+    ctx.fill(fillP);
+
+    [[C.bb, "upper"],[C.bb, "lower"],["rgba(153,102,204,0.35)","mid"]].forEach(([col, key]) => {
+      const p = new Path2D(); let s = false;
+      bbv.forEach((b, i) => {
+        if (!Number.isFinite(b[key])) return;
+        if (!s) { p.moveTo(toX(i), mToY(b[key])); s = true; } else p.lineTo(toX(i), mToY(b[key]));
+      });
+      ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(p);
+    });
+    ctx.setLineDash([]);
+  }
+
+  // ── Price display ─────────────────────────────────────────────
+  const type = state.dex.chart.chartType;
+
+  if (type === "candle") {
+    candles.forEach((c, i) => {
+      const x   = toX(i);
+      const up  = c.c >= c.o;
+      const col = up ? C.candleUp : C.candleDown;
+      const bTop = mToY(Math.max(c.o, c.c));
+      const bBot = mToY(Math.min(c.o, c.c));
+      const bH   = Math.max(bBot - bTop, 1);
+      ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, mToY(c.h)); ctx.lineTo(x, bTop);
+      ctx.moveTo(x, bBot);      ctx.lineTo(x, mToY(c.l));
+      ctx.stroke();
+      ctx.fillStyle = up ? C.fillUp : C.fillDown;
+      ctx.fillRect(x - bodyW / 2, bTop, bodyW, bH);
+    });
+
+  } else if (type === "ohlc") {
+    candles.forEach((c, i) => {
+      const x   = toX(i);
+      const up  = c.c >= c.o;
+      const lw  = Math.max(bodyW * 0.22, 1);
+      ctx.strokeStyle = up ? C.candleUp : C.candleDown; ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(x, mToY(c.h)); ctx.lineTo(x, mToY(c.l));
+      ctx.moveTo(x - bodyW / 2, mToY(c.o)); ctx.lineTo(x, mToY(c.o));
+      ctx.moveTo(x, mToY(c.c)); ctx.lineTo(x + bodyW / 2, mToY(c.c));
+      ctx.stroke();
+    });
+
+  } else {
+    const path = new Path2D(); let s = false;
+    closes.forEach((p, i) => {
+      const x = toX(i), y = mToY(p);
+      if (!s) { path.moveTo(x, y); s = true; } else path.lineTo(x, y);
+    });
+    ctx.strokeStyle = C.lineBlue; ctx.lineWidth = 2; ctx.stroke(path);
+    if (type === "area") {
+      const fill = new Path2D(path);
+      fill.lineTo(toX(closes.length - 1), mainBottom);
+      fill.lineTo(toX(0), mainBottom);
+      fill.closePath();
+      const grad = ctx.createLinearGradient(0, mainTop, 0, mainBottom);
+      grad.addColorStop(0, "rgba(41,98,255,0.24)");
+      grad.addColorStop(1, "rgba(41,98,255,0.01)");
+      ctx.fillStyle = grad; ctx.fill(fill);
+    }
+  }
+
+  // ── Moving averages ───────────────────────────────────────────
+  const drawLine = (vals, color) => {
+    const p = new Path2D(); let s = false;
+    vals.forEach((v, i) => {
+      if (!Number.isFinite(v)) return;
+      if (!s) { p.moveTo(toX(i), mToY(v)); s = true; } else p.lineTo(toX(i), mToY(v));
+    });
+    ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.stroke(p);
+  };
+  if (inds.ma20  && ma20v.length)  drawLine(ma20v,  C.ma20);
+  if (inds.ma50  && ma50v.length)  drawLine(ma50v,  C.ma50);
+  if (inds.ema20 && ema20v.length) drawLine(ema20v, C.ema20);
+
+  // ── Current price tag on right axis ──────────────────────────
+  const lastClose = closes[closes.length - 1];
+  if (Number.isFinite(lastClose)) {
+    const cy  = mToY(lastClose);
+    const lbl = decimalString(lastClose, lastClose < 0.01 ? 6 : lastClose < 1 ? 4 : 2);
+    const lw  = Math.max(ctx.measureText(lbl).width + 10, RP - 2);
+    const lastUp = closes.length >= 2 ? lastClose >= closes[closes.length - 2] : true;
+    ctx.fillStyle = lastUp ? C.candleUp : C.candleDown;
+    ctx.fillRect(plotR, cy - 9, lw, 18);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 10px system-ui"; ctx.textAlign = "left";
+    ctx.fillText(lbl, plotR + 5, cy + 4);
+  }
+
+  // ── Overlay lines (entry / SL / TP / bid / ask) ───────────────
+  const entry = toFiniteNumber(state.dex.price, 0);
+  const sl    = toFiniteNumber(state.dex.stopLoss, 0);
+  const tp    = toFiniteNumber(state.dex.takeProfit, 0);
+  const sts   = dexOrderStats();
+  const bid   = sts?.bestBid || 0;
+  const ask   = sts?.bestAsk || 0;
+  const clamp = (y) => Math.min(mainBottom - 9, Math.max(mainTop + 9, y));
+
+  const drawOv = (price, color, lbl) => {
+    const y = mToY(price);
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    // Tag on right axis
+    const tag = decimalString(price, price < 0.01 ? 6 : 4);
+    const tw  = Math.max(ctx.measureText(tag).width + 10, RP - 2);
+    ctx.fillStyle = color;
+    ctx.fillRect(plotR, clamp(y) - 9, tw, 18);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 9px monospace"; ctx.textAlign = "left";
+    ctx.fillText(tag, plotR + 5, clamp(y) + 4);
+    // Label inside chart
+    ctx.fillStyle = color; ctx.font = "bold 9px system-ui";
+    ctx.fillText(lbl, plotL + 4, clamp(y) - 2);
+    ctx.restore();
+  };
+  if (bid > 0) drawOv(bid, "#848e9c", "Bid");
+  if (ask > 0 && ask !== bid) drawOv(ask, "#848e9c", "Ask");
+  if (entry > 0) drawOv(entry, C.lineBlue, "Entry");
+  if (sl > 0)    drawOv(sl,    C.candleDown, "Stop Loss");
+  if (tp > 0)    drawOv(tp,    C.candleUp,   "Take Profit");
+
+  // ── Panel separator lines ─────────────────────────────────────
+  ctx.strokeStyle = C.sep; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(plotL, mainBottom); ctx.lineTo(W, mainBottom); ctx.stroke();
+  if (volume && rsi) {
+    ctx.beginPath(); ctx.moveTo(plotL, volBottom); ctx.lineTo(W, volBottom); ctx.stroke();
+  }
+  // Right axis separator
+  ctx.beginPath(); ctx.moveTo(plotR, 0); ctx.lineTo(plotR, xTop); ctx.stroke();
+  // X-axis separator
+  ctx.beginPath(); ctx.moveTo(0, xTop); ctx.lineTo(W, xTop); ctx.stroke();
+
+  // ── Volume panel ─────────────────────────────────────────────
+  if (volume) {
+    const maxVol = Math.max(...candles.map((c) => c.v), 1);
+    candles.forEach((c, i) => {
+      if (!c.v) return;
+      const x  = toX(i);
+      const bH = Math.max((c.v / maxVol) * (SUB - 4), 1);
+      ctx.fillStyle = c.c >= c.o ? C.volUp : C.volDown;
+      ctx.fillRect(x - bodyW / 2, volBottom - bH, bodyW, bH);
+    });
+    ctx.fillStyle = C.axisText; ctx.font = "9px system-ui"; ctx.textAlign = "left";
+    ctx.fillText("Volume", plotL + 4, volTop + 12);
+  }
+
+  // ── RSI panel ────────────────────────────────────────────────
+  if (rsi && rsiVals.length) {
+    const rsiH = SUB;
+    [30, 50, 70].forEach((lvl) => {
+      const y = rsiBottom - (lvl / 100) * rsiH;
+      ctx.strokeStyle = lvl === 50 ? "rgba(255,255,255,0.06)" : "rgba(239,83,80,0.16)";
+      ctx.lineWidth = 1; ctx.setLineDash(lvl === 50 ? [] : [3, 3]);
+      ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = C.axisText; ctx.textAlign = "left"; ctx.font = "9px system-ui";
+      ctx.fillText(String(lvl), plotR + 6, y + 3);
+    });
+    const rsiPath = new Path2D(); let rs = false;
+    rsiVals.forEach((v, i) => {
+      if (!Number.isFinite(v)) return;
+      const x = toX(i), y = rsiBottom - (v / 100) * rsiH;
+      if (!rs) { rsiPath.moveTo(x, y); rs = true; } else rsiPath.lineTo(x, y);
+    });
+    ctx.strokeStyle = C.rsiLine; ctx.lineWidth = 1.5; ctx.stroke(rsiPath);
+
+    const lastRsi = [...rsiVals].reverse().find(Number.isFinite);
+    ctx.fillStyle = C.axisText; ctx.font = "9px system-ui"; ctx.textAlign = "left";
+    ctx.fillText("RSI(14)", plotL + 4, rsiTop + 12);
+    if (Number.isFinite(lastRsi)) {
+      ctx.fillStyle = lastRsi > 70 ? C.candleDown : lastRsi < 30 ? C.candleUp : C.rsiLine;
+      ctx.fillText(lastRsi.toFixed(1), plotL + 58, rsiTop + 12);
+      // RSI value on right axis
+      const ry = rsiBottom - (lastRsi / 100) * rsiH;
+      ctx.fillStyle = C.axisText; ctx.textAlign = "left";
+      ctx.fillText(lastRsi.toFixed(1), plotR + 6, ry + 3);
+    }
+  }
+
+  // ── OHLCV info bar (top strip — updates with crosshair) ────────
+  const hovIdx = (dexMouseX >= plotL && dexMouseX <= plotR)
+    ? Math.min(Math.floor((dexMouseX - plotL) / barW), count - 1)
+    : count - 1;
+  const ic   = candles[Math.max(0, hovIdx)];
+  const icUp = ic.c >= ic.o;
+  const icChg = ic.o > 0 ? ((ic.c - ic.o) / ic.o * 100) : 0;
+  const icMs  = ic.t > 1e12 ? ic.t : ic.t * 1000;
+  const icD   = new Date(icMs);
+  const icTf  = state.dex.chart.timeframe;
+  const icTs  = (icTf === "5M" || icTf === "15M" || icTf === "1H" || icTf === "4H")
+    ? icD.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : icD.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+
+  ctx.font = "11px system-ui"; ctx.textAlign = "left";
+  let ix = plotL + 6;
+  const iy = 23;
+
+  if (label) {
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.font = "bold 11px system-ui";
+    ctx.fillText(label, ix, iy);
+    ix += ctx.measureText(label).width + 14;
+  }
+  ctx.font = "11px system-ui";
+  ctx.fillStyle = C.axisText; ctx.fillText(icTs + "  ", ix, iy);
+  ix += ctx.measureText(icTs + "  ").width;
+  [["O", ic.o],["H", ic.h],["L", ic.l],["C", ic.c]].forEach(([k, v]) => {
+    ctx.fillStyle = C.axisText; ctx.fillText(k + " ", ix, iy);
+    ix += ctx.measureText(k + " ").width;
+    ctx.fillStyle = icUp ? C.candleUp : C.candleDown;
+    const vs = decimalString(v, 6) + "  ";
+    ctx.fillText(vs, ix, iy);
+    ix += ctx.measureText(vs).width;
+  });
+  ctx.fillStyle = icUp ? C.candleUp : C.candleDown;
+  ctx.fillText(`${icUp ? "+" : ""}${icChg.toFixed(2)}%`, ix, iy);
+  if (ic.v > 0) {
+    ctx.fillStyle = C.axisText;
+    ix += ctx.measureText(`${icUp ? "+" : ""}${icChg.toFixed(2)}%`).width + 10;
+    ctx.fillText("Vol " + formatCompactNumber(ic.v), ix, iy);
+  }
+
+  // Indicator legend dots
+  let lx = plotL + 4, ly = mainTop + 14;
+  ctx.font = "9px system-ui"; ctx.textAlign = "left";
+  if (inds.ma20)  { ctx.fillStyle = C.ma20;  ctx.fillText("MA 20",  lx, ly); lx += 42; }
+  if (inds.ma50)  { ctx.fillStyle = C.ma50;  ctx.fillText("MA 50",  lx, ly); lx += 42; }
+  if (inds.ema20) { ctx.fillStyle = C.ema20; ctx.fillText("EMA 20", lx, ly); lx += 48; }
+  if (inds.bb)    { ctx.fillStyle = C.bb;    ctx.fillText("BB(20)", lx, ly); }
+
+  // ── Crosshair ────────────────────────────────────────────────
+  const fullBottom = rsi ? rsiBottom : (volume ? volBottom : mainBottom);
+  if (dexMouseX >= plotL && dexMouseX <= plotR && dexMouseY >= mainTop && dexMouseY <= fullBottom) {
+    const mx = dexMouseX, my = dexMouseY;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mx, mainTop); ctx.lineTo(mx, fullBottom);
+    ctx.moveTo(plotL, my);   ctx.lineTo(plotR, my);
+    ctx.stroke();
+
+    // Price tag on right axis (main panel)
+    if (my >= mainTop && my <= mainBottom) {
+      const price = minP + (1 - (my - mainTop) / MAIN) * priceRange;
+      const plbl  = decimalString(price, price < 0.01 ? 6 : 4);
+      const pw    = Math.max(ctx.measureText(plbl).width + 10, RP - 2);
+      ctx.fillStyle = C.lineBlue;
+      ctx.fillRect(plotR, my - 9, pw, 18);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 10px monospace"; ctx.textAlign = "left";
+      ctx.fillText(plbl, plotR + 5, my + 4);
+    }
+
+    // Time tag on bottom axis
+    const bi  = Math.min(Math.floor((mx - plotL) / barW), count - 1);
+    if (bi >= 0 && bi < count) {
+      const bMs  = candles[bi].t > 1e12 ? candles[bi].t : candles[bi].t * 1000;
+      const bD   = new Date(bMs);
+      const bTf  = state.dex.chart.timeframe;
+      const tLbl = (bTf === "1H" || bTf === "4H")
+        ? bD.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        : bD.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+      const tw = ctx.measureText(tLbl).width + 12;
+      const tx = Math.min(Math.max(mx - tw / 2, plotL), plotR - tw);
+      ctx.fillStyle = C.lineBlue;
+      ctx.fillRect(tx, xTop + 1, tw, 20);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 10px system-ui"; ctx.textAlign = "center";
+      ctx.fillText(tLbl, tx + tw / 2, xTop + 15);
+    }
+
+    ctx.restore();
+  }
+}
+
+function renderDexExecutionPlan() {
+  if (!refs.dexExecutionPlanPanel) return;
+  const { side, amount, price, stopLoss, takeProfit, currency } = state.dex;
+  const entry = toFiniteNumber(price, 0);
+  const qty = toFiniteNumber(amount, 0);
+  const sl = toFiniteNumber(stopLoss, 0);
+  const tp = toFiniteNumber(takeProfit, 0);
+
+  if (!entry || !qty || !currency) {
+    refs.dexExecutionPlanPanel.innerHTML = `<p class="muted">Complete the trade ticket to generate an execution plan.</p>`;
+    return;
+  }
+
+  const steps = [
+    `<strong>Step 1:</strong> Place ${side === "buy" ? "BUY" : "SELL"} OfferCreate for ${decimalString(qty, 4)} ${currency} at ${decimalString(entry, 6)} XRP/token via Xumm.`,
+    `<strong>Step 2:</strong> Monitor XRPL ledger for offer fill status.`,
+    sl > 0 ? `<strong>Step 3 (Stop-Loss):</strong> If price drops to ${decimalString(sl, 6)} XRP, manually place a SELL offer to exit.` : null,
+    tp > 0 ? `<strong>Step ${sl > 0 ? 4 : 3} (Take-Profit):</strong> If price reaches ${decimalString(tp, 6)} XRP, manually place a SELL offer to lock in gains.` : null
+  ].filter(Boolean);
+
+  refs.dexExecutionPlanPanel.innerHTML = steps.map((s) => `<p>${s}</p>`).join("");
+}
+
+function renderDexSafetyPanel() {
+  if (!refs.dexSafetyPanel) return;
+  const { currency, issuer, slippage, orderStyle } = state.dex;
+  const warnings = [];
+
+  if (!issuer) warnings.push("No issuer set. Verify the token issuer before creating any offer.");
+  if (toFiniteNumber(slippage, 0) > 5) warnings.push(`Slippage guard is ${slippage}% — high slippage increases fill risk at unfavorable prices.`);
+  if (orderStyle === "fok" || orderStyle === "ioc") warnings.push(`${orderStyle.toUpperCase()} orders may not fill if liquidity is insufficient and will be cancelled automatically.`);
+  if (currency && currency.length === 40) warnings.push("Currency uses a 40-char hex code — confirm you recognize this issuer address.");
+  warnings.push("XRPL does not provide native stop-loss automation. Stop and take-profit levels are planning guides only.");
+  warnings.push("All transactions are irreversible once validated on-ledger. Verify every field in Xumm before approving.");
+
+  refs.dexSafetyPanel.innerHTML = warnings.map((w) => `<p class="warning-inline">&#x26A0; ${w}</p>`).join("");
+}
+
+function renderDex() {
+  populateDexAssetSelect();
+  renderDexAccessPanel();
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+  renderDexRiskRewardPanel();
+  drawDexAnalysisChart();
+  renderDexExecutionPlan();
+  renderDexSafetyPanel();
+  renderDexTxPreview(state.dex.latestTx ? dexPreviewFromTx(state.dex.latestTx) : null);
+  if (refs.dexSignOfferButton) refs.dexSignOfferButton.disabled = state.dex.signing;
+}
+
+async function loadDexOrderBook(force = false) {
+  const { currency, issuer } = state.dex;
+  if (!currency || !issuer) {
+    setDexTicketStatus("Select an asset or enter currency and issuer before refreshing.", true);
+    return;
+  }
+  if (!force && state.dex.orderBook.updatedAt && Date.now() - state.dex.orderBook.updatedAt < 10000) return;
+
+  state.dex.orderBook.loading = true;
+  state.dex.orderBook.error = "";
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+
+  const walletState = getWalletState();
+  const network = walletState.network || DEFAULT_NETWORK;
+  const takerPays = { currency: "XRP" };
+  const takerGets = { currency, issuer };
+
+  try {
+    const [bidsResult, asksResult] = await Promise.all([
+      requestXrplCommand(network, { command: "book_offers", taker_pays: takerPays, taker_gets: takerGets, limit: DEX_BOOK_LIMIT }),
+      requestXrplCommand(network, { command: "book_offers", taker_pays: takerGets, taker_gets: takerPays, limit: DEX_BOOK_LIMIT })
+    ]);
+    state.dex.orderBook = {
+      loading: false,
+      error: "",
+      bids: (bidsResult.offers || []).map((o) => normalizeDexBookOffer(o, "bids")),
+      asks: (asksResult.offers || []).map((o) => normalizeDexBookOffer(o, "asks")),
+      updatedAt: Date.now()
+    };
+  } catch (err) {
+    state.dex.orderBook.loading = false;
+    state.dex.orderBook.error = err instanceof Error ? err.message : "Order book request failed.";
+  }
+
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+  drawDexAnalysisChart();
+}
+
+function onDexAssetChange() {
+  const id = refs.dexAssetSelect?.value || "";
+  state.dex.selectedTokenId = id;
+  const token = getDexSelectedToken();
+  applyDexToken(token);
+  void loadDexChart(true);
+  if (token) void loadDexOrderBook(true);
+}
+
+function onDexInputChange() {
+  syncDexStateFromInputs();
+  state.dex.latestTx = null;
+  renderDexRiskRewardPanel();
+  drawDexAnalysisChart();
+  renderDexExecutionPlan();
+  renderDexSafetyPanel();
+  renderDexTxPreview(null);
+  setDexTicketStatus("");
+}
+
+function onDexAnalyze() {
+  syncDexStateFromInputs();
+  const { currency, issuer, amount, price } = state.dex;
+  if (!currency) { setDexTicketStatus("Enter a currency code.", true); return; }
+  if (!issuer) { setDexTicketStatus("Enter an issuer address.", true); return; }
+  if (!(toFiniteNumber(amount, 0) > 0)) { setDexTicketStatus("Enter a token amount greater than zero.", true); return; }
+  if (!(toFiniteNumber(price, 0) > 0)) { setDexTicketStatus("Enter a limit price greater than zero.", true); return; }
+
+  const tx = buildDexOfferTx();
+  if (!tx) { setDexTicketStatus("Could not build offer transaction. Check all fields.", true); return; }
+
+  state.dex.latestTx = tx;
+  renderDexTxPreview(dexPreviewFromTx(tx));
+  renderDexRiskRewardPanel();
+  drawDexAnalysisChart();
+  renderDexExecutionPlan();
+  renderDexSafetyPanel();
+  setDexTicketStatus("Transaction preview ready. Review all fields before signing.");
+}
+
+async function onDexSignOffer() {
+  if (!hasSigningWallet()) {
+    openAuthModal();
+    return;
+  }
+  if (!state.dex.latestTx) {
+    onDexAnalyze();
+    if (!state.dex.latestTx) return;
+  }
+
+  state.dex.signing = true;
+  if (refs.dexSignOfferButton) refs.dexSignOfferButton.disabled = true;
+  setDexTicketStatus("Opening Xumm sign flow…");
+
+  try {
+    const xumm = initXumm();
+    await createTxFlow(xumm, state.dex.latestTx);
+    setDexTicketStatus("Xumm sign request sent. Approve in the Xumm/Xaman app.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Signing failed.";
+    if (msg.toLowerCase().includes("created") || msg.toLowerCase().includes("preview")) {
+      setDexTicketStatus("This wallet was created in IkeLedger. Import it into Xumm/Xaman to sign transactions on-chain.", true);
+    } else {
+      setDexTicketStatus(msg, true);
+    }
+  } finally {
+    state.dex.signing = false;
+    if (refs.dexSignOfferButton) refs.dexSignOfferButton.disabled = false;
+  }
+}
+
+function renderExtendedPanels(walletState) {
   if (refs.walletPageSummary) {
     refs.walletPageSummary.innerHTML = refs.walletStatus?.innerHTML || "<p>Wallet overview unavailable.</p>";
   }
@@ -2919,6 +4425,7 @@ function renderAll() {
   renderFundWalletCard(walletState);
   void renderMarketOverview();
   renderExtendedPanels(walletState);
+  renderDex();
 }
 
 function renderAdminPanel() {
@@ -3732,6 +5239,17 @@ function initEventHandlers() {
   bindClick(refs.commandEmailSignInButton, () => { void onEmailProfileSignIn(); });
   bindClick(refs.refreshTopIssuedTokensButton, () => { void loadTopIssuedAssets(true); });
   bindClick(refs.refreshTopAmmPoolsButton, () => { void loadTopAmmPools(true); });
+
+  // DEX controls
+  refs.dexAssetSelect?.addEventListener("change", onDexAssetChange);
+  const dexInputs = [refs.dexSideSelect, refs.dexCurrencyInput, refs.dexIssuerInput, refs.dexAmountInput, refs.dexPriceInput, refs.dexOrderStyleSelect, refs.dexSlippageInput, refs.dexStopLossInput, refs.dexTakeProfitInput];
+  dexInputs.forEach((el) => {
+    el?.addEventListener("input", onDexInputChange);
+    el?.addEventListener("change", onDexInputChange);
+  });
+  bindClick(refs.dexAnalyzeButton, onDexAnalyze);
+  bindClick(refs.dexRefreshBookButton, () => { void loadDexOrderBook(true); });
+  bindClick(refs.dexSignOfferButton, () => { void onDexSignOffer(); });
   bindClick(refs.toggleRawJsonButton, toggleRawJson);
 
   bindClick(refs.openSignGateButton, openSignGateModal);
