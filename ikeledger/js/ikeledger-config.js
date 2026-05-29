@@ -19,13 +19,6 @@ export const NETWORKS = {
     endpoint: "wss://xrplcluster.com",
     isMainnet: true,
     warning: "Real assets may be involved."
-  },
-  "xrpl-devnet": {
-    key: "xrpl-devnet",
-    label: "XRPL Devnet",
-    endpoint: "wss://s.devnet.rippletest.net:51233",
-    isMainnet: false,
-    warning: "Experimental network for development."
   }
 };
 
@@ -45,6 +38,7 @@ export const STORAGE_KEYS = {
   supabaseAnonKey: "ikeledger.supabaseAnonKey",
   adminMode: "ikeledger.adminMode",
   theme: "ikeledger.theme",
+  accent: "ikeledger.accent",
   completedLessons: "ikeledger.completedLessons",
   profilePhoto: "ikeledger.profilePhoto",
   avatarGlowColor: "ikeledger.avatarGlowColor",

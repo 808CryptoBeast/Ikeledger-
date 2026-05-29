@@ -39,11 +39,10 @@ const MARKET_RESULT_LIMIT = 500;
 const MARKET_PAGE_SIZE    = 100;
 const MARKET_VISIBLE_STEP = 50;
 const TOP_ISSUED_ASSETS_BASE_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc";
-const TOP_ISSUED_ASSETS_URL      = `${TOP_ISSUED_ASSETS_BASE_URL}&limit=${MARKET_PAGE_SIZE}`;
 const TOP_AMM_POOLS_URL          = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_PAGE_SIZE}`;
-const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v4";
-const XRPSCAN_TOKENS_URL   = "https://api.xrpscan.com/api/v1/tokens";
-const XRPSCAN_CACHE_KEY    = "ike_xrpscan_tokens_v1";
+const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v5";
+const XRPSCAN_TOKENS_URL   = "https://api.xrpscan.com/api/v1/tokens?limit=500";
+const XRPSCAN_CACHE_KEY    = "ike_xrpscan_tokens_v2";
 const XRPSCAN_CACHE_MS     = 5 * 60 * 1000;
 const TOP_AMM_POOLS_CACHE_KEY = "ike_top_amm_pools_v3";
 const TOP_ISSUED_ASSETS_CACHE_MS = 6 * 60 * 60 * 1000;
@@ -136,7 +135,7 @@ const state = {
     feed: [],              // [TrackerEvent]
     feedLimit: 150,
     running: false,
-    txFilters: new Set(["buy","sell","amm","nft","escrow","check","trustline","security","payment","offer","other"]),
+    txFilters: new Set(["health","security","token","nft","amm","market","whale","buy","sell","payment","offer","other"]),
     minXrp: 0,
     groupFilter: "",
     socialHandles: [],     // [{ handle, label }]
@@ -159,6 +158,7 @@ const refs = {
   profileButton: document.getElementById("profileButton"),
   saveProfileButton: document.getElementById("saveProfileButton"),
   themeSelect: document.getElementById("themeSelect"),
+  accentSelect: document.getElementById("accentSelect"),
   walletConnectionChip: document.getElementById("walletConnectionChip"),
   qrCodeButton: document.getElementById("qrCodeButton"),
   lastSyncStatus: document.getElementById("lastSyncStatus"),
@@ -195,7 +195,6 @@ const refs = {
   xrpChangeStat: document.getElementById("xrpChangeStat"),
   securityChipStat: document.getElementById("securityChipStat"),
   nftListingStatus: document.getElementById("nftListingStatus"),
-  dexStatus: document.getElementById("dexStatus"),
   walletPageSummary: document.getElementById("walletPageSummary"),
   tokensPagePanel: document.getElementById("tokensPagePanel"),
   topIssuedTokensPanel: document.getElementById("topIssuedTokensPanel"),
@@ -577,6 +576,8 @@ function imageProxyUrl(url = "") {
   if (!clean) return "";
   if (clean.startsWith("./") || clean.startsWith("/")) return clean;
   if (!/^https?:\/\//i.test(clean)) return "";
+  // Trusted CDNs with open CORS — serve directly, no proxy needed
+  if (clean.startsWith("https://s1.xrplmeta.org/")) return clean;
   const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
   if (proxyBase) {
     return `${proxyBase}/image?url=${encodeURIComponent(clean)}&w=96&h=96`;
@@ -596,46 +597,50 @@ function normalizeLogoSource(value = "") {
   return "";
 }
 
+function tokenColor(symbol = "") {
+  let h = 0;
+  const s = String(symbol || "?");
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  const sat = 48 + (Math.abs(h >> 8) % 24);
+  const lit = 32 + (Math.abs(h >> 16) % 20);
+  return `hsl(${hue},${sat}%,${lit}%)`;
+}
+
 function tokenLogoUrl(token = {}) {
   const localLogo = String(token.localLogo || token.localLogoUrl || "").trim();
   if (localLogo.startsWith("./") || localLogo.startsWith("/")) return localLogo;
 
+  // xrplmeta CDN (XRPScan-sourced) — directly accessible, highest priority
+  const xrplmeta = String(token.xrplmetaIcon || "").trim();
+  if (xrplmeta.startsWith("https://s1.xrplmeta.org/")) return xrplmeta;
+
   const directLogo = normalizeLogoSource(
-    token.tomlIcon || token.icon || token.logo || token.logoUrl || token.image || token.imageUrl || ""
+    token.tomlIcon || token.icon || token.logo || token.image || token.imageUrl || token.logoUrl || ""
   );
   if (directLogo) return imageProxyUrl(directLogo);
 
-  // xrpl.to CDN — use md5 (= _id) with the extension the API provides
-  const md5 = String(token.md5 || token._id || "").trim();
-  if (/^[a-f0-9]{32}$/i.test(md5)) {
-    const ext = String(token.ext || "").replace(/[^a-z0-9]/gi, "");
-    return `https://s1.xrpl.to/token/${md5}${ext ? "." + ext : ""}`;
-  }
   return "";
 }
 
 function tokenLogoMarkup(token = {}, label = "") {
   const initials = String(label || "?").replace(/[^a-z0-9]/gi, "").slice(0, 3).toUpperCase() || "?";
-  const logoUrl = String(token.logoUrl || "").trim();
+  const logoUrl  = String(token.logoUrl || "").trim();
+  const color    = tokenColor(label || initials);
   const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
   const safeLogoUrl = logoUrl.startsWith("./")
     || logoUrl.startsWith("/")
-    || logoUrl.startsWith("https://wsrv.nl/")
-    || logoUrl.startsWith("https://s1.xrpl.to/")
     || logoUrl.startsWith("https://s1.xrplmeta.org/")
+    || logoUrl.startsWith("https://wsrv.nl/")
     || logoUrl.startsWith("https://ipfs.io/ipfs/")
     || logoUrl.startsWith("https://cloudflare-ipfs.com/ipfs/")
+    || logoUrl.startsWith("https://arweave.net/")
     || (proxyBase && logoUrl.startsWith(`${proxyBase}/image?`))
     ? logoUrl : "";
   if (!safeLogoUrl) {
-    return `<span class="token-logo is-fallback"><span>${escapeHtml(initials)}</span></span>`;
+    return `<span class="token-logo is-fallback" style="--tok-color:${color}"><span>${escapeHtml(initials)}</span></span>`;
   }
-  return `
-    <span class="token-logo">
-      <span>${escapeHtml(initials)}</span>
-      <img src="${escapeHtml(safeLogoUrl)}" alt="${escapeHtml(label)} logo" loading="lazy" onerror="this.parentElement.classList.add('is-fallback'); this.remove();" />
-    </span>
-  `;
+  return `<span class="token-logo" style="--tok-color:${color}"><span>${escapeHtml(initials)}</span><img src="${escapeHtml(safeLogoUrl)}" alt="${escapeHtml(label)} logo" loading="lazy" onerror="this.parentElement.classList.add('is-fallback');this.remove();" /></span>`;
 }
 
 function decodeCurrencyCode(currency = "") {
@@ -776,8 +781,7 @@ async function lookupXamanAddressAcrossNetworks(address) {
   const attempts = [
     initialNetwork,
     "xrpl-mainnet",
-    "xrpl-testnet",
-    "xrpl-devnet"
+    "xrpl-testnet"
   ].filter((network, index, list) => NETWORKS[network] && list.indexOf(network) === index);
 
   let lastError = null;
@@ -800,7 +804,7 @@ async function lookupXamanAddressAcrossNetworks(address) {
   if (refs.networkSelect) refs.networkSelect.value = initialNetwork;
 
   if (lastError) {
-    throw new Error("No funded XRPL account was found for this address on Mainnet, Testnet, or Devnet. If this is a new wallet, send XRP to activate it first.");
+    throw new Error("No funded XRPL account was found for this address on Mainnet or Testnet. If this is a new wallet, send XRP to activate it first.");
   }
   throw new Error("Could not verify the XRPL account.");
 }
@@ -817,6 +821,14 @@ function applyTheme(mode) {
   document.body.classList.toggle("light-mode", resolved === "light");
   localStorage.setItem(STORAGE_KEYS.theme, mode);
   if (refs.themeSelect) refs.themeSelect.value = mode;
+}
+
+function applyAccent(mode = "aqua") {
+  const accent = ["aqua", "gold", "emerald"].includes(mode) ? mode : "aqua";
+  document.body.classList.toggle("accent-gold", accent === "gold");
+  document.body.classList.toggle("accent-emerald", accent === "emerald");
+  localStorage.setItem(STORAGE_KEYS.accent, accent);
+  if (refs.accentSelect) refs.accentSelect.value = accent;
 }
 
 function cycleTheme() {
@@ -885,6 +897,9 @@ function setActivePage(page) {
 
   if (page === "tracker") {
     renderTrackerPage();
+    if (hasXrplAccount() && state.tracker.wallets.length && !state.tracker.running) {
+      startTracker();
+    }
   }
 }
 
@@ -1322,22 +1337,21 @@ function renderMarketSnapshot(snapshot) {
   renderMarketSourceStatus(snapshot);
 }
 
-// ══════════════════════════════════════════════════════════════
-// LIVE TRACKER
-// ══════════════════════════════════════════════════════════════
+// Account Intelligence
 
 const TRACKER_TX_LABELS = {
-  buy:        { label: "Buy",       color: "var(--emerald)",  icon: "↑" },
-  sell:       { label: "Sell",      color: "var(--danger)",   icon: "↓" },
-  amm:        { label: "AMM",       color: "var(--cyan)",     icon: "⇄" },
-  nft:        { label: "NFT",       color: "var(--violet)",   icon: "🖼" },
-  escrow:     { label: "Escrow",    color: "var(--warn)",     icon: "⏳" },
-  check:      { label: "Check",     color: "var(--warn)",     icon: "✓" },
-  trustline:  { label: "Trust",     color: "var(--xrp-blue)", icon: "🔗" },
-  security:   { label: "⚠ Security",color: "var(--danger)",  icon: "🚨" },
-  payment:    { label: "Payment",   color: "var(--turquoise)","icon": "→" },
-  offer:      { label: "Offer",     color: "var(--mana-gold)","icon": "📋" },
-  other:      { label: "Other",     color: "var(--ink-2)",    icon: "·"  }
+  health:   { label: "Health",   color: "var(--xrp-blue)",  icon: "H" },
+  security: { label: "Security", color: "var(--danger)",    icon: "!" },
+  token:    { label: "Tokens",   color: "var(--turquoise)", icon: "T" },
+  nft:      { label: "NFTs",     color: "var(--violet)",    icon: "N" },
+  amm:      { label: "AMM / LP", color: "var(--cyan)",      icon: "A" },
+  market:   { label: "Market",   color: "var(--mana-gold)", icon: "M" },
+  whale:    { label: "Whales",   color: "var(--warn)",      icon: "W" },
+  buy:      { label: "Buy",      color: "var(--emerald)",   icon: "+" },
+  sell:     { label: "Sell",     color: "var(--danger)",    icon: "-" },
+  payment:  { label: "Payment",  color: "var(--turquoise)", icon: "P" },
+  offer:    { label: "Offers",   color: "var(--mana-gold)", icon: "O" },
+  other:    { label: "Other",    color: "var(--ink-2)",     icon: "." }
 };
 
 const SECURITY_TX_TYPES = new Set([
@@ -1356,14 +1370,16 @@ function classifyTrackerTx(txType, tx) {
   if (SECURITY_TX_TYPES.has(txType)) return "security";
   if (NFT_TX_TYPES.has(txType))      return "nft";
   if (AMM_TX_TYPES.has(txType))      return "amm";
-  if (txType === "EscrowCreate" || txType === "EscrowFinish" || txType === "EscrowCancel") return "escrow";
-  if (txType === "CheckCreate"  || txType === "CheckCash"    || txType === "CheckCancel")  return "check";
-  if (txType === "TrustSet")         return "trustline";
-  if (txType === "OfferCreate" || txType === "OfferCancel")   return "offer";
+  if (txType === "EscrowCreate" || txType === "EscrowFinish" || txType === "EscrowCancel") return "health";
+  if (txType === "CheckCreate"  || txType === "CheckCash"    || txType === "CheckCancel")  return "health";
+  if (txType === "TrustSet") return "token";
+  if (txType === "OfferCreate") {
+    return typeof tx.TakerGets === "string" ? "buy" : "sell";
+  }
+  if (txType === "OfferCancel") return "offer";
   if (txType === "Payment") {
-    const dest = tx.Destination;
     const amt  = tx.Amount;
-    if (typeof amt === "object" && amt?.currency) return "payment"; // issued currency payment
+    if (typeof amt === "object" && amt?.currency) return "token";
     return "payment";
   }
   return "other";
@@ -1375,6 +1391,29 @@ function trackerXrpAmount(tx, meta) {
   if (typeof delivered === "string") return Number(delivered) / 1e6;
   if (typeof tx.Amount === "string") return Number(tx.Amount) / 1e6;
   return 0;
+}
+
+function trackerEventSeverity(category, xrpAmount = 0, txType = "") {
+  if (category === "security") return "high";
+  if (category === "whale" || xrpAmount >= 10000) return "high";
+  if (["amm", "token", "nft", "health"].includes(category)) return "medium";
+  if (txType === "OfferCancel") return "medium";
+  return "low";
+}
+
+function trackerEventInsight(category, txType, tx, xrpAmount) {
+  if (category === "security") return "Security-sensitive account setting changed. Verify this was intentional.";
+  if (category === "whale") return `Large XRP movement detected (${decimalString(xrpAmount, 2)} XRP). Watch for follow-up liquidity or exchange movement.`;
+  if (category === "token") {
+    const currency = tx.LimitAmount?.currency || tx.Amount?.currency || "issued asset";
+    return `Issued asset signal: ${currency}. Review issuer, trust line, and freeze/clawback risk.`;
+  }
+  if (category === "amm") return "AMM/LP activity can change exposure, pool share, and impermanent loss risk.";
+  if (category === "nft") return "NFT ownership or offer activity changed. Review collection, issuer, and offer terms.";
+  if (category === "health") return "Account object or reserve-related activity detected. Review available XRP after reserves.";
+  if (category === "buy" || category === "sell") return "DEX offer activity detected. It may fill immediately or remain open.";
+  if (txType === "Payment") return "Payment movement detected. Confirm destination and source are expected.";
+  return "General ledger activity detected for a watched account.";
 }
 
 function trackerEventDescription(txType, tx, meta, walletEntry) {
@@ -1411,7 +1450,7 @@ function processTrackerStream(payload) {
   if (meta.TransactionResult && meta.TransactionResult !== "tesSUCCESS") return;
 
   const txType = tx.TransactionType || "";
-  const category = classifyTrackerTx(txType, tx);
+  let category = classifyTrackerTx(txType, tx);
 
   // Find which watched wallet triggered this
   const involvedAddr = [tx.Account, tx.Destination].filter(Boolean);
@@ -1419,6 +1458,10 @@ function processTrackerStream(payload) {
   if (!walletEntry && state.tracker.wallets.length > 0) return; // not from a watched wallet
 
   const xrpAmt = trackerXrpAmount(tx, meta);
+  if (txType === "Payment" && xrpAmt >= 10000) {
+    category = "whale";
+  }
+  const severity = trackerEventSeverity(category, xrpAmt, txType);
 
   const event = {
     id:          tx.hash || String(Date.now()),
@@ -1428,8 +1471,10 @@ function processTrackerStream(payload) {
     group:       walletEntry?.group || "",
     xrpAmount:   xrpAmt,
     description: trackerEventDescription(txType, tx, meta, walletEntry),
+    intelligence: trackerEventInsight(category, txType, tx, xrpAmt),
+    severity,
     txType,
-    isAlert:     category === "security",
+    isAlert:     severity === "high",
     timestamp:   Date.now(),
     txHash:      tx.hash || ""
   };
@@ -1442,7 +1487,10 @@ function processTrackerStream(payload) {
     state.tracker.feed.pop();
   }
 
-  if (state.activePage === "tracker") renderTrackerFeed();
+  if (state.activePage === "tracker") {
+    renderTrackerFeed();
+    refreshAccountIntelligenceOverview();
+  }
 }
 
 let _trackerStreamHandler = null;
@@ -1502,6 +1550,227 @@ function loadTrackerWallets() {
   } catch { }
 }
 
+function ensureConnectedWalletTracked(walletState = getWalletState()) {
+  const address = walletState.publicAddress || "";
+  if (!XRPL_ADDRESS_PATTERN.test(address)) return false;
+  if (state.tracker.wallets.some((wallet) => wallet.address === address)) return false;
+
+  state.tracker.wallets.unshift({
+    address,
+    label: walletState.provider === "xaman" ? "Xaman Wallet" : "Connected Wallet",
+    group: "My Wallet"
+  });
+  saveTrackerWallets();
+  return true;
+}
+
+function intelligencePosture(score) {
+  if (score >= 85) {
+    return { label: "Strong", tone: "safe", detail: "Healthy reserve posture with no urgent account warnings." };
+  }
+  if (score >= 70) {
+    return { label: "Stable", tone: "low", detail: "Normal activity. Keep watching reserves, trust lines, and signing changes." };
+  }
+  if (score >= 50) {
+    return { label: "Review", tone: "medium", detail: "Some account conditions deserve attention before adding risk." };
+  }
+  return { label: "Critical", tone: "danger", detail: "High-priority account signals detected. Review before signing anything new." };
+}
+
+function getAccountIntelligence(walletState = getWalletState()) {
+  const snapshot = walletState?.snapshot || null;
+  const account = snapshot?.account || {};
+  const tokenHoldings = snapshot?.tokenHoldings || [];
+  const issuedTokens = snapshot?.issuedTokenEntries || [];
+  const nfts = snapshot?.nftItems || [];
+  const amm = snapshot?.amm || {};
+  const feed = state.tracker.feed || [];
+  const securityEvents = getSecurityEvents();
+
+  const balance = toFiniteNumber(account.balanceXrp, Number.NaN);
+  const available = toFiniteNumber(account.availableXrp, Number.NaN);
+  const reserve = toFiniteNumber(account.ownerReserveXrp, Number.NaN);
+  const ownerCount = toFiniteNumber(account.ownerCount, 0);
+  const trustLines = toFiniteNumber(account.trustLines ?? tokenHoldings.length, 0);
+  const nftCount = toFiniteNumber(account.nftCount ?? nfts.length, 0);
+  const ammCount = toFiniteNumber(amm.objectCount, 0);
+  const ammActivity = toFiniteNumber(amm.recentActivityCount, 0);
+  const txCount = toFiniteNumber(account.recentActivityCount ?? snapshot?.txItems?.length, 0);
+  const nftOffers = nfts.reduce((sum, nft) => sum + toFiniteNumber(nft.offers?.sellOffers, 0) + toFiniteNumber(nft.offers?.buyOffers, 0), 0);
+  const totalAccountXrp = Number.isFinite(balance) ? balance : 0;
+  const reserveRatio = Number.isFinite(reserve) && totalAccountXrp > 0 ? (reserve / totalAccountXrp) * 100 : 0;
+  const highFeedAlerts = feed.filter((ev) => ev.severity === "high").length;
+  const mediumFeedAlerts = feed.filter((ev) => ev.severity === "medium").length;
+  const whaleEvents = feed.filter((ev) => ev.type === "whale").length;
+  const dexEvents = feed.filter((ev) => ev.type === "buy" || ev.type === "sell" || ev.type === "offer").length;
+  const tokenEvents = feed.filter((ev) => ev.type === "token").length;
+  const nftEvents = feed.filter((ev) => ev.type === "nft").length;
+  const ammEvents = feed.filter((ev) => ev.type === "amm").length;
+  const sensitiveEvents = securityEvents.filter((event) =>
+    [RISK_LEVELS.BLOCKED, RISK_LEVELS.HIGH, RISK_LEVELS.MEDIUM].includes(event.riskLevel)
+  ).length;
+
+  let score = snapshot ? 100 : 58;
+  const alerts = [];
+
+  if (!walletState?.publicAddress) {
+    score = 40;
+    alerts.push({ tone: "danger", label: "No account connected", detail: "Connect or create an XRPL account to unlock account intelligence." });
+  } else if (!snapshot) {
+    alerts.push({ tone: "medium", label: "Snapshot pending", detail: "Wallet address is loaded, but live account details have not been verified yet." });
+  }
+
+  if (snapshot) {
+    if (Number.isFinite(available) && available < 1) {
+      score -= 25;
+      alerts.push({ tone: "danger", label: "Low spendable XRP", detail: "Available XRP is below 1 XRP after reserves. Transactions may fail." });
+    } else if (Number.isFinite(available) && available < 5) {
+      score -= 10;
+      alerts.push({ tone: "medium", label: "Tight spendable balance", detail: "Available XRP is low. Keep reserve and fee requirements in mind." });
+    }
+
+    if (reserveRatio > 60) {
+      score -= 12;
+      alerts.push({ tone: "medium", label: "Reserve pressure", detail: `${formatUnsignedPercent(reserveRatio)} of total XRP is reserved by owned objects.` });
+    } else if (reserveRatio > 40) {
+      score -= 6;
+      alerts.push({ tone: "low", label: "Reserve watch", detail: "A large share of XRP is tied to trust lines, offers, NFTs, or other ledger objects." });
+    }
+
+    if (trustLines > 50) {
+      score -= 12;
+      alerts.push({ tone: "medium", label: "Large trust-line surface", detail: `${trustLines} trust lines found. Review issuer quality and unwanted lines.` });
+    } else if (trustLines > 25) {
+      score -= 7;
+      alerts.push({ tone: "low", label: "Trust-line review", detail: "Trust-line count is growing. Remove stale or risky issuers when possible." });
+    }
+  }
+
+  if (sensitiveEvents > 0) {
+    score -= Math.min(24, sensitiveEvents * 8);
+    alerts.push({ tone: "danger", label: "Security events detected", detail: `${sensitiveEvents} medium-or-higher local security event${sensitiveEvents === 1 ? "" : "s"} recorded this session.` });
+  }
+
+  if (highFeedAlerts > 0) {
+    score -= Math.min(18, highFeedAlerts * 6);
+    alerts.push({ tone: "danger", label: "High-priority ledger signal", detail: `${highFeedAlerts} high-severity event${highFeedAlerts === 1 ? "" : "s"} in the live intelligence feed.` });
+  }
+
+  if (whaleEvents > 0) {
+    score -= Math.min(10, whaleEvents * 3);
+    alerts.push({ tone: "medium", label: "Whale flow nearby", detail: "Large XRP movement appeared in the watched-account stream." });
+  }
+
+  if (!alerts.length) {
+    alerts.push({ tone: "safe", label: "No urgent warnings", detail: "No high-priority account intelligence alerts are active right now." });
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const posture = intelligencePosture(score);
+
+  return {
+    score,
+    posture,
+    connected: Boolean(walletState?.publicAddress),
+    snapshotReady: Boolean(snapshot),
+    watchedAccounts: state.tracker.wallets.length,
+    alerts: alerts.slice(0, 5),
+    cards: [
+      {
+        label: "Wallet Health",
+        value: Number.isFinite(available) ? `${formatCompactNumber(available, 2)} XRP` : "Pending",
+        detail: Number.isFinite(balance)
+          ? `${formatCompactNumber(balance, 2)} XRP total, ${formatCompactNumber(reserve, 2)} XRP reserved`
+          : "Connect and sync account reserves",
+        tone: Number.isFinite(available) && available < 1 ? "danger" : Number.isFinite(available) && available < 5 ? "medium" : "safe"
+      },
+      {
+        label: "Security Posture",
+        value: sensitiveEvents || highFeedAlerts ? `${sensitiveEvents + highFeedAlerts} alerts` : "Clear",
+        detail: `${securityEvents.length} local events, ${highFeedAlerts} high-priority ledger signals`,
+        tone: sensitiveEvents || highFeedAlerts ? "danger" : "safe"
+      },
+      {
+        label: "Asset Exposure",
+        value: `${tokenHoldings.length} tokens`,
+        detail: `${trustLines} trust lines, ${issuedTokens.length} issued projects`,
+        tone: trustLines > 50 ? "medium" : "low"
+      },
+      {
+        label: "NFT / AMM Watch",
+        value: `${nftCount} NFTs`,
+        detail: `${nftOffers} NFT offers, ${ammCount} AMM positions, ${ammActivity} recent AMM actions`,
+        tone: nftOffers || ammCount ? "medium" : "low"
+      },
+      {
+        label: "Market Signals",
+        value: `${whaleEvents + dexEvents} events`,
+        detail: `${whaleEvents} whale, ${dexEvents} DEX, ${tokenEvents} token, ${nftEvents} NFT, ${ammEvents} AMM`,
+        tone: whaleEvents ? "medium" : dexEvents || tokenEvents || ammEvents ? "low" : "safe"
+      },
+      {
+        label: "Ledger Activity",
+        value: `${txCount} recent`,
+        detail: `${ownerCount} owned ledger objects, ${mediumFeedAlerts} medium live signals`,
+        tone: mediumFeedAlerts ? "medium" : "low"
+      }
+    ]
+  };
+}
+
+function intelligenceMetricCard(label, value, detail, tone = "low") {
+  return `
+    <article class="intelligence-card tone-${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <p>${escapeHtml(detail)}</p>
+    </article>
+  `;
+}
+
+function renderAccountIntelligenceOverviewBody(walletState = getWalletState(), running = state.tracker.running) {
+  const model = getAccountIntelligence(walletState);
+  return `
+    <div class="intelligence-overview-grid">
+      <article class="intelligence-score-card tone-${escapeHtml(model.posture.tone)}">
+        <div>
+          <span class="intelligence-kicker">Account Health</span>
+          <strong class="intelligence-score-value">${model.score}</strong>
+          <em>${escapeHtml(model.posture.label)}</em>
+        </div>
+        <p>${escapeHtml(model.posture.detail)}</p>
+        <div class="intelligence-score-meta">
+          <span>${running ? "Streaming live" : "Stream paused"}</span>
+          <span>${model.snapshotReady ? "Snapshot verified" : "Snapshot pending"}</span>
+          <span>${model.watchedAccounts} watched</span>
+        </div>
+      </article>
+      <div class="intelligence-metric-grid">
+        ${model.cards.map((card) => intelligenceMetricCard(card.label, card.value, card.detail, card.tone)).join("")}
+      </div>
+    </div>
+    <div class="intelligence-alert-list">
+      ${model.alerts.map((alert) => `
+        <div class="intelligence-alert tone-${escapeHtml(alert.tone)}">
+          <strong>${escapeHtml(alert.label)}</strong>
+          <span>${escapeHtml(alert.detail)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderAccountIntelligenceOverview(walletState = getWalletState(), running = state.tracker.running) {
+  return `<div id="accountIntelligenceOverview" class="account-intelligence-overview">${renderAccountIntelligenceOverviewBody(walletState, running)}</div>`;
+}
+
+function refreshAccountIntelligenceOverview() {
+  const el = document.getElementById("accountIntelligenceOverview");
+  if (el) {
+    el.innerHTML = renderAccountIntelligenceOverviewBody(getWalletState(), state.tracker.running);
+  }
+}
+
 function renderTrackerFeed() {
   const feedEl = document.getElementById("trackerFeedList");
   if (!feedEl) return;
@@ -1513,7 +1782,7 @@ function renderTrackerFeed() {
     return true;
   });
   if (!filtered.length) {
-    feedEl.innerHTML = `<div class="tracker-feed-empty"><span>No transactions yet</span><p>Watching ${state.tracker.wallets.length} wallet${state.tracker.wallets.length !== 1 ? "s" : ""} — events will stream here in real time.</p></div>`;
+    feedEl.innerHTML = `<div class="tracker-feed-empty"><span>No intelligence events yet</span><p>Watching ${state.tracker.wallets.length} account${state.tracker.wallets.length !== 1 ? "s" : ""}. Health, security, market, AMM, NFT, and DEX signals will stream here in real time.</p></div>`;
     return;
   }
   feedEl.innerHTML = filtered.slice(0, 80).map(ev => {
@@ -1521,18 +1790,22 @@ function renderTrackerFeed() {
     const timeStr = new Date(ev.timestamp).toLocaleTimeString();
     const xrpStr = ev.xrpAmount > 0 ? `<span class="tfe-xrp">${ev.xrpAmount.toFixed(2)} XRP</span>` : "";
     const hashUrl = ev.txHash ? `https://xrpl.to/tx/${ev.txHash}` : "";
+    const severity = ["high", "medium", "low"].includes(ev.severity) ? ev.severity : "low";
+    const severityLabel = severity === "high" ? "High" : severity === "medium" ? "Review" : "Info";
     return `
-      <div class="tracker-feed-event${ev.isAlert ? " is-alert" : ""}">
+      <div class="tracker-feed-event severity-${severity}${ev.isAlert ? " is-alert" : ""}">
         <div class="tfe-icon" style="color:${meta.color}">${meta.icon}</div>
         <div class="tfe-body">
           <div class="tfe-top">
             <span class="tfe-type" style="color:${meta.color}">${meta.label}</span>
+            <span class="tfe-severity">${severityLabel}</span>
             <span class="tfe-label">${escapeHtml(ev.label || formatAddress(ev.account))}</span>
             ${ev.group ? `<span class="tfe-group">${escapeHtml(ev.group)}</span>` : ""}
             ${xrpStr}
             <span class="tfe-time">${timeStr}</span>
           </div>
           <div class="tfe-desc">${escapeHtml(ev.description)}</div>
+          <div class="tfe-intel">${escapeHtml(ev.intelligence || "Review this event before acting on related market movement.")}</div>
           ${hashUrl ? `<a class="tfe-hash" href="${hashUrl}" target="_blank" rel="noopener noreferrer">${ev.txHash.slice(0, 16)}…</a>` : ""}
         </div>
       </div>`;
@@ -1542,32 +1815,35 @@ function renderTrackerFeed() {
 function renderTrackerPage() {
   if (!refs.trackerPage) return;
   const walletState = getWalletState();
-  const connected   = Boolean(walletState?.address);
-  const { wallets, running, txFilters, minXrp, groupFilter, groups } = state.tracker;
+  const connected   = Boolean(walletState?.publicAddress);
+  if (connected) {
+    ensureConnectedWalletTracked(walletState);
+  }
+  const { wallets, running, txFilters, minXrp, groupFilter } = state.tracker;
 
   if (!connected) {
     refs.trackerPage.innerHTML = `
       <div class="tracker-landing">
         <div class="tracker-hero-card glass-card">
           <div class="tracker-hero-text">
-            <div class="mode-pill">Free · No Credit Card</div>
-            <h3>IkeLedger Wallet Tracker</h3>
-            <p>Watch every address, every mention, in real time. Whale moves, AMM trades, NFT activity, trustline changes, and security events — streamed live to your console.</p>
+            <div class="mode-pill">Account Intelligence</div>
+            <h3>IkeLedger Account Intelligence</h3>
+            <p>Connect or create an XRPL account to monitor wallet health, reserve pressure, security posture, token exposure, AMM/NFT signals, whale movement, and DEX activity.</p>
             <div class="tracker-free-tier">
-              <span class="chip chip-cyan">50 labeled wallets</span>
-              <span class="chip chip-cyan">50 live watchers</span>
-              <span class="chip chip-cyan">Real-time stream</span>
+              <span class="chip chip-cyan">50 watched accounts</span>
+              <span class="chip chip-cyan">Live XRPL stream</span>
+              <span class="chip chip-cyan">Risk alerts</span>
             </div>
-            <p class="muted">Connect your wallet or create one to start tracking.</p>
+            <p class="muted">Wallet-only intelligence unlocks after Xaman sign-in or an IkeLedger-created XRPL account.</p>
           </div>
           <div class="tracker-features-grid">
             ${[
-              ["↑↓","Live Trade Feed","Real-time tx stream — buys, sells, AMM, NFT, trustlines — all filterable."],
-              ["⚡","11 Filter Types","Buy · Sell · AMM · NFT · Escrow · Check · Security + min-XRP threshold."],
-              ["🚨","Security Alerts","AccountDelete, SetRegularKey, SignerListSet, Clawback flagged distinctly."],
-              ["🏷","Groups & Labels","Label wallets, group them (whales, bots, DCA), scope the feed per group."],
-              ["📊","Social Tracker","Track @handles alongside wallets — sentiment, follower deltas, mentions."],
-              ["🔔","Custom Alerts","Set mention thresholds and get notified when a wallet moves."],
+              ["H","Wallet Health","Spendable XRP, reserve pressure, owned-object load, and account readiness."],
+              ["S","Security Signals","AccountDelete, SetRegularKey, SignerListSet, Clawback, and blocked secret input warnings."],
+              ["A","Asset Exposure","Trust lines, issued assets, token movement, and concentration review prompts."],
+              ["N","NFT / AMM Watch","NFT offers, AMM positions, LP movement, and liquidity-risk signals."],
+              ["M","Market Movement","Whale payments, DEX offers, and token activity flowing through watched accounts."],
+              ["R","Risk Guidance","Plain-language notes on what to verify before signing or following a trade."],
             ].map(([icon, title, desc]) => `
               <div class="tracker-feature-item">
                 <div class="tfi-icon">${icon}</div>
@@ -1578,10 +1854,10 @@ function renderTrackerPage() {
         </div>
         <div class="tracker-tier-row">
           ${[
-            ["Free","0 XRP/mo","50 labels · 50 watchers · 24h history","chip-cyan"],
-            ["VIP","VIP","200 labels · 200 watchers · 7d history · Priority alerts","chip-gold"],
-            ["Nova","Nova","Unlimited labels · 30d history · API access","chip-violet"],
-            ["Diamond","Diamond","Everything + dedicated node · white-label","chip-diamond"],
+            ["Health","Reserve pressure","Spendable XRP, owned objects, trust lines, and readiness checks.","chip-cyan"],
+            ["Security","Signing posture","Sensitive account changes and local safety events stay visible.","chip-gold"],
+            ["Markets","Manipulation watch","Whale flows, DEX orders, token moves, and AMM activity are grouped.","chip-violet"],
+            ["Profile","Wallet gating","Profile-only users can browse; wallet users unlock transaction tools.","chip-diamond"],
           ].map(([name, price, perks, chipClass]) => `
             <div class="tracker-tier-card glass-card">
               <span class="chip ${chipClass}">${escapeHtml(name)}</span>
@@ -1599,6 +1875,7 @@ function renderTrackerPage() {
     const active = txFilters.has(key);
     return `<button class="trk-filter-chip${active ? " active" : ""}" data-filter="${key}" type="button" style="${active ? `--chip-color:${meta.color}` : ""}">${meta.icon} ${meta.label}</button>`;
   }).join("");
+  const accountIntelligenceHtml = renderAccountIntelligenceOverview(walletState, running);
 
   refs.trackerPage.innerHTML = `
     <div class="tracker-active-layout">
@@ -1606,18 +1883,18 @@ function renderTrackerPage() {
       <!-- Left panel: wallets + groups -->
       <aside class="tracker-sidebar glass-card">
         <div class="section-top">
-          <h3>Watched Wallets</h3>
+          <h3>Watched Accounts</h3>
           <button class="trk-start-btn${running ? " is-running" : ""}" id="trackerToggleBtn" type="button">
-            ${running ? "⬛ Stop" : "▶ Start"}
+            ${running ? "Stop" : "Start"}
           </button>
         </div>
         <div class="tracker-status-chip">
           ${running
-            ? `<span class="chip chip-live">● Live</span> watching ${wallets.length} wallet${wallets.length !== 1 ? "s" : ""}`
-            : `<span class="chip">Paused</span> ${wallets.length} wallet${wallets.length !== 1 ? "s" : ""} ready`}
+            ? `<span class="chip chip-live">Live</span> intelligence stream for ${wallets.length} account${wallets.length !== 1 ? "s" : ""}`
+            : `<span class="chip">Paused</span> ${wallets.length} account${wallets.length !== 1 ? "s" : ""} ready`}
         </div>
 
-        <!-- Add wallet form -->
+        <!-- Add account form -->
         <form class="tracker-add-form" id="trackerAddForm">
           <input class="trk-input" id="trackerAddressInput" type="text" placeholder="rXRPL address…" autocomplete="off" maxlength="35" />
           <input class="trk-input" id="trackerLabelInput"   type="text" placeholder="Label (optional)" autocomplete="off" maxlength="32" />
@@ -1628,7 +1905,7 @@ function renderTrackerPage() {
           </div>
         </form>
 
-        <!-- Wallet list -->
+        <!-- Account list -->
         <div class="tracker-wallet-list" id="trackerWalletList">
           ${wallets.length ? wallets.map((w, i) => `
             <div class="tracker-wallet-item">
@@ -1639,7 +1916,7 @@ function renderTrackerPage() {
               </div>
               <button class="ghost trk-remove-btn" data-wallet-index="${i}" type="button" title="Remove">✕</button>
             </div>
-          `).join("") : `<p class="muted" style="padding:0.6rem">Add wallets above to start tracking.</p>`}
+          `).join("") : `<p class="muted" style="padding:0.6rem">Add accounts above to start intelligence monitoring.</p>`}
         </div>
 
         <!-- Group filter -->
@@ -1652,19 +1929,21 @@ function renderTrackerPage() {
           </div>
         </div>` : ""}
 
-        <!-- Social tracker stub -->
+        <!-- External signal stub -->
         <div class="tracker-social-stub">
           <div class="section-top" style="margin-top:0.9rem">
-            <h4>Social Tracker</h4>
+            <h4>Project / Market Watch</h4>
             <span class="chip chip-cyan">Beta</span>
           </div>
-          <p class="muted" style="font-size:0.78rem">Track @handles alongside wallets — sentiment, follower deltas, mentions.</p>
-          <input class="trk-input" type="text" placeholder="@handle (coming soon)" disabled />
+          <p class="muted" style="font-size:0.78rem">Issuer reputation, project announcements, and market-context signals can be layered here next.</p>
+          <input class="trk-input" type="text" placeholder="Issuer or project watch (coming soon)" disabled />
         </div>
       </aside>
 
       <!-- Right panel: feed + filters -->
       <div class="tracker-feed-panel">
+        ${accountIntelligenceHtml}
+
         <!-- Filter chips -->
         <div class="tracker-filter-row">
           <div class="tracker-filter-chips">${filterChips}</div>
@@ -1679,9 +1958,9 @@ function renderTrackerPage() {
         <!-- Live feed -->
         <div class="tracker-feed-wrap glass-card">
           <div class="section-top">
-            <h3>Live Feed</h3>
+            <h3>Intelligence Feed</h3>
             <div style="display:flex;gap:0.5rem;align-items:center">
-              ${running ? `<span class="chip chip-live">● Streaming</span>` : `<span class="chip">Paused</span>`}
+              ${running ? `<span class="chip chip-live">Streaming</span>` : `<span class="chip">Paused</span>`}
               <button class="ghost" id="trackerClearFeedBtn" type="button">Clear</button>
             </div>
           </div>
@@ -1705,7 +1984,7 @@ function renderTrackerPage() {
     const group = document.getElementById("trackerGroupInput")?.value.trim() || "";
     if (!XRPL_ADDRESS_PATTERN.test(addr)) return;
     if (state.tracker.wallets.some(w => w.address === addr)) return;
-    if (state.tracker.wallets.length >= 50) return; // free tier limit
+    if (state.tracker.wallets.length >= 50) return;
     state.tracker.wallets.push({ address: addr, label, group });
     saveTrackerWallets();
     if (state.tracker.running) { stopTracker(); startTracker(); }
@@ -1739,6 +2018,7 @@ function renderTrackerPage() {
   document.getElementById("trackerClearFeedBtn")?.addEventListener("click", () => {
     state.tracker.feed = [];
     renderTrackerFeed();
+    refreshAccountIntelligenceOverview();
   });
 
   document.querySelectorAll("[data-group]").forEach(btn => {
@@ -2475,11 +2755,11 @@ function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
     holders: toFiniteNumber(token.holders, Number.NaN),
     trustlines: toFiniteNumber(token.trustlines, Number.NaN),
     volume24h: toFiniteNumber(token.vol24hxrp ?? token.vol24hx ?? token.vol24h, Number.NaN),
-    tradeCount: toFiniteNumber(token.vol24htx, Number.NaN),
-    uniqueTraders: toFiniteNumber(token.uniqueTraders ?? token.uniqueTraders24h, Number.NaN),
+    tradeCount: toFiniteNumber(token.vol24htx ?? token.vol24hTx ?? token.trades24h, Number.NaN),
+    uniqueTraders: toFiniteNumber(token.uniqueTraders ?? token.uniqueTraders24h ?? token.traders24h, Number.NaN),
     liquidityRatio: toFiniteNumber(token.liquidityRatio, Number.NaN),
     tvl: toFiniteNumber(token.tvl, Number.NaN),
-    trendingScore: toFiniteNumber(token.trendingScore, Number.NaN),
+    trendingScore: toFiniteNumber(token.trendingScore ?? token.score, Number.NaN),
     holderConcentration: toFiniteNumber(token.top10 ?? token.top20 ?? token.top50 ?? token.dom, Number.NaN),
     lowLiquidity: Boolean(token.lowLiquidity),
     freezeFlag: Boolean(token.globalFreeze || token.freeze || token.frozen || token.canFreeze),
@@ -2747,6 +3027,91 @@ async function refreshVisibleTokenPrices() {
   }
 }
 
+function showTokenAnalytics(tokenId) {
+  const token = state.topIssuedAssets.items.find(t => t.id === tokenId);
+  if (!token) return;
+
+  let modal = document.getElementById("tokenAnalyticsModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "tokenAnalyticsModal";
+    modal.className = "token-analytics-modal";
+    document.body.appendChild(modal);
+  }
+
+  const liveEntry = state.topIssuedAssets.livePrices.get(token.id);
+  const price = liveEntry ? liveEntry.priceXrp : token.priceXrp;
+  const risk  = scoreIssuedAssetRisk(token);
+  const watched = state.tokenWatchlist.has(token.id);
+
+  const pctBadge = (v, label) => {
+    if (!Number.isFinite(v)) return `<span class="ta-pct-badge muted">${label} —</span>`;
+    const cls  = v >= 0 ? "pct-pos" : "pct-neg";
+    const sign = v >= 0 ? "+" : "";
+    return `<span class="ta-pct-badge ${cls}">${label} ${sign}${v.toFixed(2)}%</span>`;
+  };
+
+  const stat = (label, val) =>
+    `<div class="ta-stat"><span class="ta-stat-label">${escapeHtml(label)}</span><strong>${val}</strong></div>`;
+
+  modal.innerHTML = `
+    <div class="ta-backdrop"></div>
+    <div class="ta-panel glass-card">
+      <div class="ta-header">
+        ${tokenLogoMarkup(token, token.symbol)}
+        <div class="ta-title">
+          <h3>${escapeHtml(token.symbol)}${token.verified ? ' <span class="tok-verified-dot" title="Verified">✓</span>' : ""}</h3>
+          <span class="muted">${escapeHtml(token.source || formatAddress(token.issuer))}</span>
+        </div>
+        <button class="ghost ta-watch-btn${watched ? " is-watched" : ""}" data-analytics-watch="${escapeHtml(token.id)}" type="button" title="${watched ? "Unwatch" : "Watch"}">${watched ? "★ Watching" : "☆ Watch"}</button>
+        <button class="ghost ta-close" id="closeTokenAnalytics" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="ta-price-row">
+        <span class="ta-price">${Number.isFinite(price) ? escapeHtml(formatXrpAmount(price)) + " XRP" : "—"}</span>
+        ${pctBadge(token.change5m, "5M")}
+        ${pctBadge(token.change1h, "1H")}
+        ${pctBadge(token.change24h, "24H")}
+        ${pctBadge(token.change7d, "7D")}
+      </div>
+
+      <div class="ta-stats-grid">
+        ${stat("Market Cap",  Number.isFinite(token.marketCap) ? `XRP ${escapeHtml(formatXrpAmount(token.marketCap))}` : "—")}
+        ${stat("24H Volume",  Number.isFinite(token.volume24h) ? `XRP ${escapeHtml(formatXrpAmount(token.volume24h))}` : "—")}
+        ${stat("Holders",     formatCompactNumber(token.holders, 1))}
+        ${stat("Trades 24H",  formatCompactNumber(token.tradeCount, 0))}
+        ${stat("TVL / Liq.",  Number.isFinite(token.tvl) && token.tvl > 0 ? `XRP ${escapeHtml(formatXrpAmount(token.tvl))}` : Number.isFinite(token.liquidityRatio) && token.liquidityRatio > 0 ? `XRP ${escapeHtml(formatXrpAmount(token.liquidityRatio))}` : "—")}
+        ${stat("Trust Lines", formatCompactNumber(token.trustlines, 1))}
+        ${stat("Age",         escapeHtml(formatAge(token.createdAt)))}
+        ${stat("Risk",        `<span class="risk-label-${risk.level === "Lower Risk" ? "low" : risk.level === "High Risk" ? "high" : "med"}">${escapeHtml(risk.level)}</span>`)}
+      </div>
+
+      ${risk.reasons.length ? `<div class="ta-risk-tags">${risk.reasons.map(r => `<span class="ta-risk-tag">${escapeHtml(r)}</span>`).join("")}</div>` : ""}
+
+      <div class="ta-actions">
+        <button class="ta-action-btn" data-ta-open-dex="${escapeHtml(token.id)}" type="button">View Chart</button>
+        ${token.slug ? `<a class="ta-action-btn ghost" href="https://xrpl.to/token/${encodeURIComponent(token.slug)}" target="_blank" rel="noopener noreferrer">xrpl.to ↗</a>` : ""}
+      </div>
+    </div>`;
+
+  modal.classList.add("is-open");
+
+  modal.querySelector(".ta-backdrop")?.addEventListener("click", () => modal.classList.remove("is-open"));
+  document.getElementById("closeTokenAnalytics")?.addEventListener("click", () => modal.classList.remove("is-open"));
+  modal.querySelector("[data-analytics-watch]")?.addEventListener("click", (e) => {
+    toggleWatchlist("token", token.id);
+    const btn = e.currentTarget;
+    const nowWatched = state.tokenWatchlist.has(token.id);
+    btn.textContent = nowWatched ? "★ Watching" : "☆ Watch";
+    btn.classList.toggle("is-watched", nowWatched);
+  });
+  modal.querySelector("[data-ta-open-dex]")?.addEventListener("click", () => {
+    state.dex.selectedTokenId = token.id;
+    modal.classList.remove("is-open");
+    setActivePage("dex");
+  });
+}
+
 function renderTopIssuedTokens() {
   if (!refs.topIssuedTokensPanel) return;
   const { items, loading, error, fetchedAt } = state.topIssuedAssets;
@@ -2853,6 +3218,32 @@ function renderTopIssuedTokens() {
       </div>
     </div>
   ` : "";
+
+  // ── Watchlist strip ───────────────────────────────────────────────────
+  const watchedIds = [...state.tokenWatchlist];
+  const watchedTokens = watchedIds.map(id => items.find(t => t.id === id)).filter(Boolean);
+  const watchlistStrip = watchedTokens.length ? `
+    <div class="tok-watchlist-strip">
+      <div class="tok-watchlist-label">★ Watching</div>
+      <div class="tok-watchlist-cards">
+        ${watchedTokens.map(t => {
+          const liveEntry = state.topIssuedAssets.livePrices.get(t.id);
+          const price = liveEntry ? liveEntry.priceXrp : t.priceXrp;
+          const c24 = toFiniteNumber(t.change24h, 0);
+          const cls = c24 >= 0 ? "pct-pos" : "pct-neg";
+          return `
+          <div class="tok-watch-card" data-analytics-token="${escapeHtml(t.id)}" role="button" tabindex="0">
+            ${tokenLogoMarkup(t, t.symbol)}
+            <div class="twc-info">
+              <strong>${escapeHtml(t.symbol)}</strong>
+              <span>${Number.isFinite(price) ? escapeHtml(formatXrpAmount(price)) + " XRP" : "—"}</span>
+              <span class="${cls}">${c24 >= 0 ? "+" : ""}${c24.toFixed(2)}%</span>
+            </div>
+            <button class="twc-remove" data-watch-token="${escapeHtml(t.id)}" type="button" title="Unwatch" aria-label="Remove ${escapeHtml(t.symbol)} from watchlist">×</button>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>` : "";
 
   // ── Table rows ────────────────────────────────────────────────────────
   const rows = visibleItems.map((token) => {
@@ -2962,6 +3353,8 @@ function renderTopIssuedTokens() {
 
     ${trendingStrip}
 
+    ${watchlistStrip}
+
     <div class="tokens-controls-row">
       <div class="tokens-tab-bar">
         <button class="ttab-btn${tab === "all"      ? " active" : ""}" data-tab="all"      type="button">All</button>
@@ -3056,6 +3449,18 @@ function renderTopIssuedTokens() {
       }
     });
   });
+
+  // Watchlist card clicks → analytics modal
+  refs.topIssuedTokensPanel.querySelectorAll("[data-analytics-token]").forEach((card) => {
+    const openAnalytics = (e) => {
+      if (e.target.closest("[data-watch-token]")) return;
+      showTokenAnalytics(card.dataset.analyticsToken || "");
+    };
+    card.addEventListener("click", openAnalytics);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAnalytics(e); }
+    });
+  });
 }
 
 async function loadTopIssuedAssets(forceRefresh = false) {
@@ -3068,7 +3473,8 @@ async function loadTopIssuedAssets(forceRefresh = false) {
     return;
   }
 
-  const cached = !forceRefresh ? getCachedXRPScanTokens() : null;
+  // Check xrpl.to cache first — it has full market data (%, TVL, trending, volume)
+  const cached = !forceRefresh ? getCachedTopIssuedAssets() : null;
   if (cached) {
     state.topIssuedAssets = {
       ...state.topIssuedAssets,
@@ -3088,7 +3494,66 @@ async function loadTopIssuedAssets(forceRefresh = false) {
   renderTopIssuedTokens();
 
   try {
-    // ── Primary: XRPScan (ledger-sourced, logos from xrplmeta CDN) ──────
+    // ── Primary: xrpl.to + XRPScan icons fetched in parallel ─────────────
+    // xrpl.to has full market data (%, TVL, trending); XRPScan supplies icon URLs
+    // because s1.xrpl.to CDN is hotlink-protected (403 from non-xrpl.to origins)
+    const fetchXrplToPages = async () => {
+      const allRaw = [];
+      const pages = Math.ceil(MARKET_RESULT_LIMIT / MARKET_PAGE_SIZE);
+      for (let p = 0; p < pages && allRaw.length < MARKET_RESULT_LIMIT; p++) {
+        const url = `${TOP_ISSUED_ASSETS_BASE_URL}&limit=${MARKET_PAGE_SIZE}&start=${p * MARKET_PAGE_SIZE}`;
+        try {
+          const data = await fetchMarketJson(url);
+          const batch = Array.isArray(data?.tokens) ? data.tokens : [];
+          allRaw.push(...batch);
+          if (batch.length < MARKET_PAGE_SIZE) break;
+        } catch { break; }
+      }
+      return allRaw;
+    };
+
+    const [xrplToResult, xrpScanResult] = await Promise.allSettled([
+      fetchXrplToPages(),
+      fetchMarketJson(XRPSCAN_TOKENS_URL)
+    ]);
+
+    if (xrplToResult.status === "fulfilled" && xrplToResult.value.length) {
+      // Build icon map from XRPScan: `${currency}_${issuer}` → xrplmeta icon URL
+      const iconMap = new Map();
+      if (xrpScanResult.status === "fulfilled" && Array.isArray(xrpScanResult.value)) {
+        for (const t of xrpScanResult.value) {
+          const icon = t.meta?.token?.icon || t.meta?.issuer?.icon || "";
+          if (icon && t.currency && t.issuer) {
+            iconMap.set(`${t.currency}_${t.issuer}`, icon);
+          }
+        }
+      }
+
+      // Inject xrplmeta icon into each raw xrpl.to token before normalizing
+      const enriched = xrplToResult.value.map(t => {
+        const icon = iconMap.get(`${t.currency}_${t.issuer}`);
+        return icon ? { ...t, xrplmetaIcon: icon } : t;
+      });
+
+      const items = enriched.slice(0, MARKET_RESULT_LIMIT).map(normalizeIssuedAssetMarketToken);
+      state.topIssuedAssets = {
+        ...state.topIssuedAssets,
+        fetchedAt: Date.now(),
+        items,
+        loading: false,
+        error: ""
+      };
+      setCachedTopIssuedAssets(items);
+      syncXrplToSourceStatus("Live");
+      renderTopIssuedTokens();
+      renderDex();
+      void refreshVisibleTokenPrices();
+      return;
+    }
+  } catch { /* fall through to XRPScan-only backup */ }
+
+  try {
+    // ── Fallback: XRPScan only (logos + market cap + holders; no % change or TVL) ──
     const xrpScanData = await fetchMarketJson(XRPSCAN_TOKENS_URL);
     if (Array.isArray(xrpScanData) && xrpScanData.length) {
       const sorted = [...xrpScanData].sort((a, b) =>
@@ -3101,54 +3566,27 @@ async function loadTopIssuedAssets(forceRefresh = false) {
         fetchedAt: Date.now(),
         items,
         loading: false,
-        error: ""
+        error: "Using fallback data — % change and TVL unavailable."
       };
       setCachedXRPScanTokens(items);
-      syncXrplToSourceStatus("Live");
+      syncXrplToSourceStatus("Cached");
       renderTopIssuedTokens();
       renderDex();
       void refreshVisibleTokenPrices();
       return;
     }
-  } catch { /* fall through to xrpl.to backup */ }
+  } catch { /* both sources failed */ }
 
-  try {
-    // ── Fallback: xrpl.to paginated (up to MARKET_RESULT_LIMIT) ─────────
-    const allRaw = [];
-    const pages = Math.ceil(MARKET_RESULT_LIMIT / MARKET_PAGE_SIZE);
-    for (let p = 0; p < pages && allRaw.length < MARKET_RESULT_LIMIT; p++) {
-      const url = `${TOP_ISSUED_ASSETS_BASE_URL}&limit=${MARKET_PAGE_SIZE}&start=${p * MARKET_PAGE_SIZE}`;
-      try {
-        const data = await fetchMarketJson(url);
-        const batch = Array.isArray(data?.tokens) ? data.tokens : [];
-        allRaw.push(...batch);
-        if (batch.length < MARKET_PAGE_SIZE) break;
-      } catch { break; }
-    }
-    const items = allRaw.slice(0, MARKET_RESULT_LIMIT).map(normalizeIssuedAssetMarketToken);
-    state.topIssuedAssets = {
-      ...state.topIssuedAssets,
-      fetchedAt: Date.now(),
-      items,
-      loading: false,
-      error: "Primary source unavailable — showing xrpl.to data."
-    };
-    setCachedTopIssuedAssets(items);
-    syncXrplToSourceStatus("Cached");
-  } catch (error) {
-    const cachedFallback = getCachedXRPScanTokens() || getCachedTopIssuedAssets();
-    state.topIssuedAssets = {
-      ...state.topIssuedAssets,
-      fetchedAt: cachedFallback?.fetchedAt || 0,
-      items: cachedFallback?.items || state.topIssuedAssets.items || [],
-      loading: false,
-      error: error?.status === 429
-        ? "Rate limit reached — showing cached data."
-        : "Could not load market data."
-    };
-    syncXrplToSourceStatus(state.topIssuedAssets.items.length ? "Cached" : "Degraded");
-  }
-
+  // ── Both failed: use any stale cache ─────────────────────────────────
+  const cachedFallback = getCachedTopIssuedAssets() || getCachedXRPScanTokens();
+  state.topIssuedAssets = {
+    ...state.topIssuedAssets,
+    fetchedAt: cachedFallback?.fetchedAt || 0,
+    items: cachedFallback?.items || state.topIssuedAssets.items || [],
+    loading: false,
+    error: "Could not load market data."
+  };
+  syncXrplToSourceStatus(state.topIssuedAssets.items.length ? "Cached" : "Degraded");
   renderTopIssuedTokens();
   renderDex();
   if (state.topIssuedAssets.items.length) void refreshVisibleTokenPrices();
@@ -3404,12 +3842,29 @@ async function loadTopAmmPools(forceRefresh = false) {
   renderTopAmmPools();
 
   try {
-    const data = await fetchMarketJson(TOP_AMM_POOLS_URL);
+    const [ammData, xrpScanResult] = await Promise.allSettled([
+      fetchMarketJson(TOP_AMM_POOLS_URL),
+      fetchMarketJson(XRPSCAN_TOKENS_URL)
+    ]);
+    const data = ammData.status === "fulfilled" ? ammData.value : null;
+    if (!data) throw new Error("AMM data unavailable");
     const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+
+    const iconMap = new Map();
+    if (xrpScanResult.status === "fulfilled" && Array.isArray(xrpScanResult.value)) {
+      for (const t of xrpScanResult.value) {
+        const icon = t.meta?.token?.icon || t.meta?.issuer?.icon || "";
+        if (icon && t.currency && t.issuer) iconMap.set(`${t.currency}_${t.issuer}`, icon);
+      }
+    }
+
     const items = tokens
       .filter((token) => token.AMM || Number.parseFloat(token.tvl || "0") > 0)
       .slice(0, MARKET_RESULT_LIMIT)
-      .map(normalizeAmmPoolMarketToken);
+      .map(t => {
+        const icon = iconMap.get(`${t.currency}_${t.issuer}`);
+        return normalizeAmmPoolMarketToken(icon ? { ...t, xrplmetaIcon: icon } : t);
+      });
     state.topAmmPools = {
       fetchedAt: Date.now(),
       items,
@@ -3882,13 +4337,6 @@ function getDexSelectedToken() {
   return dexTokenOptions().find((t) => t.id === id) || null;
 }
 
-function estimateDexXrpPrice() {
-  const { bids, asks } = state.dex.orderBook;
-  if (asks.length) return asks[0].price;
-  if (bids.length) return bids[0].price;
-  return 0;
-}
-
 function populateDexAssetSelect() {
   if (!refs.dexAssetSelect) return;
   const options = dexTokenOptions();
@@ -3905,7 +4353,14 @@ function populateDexAssetSelect() {
 }
 
 function applyDexToken(token) {
-  if (!token) return;
+  if (!token) {
+    state.dex.currency = "";
+    state.dex.rawCurrency = "";
+    state.dex.issuer = "";
+    if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = "";
+    if (refs.dexIssuerInput) refs.dexIssuerInput.value = "";
+    return;
+  }
   state.dex.currency    = token.currency;                        // decoded (display)
   state.dex.rawCurrency = token.rawCurrency || token.currency;   // raw hex for XRPL protocol
   state.dex.issuer      = token.issuer;
@@ -3915,11 +4370,17 @@ function applyDexToken(token) {
 
 function syncDexStateFromInputs() {
   const typedCurrency = refs.dexCurrencyInput?.value.trim() || "";
+  const typedIssuer = refs.dexIssuerInput?.value.trim() || "";
+  const selectedToken = getDexSelectedToken();
   state.dex.currency = typedCurrency;
-  // If the user typed a 40-char hex code it is already the raw form; otherwise keep whatever applyDexToken set
-  if (/^[A-Fa-f0-9]{40}$/.test(typedCurrency)) state.dex.rawCurrency = typedCurrency;
-  else if (!state.dex.rawCurrency || state.dex.currency !== typedCurrency) state.dex.rawCurrency = typedCurrency;
-  state.dex.issuer = refs.dexIssuerInput?.value.trim() || "";
+  state.dex.issuer = typedIssuer;
+  if (/^[A-Fa-f0-9]{40}$/.test(typedCurrency)) {
+    state.dex.rawCurrency = typedCurrency;
+  } else if (selectedToken && selectedToken.currency === typedCurrency && selectedToken.issuer === typedIssuer) {
+    state.dex.rawCurrency = selectedToken.rawCurrency || typedCurrency;
+  } else {
+    state.dex.rawCurrency = typedCurrency;
+  }
   state.dex.amount = refs.dexAmountInput?.value || "";
   state.dex.price = refs.dexPriceInput?.value || "";
   state.dex.side = refs.dexSideSelect?.value || "buy";
@@ -3929,15 +4390,6 @@ function syncDexStateFromInputs() {
   state.dex.takeProfit = refs.dexTakeProfitInput?.value || "";
 }
 
-function dexIssuedAsset() {
-  return { currency: state.dex.currency, issuer: state.dex.issuer, value: state.dex.amount };
-}
-
-function dexXrpAsset() {
-  const xrp = toFiniteNumber(state.dex.amount, 0) * toFiniteNumber(state.dex.price, 0);
-  return xrpToDrops(decimalString(xrp, 6));
-}
-
 function xrplAmountNumber(amount) {
   if (typeof amount === "string") return toFiniteNumber(amount, 0) / 1e6;
   if (amount && typeof amount === "object") return toFiniteNumber(amount.value, 0);
@@ -3945,15 +4397,14 @@ function xrplAmountNumber(amount) {
 }
 
 function normalizeDexBookOffer(offer, side) {
-  // XRPL response uses PascalCase (TakerGets/TakerPays), not snake_case
   const takerGets = xrplAmountNumber(offer.TakerGets);
   const takerPays = xrplAmountNumber(offer.TakerPays);
-  // bids query: taker_pays=XRP, taker_gets=TOKEN  → price(XRP/TOKEN) = takerPays / takerGets
-  // asks query: taker_pays=TOKEN, taker_gets=XRP  → price(XRP/TOKEN) = takerGets / takerPays
-  const price = side === "asks"
-    ? (takerPays > 0 ? takerGets / takerPays : 0)
-    : (takerGets > 0 ? takerPays / takerGets : 0);
-  const amount = side === "asks" ? takerPays : takerGets; // TOKEN quantity for both sides
+  const getsXrp = typeof offer.TakerGets === "string";
+  const paysXrp = typeof offer.TakerPays === "string";
+  const xrpAmount = getsXrp ? takerGets : paysXrp ? takerPays : 0;
+  const tokenAmount = getsXrp ? takerPays : paysXrp ? takerGets : 0;
+  const price = tokenAmount > 0 ? xrpAmount / tokenAmount : 0;
+  const amount = tokenAmount;
   return { price, amount, raw: offer };
 }
 
@@ -3990,7 +4441,8 @@ function buildDexOfferTx() {
   const tx = {
     TransactionType: "OfferCreate",
     Account: walletState.publicAddress || "",
-    Flags: flags
+    Flags: flags,
+    Fee: "12"
   };
 
   if (side === "buy") {
@@ -4027,7 +4479,7 @@ function dexPreviewFromTx(tx) {
   };
 }
 
-function renderDexTxPreview(preview) {
+function renderDexTxPreview(preview, extraHtml = "") {
   const el = document.getElementById("txPreview");
   if (!el) return;
   if (!preview) {
@@ -4037,15 +4489,16 @@ function renderDexTxPreview(preview) {
   el.innerHTML = `
     <div class="dex-preview-grid">
       <div class="dex-preview-row"><span class="dex-label">Direction</span><span class="chip chip-${preview.side === "BUY" ? "safe" : "medium"}">${preview.side}</span></div>
-      <div class="dex-preview-row"><span class="dex-label">TakerGets</span><span>${preview.takerGets}</span></div>
-      <div class="dex-preview-row"><span class="dex-label">TakerPays</span><span>${preview.takerPays}</span></div>
-      <div class="dex-preview-row"><span class="dex-label">Order Style</span><span>${preview.orderStyle}</span></div>
-      <div class="dex-preview-row"><span class="dex-label">Limit Price</span><span>${preview.price} XRP per token</span></div>
-      <div class="dex-preview-row"><span class="dex-label">Slippage Guard</span><span>${preview.slippage}%</span></div>
-      ${preview.stopLoss ? `<div class="dex-preview-row"><span class="dex-label">Stop Loss</span><span>${preview.stopLoss} XRP</span></div>` : ""}
-      ${preview.takeProfit ? `<div class="dex-preview-row"><span class="dex-label">Take Profit</span><span>${preview.takeProfit} XRP</span></div>` : ""}
-      <div class="dex-preview-row"><span class="dex-label">Account</span><span class="mono">${preview.account || "—"}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">TakerGets</span><span>${escapeHtml(preview.takerGets)}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">TakerPays</span><span>${escapeHtml(preview.takerPays)}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Order Style</span><span>${escapeHtml(preview.orderStyle)}</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Limit Price</span><span>${escapeHtml(preview.price)} XRP per token</span></div>
+      <div class="dex-preview-row"><span class="dex-label">Slippage Guard</span><span>${escapeHtml(preview.slippage)}%</span></div>
+      ${preview.stopLoss ? `<div class="dex-preview-row"><span class="dex-label">Stop Loss</span><span>${escapeHtml(preview.stopLoss)} XRP</span></div>` : ""}
+      ${preview.takeProfit ? `<div class="dex-preview-row"><span class="dex-label">Take Profit</span><span>${escapeHtml(preview.takeProfit)} XRP</span></div>` : ""}
+      <div class="dex-preview-row"><span class="dex-label">Account</span><span class="mono">${escapeHtml(preview.account || "-")}</span></div>
     </div>
+    ${extraHtml}
   `;
 }
 
@@ -4053,10 +4506,12 @@ function renderDexAccessPanel() {
   if (!refs.dexPagePanel) return;
   if (hasSigningWallet()) {
     const walletState = getWalletState();
+    const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider");
+    const provider = providerKey === "xaman" ? "Xumm/Xaman signer" : "Created wallet";
     refs.dexPagePanel.innerHTML = `
       <div class="dex-access-connected">
         <span class="chip chip-safe">Connected</span>
-        <span class="muted">${walletState.publicAddress || ""}</span>
+        <span class="muted">${escapeHtml(provider)} - ${escapeHtml(formatAddress(walletState.publicAddress || ""))}</span>
       </div>
     `;
   } else {
@@ -4152,8 +4607,12 @@ function renderDexRiskRewardPanel() {
     return;
   }
 
-  const riskXrp = sl > 0 && side === "buy" ? (entry - sl) * qty : 0;
-  const rewardXrp = tp > 0 && side === "buy" ? (tp - entry) * qty : 0;
+  const riskXrp = side === "buy"
+    ? sl > 0 && sl < entry ? (entry - sl) * qty : 0
+    : sl > entry ? (sl - entry) * qty : 0;
+  const rewardXrp = side === "buy"
+    ? tp > entry ? (tp - entry) * qty : 0
+    : tp > 0 && tp < entry ? (entry - tp) * qty : 0;
   const rrRatio = riskXrp > 0 ? (rewardXrp / riskXrp).toFixed(2) : "—";
   const totalCost = entry * qty;
   const slipAmt = totalCost * (toFiniteNumber(slippage, 1) / 100);
@@ -4164,7 +4623,7 @@ function renderDexRiskRewardPanel() {
     ${sl > 0 ? `<div class="dex-stat"><span class="dex-label">Risk (stop-loss)</span><span style="color:var(--color-error,#ef4444)">${decimalString(riskXrp, 4)} XRP</span></div>` : ""}
     ${tp > 0 ? `<div class="dex-stat"><span class="dex-label">Reward (take-profit)</span><span style="color:var(--color-success,#22c55e)">${decimalString(rewardXrp, 4)} XRP</span></div>` : ""}
     <div class="dex-stat"><span class="dex-label">R/R Ratio</span><span>${rrRatio}</span></div>
-    <div class="dex-stat"><span class="dex-label">Slippage Allowance</span><span>${decimalString(slipAmt, 4)} XRP (${slippage}%)</span></div>
+    <div class="dex-stat"><span class="dex-label">Slippage Allowance</span><span>${decimalString(slipAmt, 4)} XRP (${escapeHtml(slippage)}%)</span></div>
   `;
 }
 
@@ -4520,9 +4979,9 @@ function ensureDexChartControls() {
         .map((t) => ({ id: t.id || t.md5 || "", label: `${t.symbol || t.currency} / XRP`, sub: t.name || t.issuer || "" }))
     ];
     assetList.innerHTML = items.map((it) =>
-      `<div class="dex-asset-item${it.id === (state.dex.selectedTokenId || "") ? " is-active" : ""}" data-id="${it.id}">
-        <span class="dex-asset-item-label">${it.label}</span>
-        <span class="dex-asset-item-sub">${it.sub}</span>
+      `<div class="dex-asset-item${it.id === (state.dex.selectedTokenId || "") ? " is-active" : ""}" data-id="${escapeHtml(it.id)}">
+        <span class="dex-asset-item-label">${escapeHtml(it.label)}</span>
+        <span class="dex-asset-item-sub">${escapeHtml(it.sub)}</span>
       </div>`
     ).join("");
   }
@@ -4544,11 +5003,17 @@ function ensureDexChartControls() {
     if (!id) {
       assetBtn.textContent = "XRP / USD ▾";
       state.dex.currency = ""; state.dex.issuer = "";
+      state.dex.rawCurrency = "";
+      if (refs.dexAssetSelect) refs.dexAssetSelect.value = "";
+      if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = "";
+      if (refs.dexIssuerInput) refs.dexIssuerInput.value = "";
     } else {
       const tok = state.topIssuedAssets.items.find((t) => (t.id || t.md5 || "") === id);
       if (tok) {
         assetBtn.textContent = `${tok.symbol || tok.currency} / XRP ▾`;
+        if (refs.dexAssetSelect) refs.dexAssetSelect.value = tok.id || "";
         applyDexToken(tok);
+        void loadDexOrderBook(true);
       }
     }
     assetDropdown.classList.add("hidden");
@@ -5185,11 +5650,12 @@ function renderDexExecutionPlan() {
     return;
   }
 
+  const safeCurrency = escapeHtml(currency);
   const steps = [
-    `<strong>Step 1:</strong> Place ${side === "buy" ? "BUY" : "SELL"} OfferCreate for ${decimalString(qty, 4)} ${currency} at ${decimalString(entry, 6)} XRP/token via Xumm.`,
+    `<strong>Step 1:</strong> Place ${side === "buy" ? "BUY" : "SELL"} OfferCreate for ${decimalString(qty, 4)} ${safeCurrency} at ${decimalString(entry, 6)} XRP/token via Xumm.`,
     `<strong>Step 2:</strong> Monitor XRPL ledger for offer fill status.`,
-    sl > 0 ? `<strong>Step 3 (Stop-Loss):</strong> If price drops to ${decimalString(sl, 6)} XRP, manually place a SELL offer to exit.` : null,
-    tp > 0 ? `<strong>Step ${sl > 0 ? 4 : 3} (Take-Profit):</strong> If price reaches ${decimalString(tp, 6)} XRP, manually place a SELL offer to lock in gains.` : null
+    sl > 0 ? `<strong>Step 3 (Stop-Loss):</strong> If price ${side === "buy" ? "drops to" : "rises to"} ${decimalString(sl, 6)} XRP, manually place a ${side === "buy" ? "SELL" : "BUY"} offer to exit.` : null,
+    tp > 0 ? `<strong>Step ${sl > 0 ? 4 : 3} (Take-Profit):</strong> If price ${side === "buy" ? "reaches" : "falls to"} ${decimalString(tp, 6)} XRP, manually place a ${side === "buy" ? "SELL" : "BUY"} offer to lock in gains.` : null
   ].filter(Boolean);
 
   refs.dexExecutionPlanPanel.innerHTML = steps.map((s) => `<p>${s}</p>`).join("");
@@ -5197,17 +5663,24 @@ function renderDexExecutionPlan() {
 
 function renderDexSafetyPanel() {
   if (!refs.dexSafetyPanel) return;
-  const { currency, issuer, slippage, orderStyle } = state.dex;
+  const { currency, issuer, slippage, orderStyle, side, price, stopLoss, takeProfit } = state.dex;
   const warnings = [];
+  const entry = toFiniteNumber(price, 0);
+  const sl = toFiniteNumber(stopLoss, 0);
+  const tp = toFiniteNumber(takeProfit, 0);
 
   if (!issuer) warnings.push("No issuer set. Verify the token issuer before creating any offer.");
-  if (toFiniteNumber(slippage, 0) > 5) warnings.push(`Slippage guard is ${slippage}% — high slippage increases fill risk at unfavorable prices.`);
+  if (toFiniteNumber(slippage, 0) > 5) warnings.push(`Slippage guard is ${slippage}% - high slippage increases fill risk at unfavorable prices.`);
   if (orderStyle === "fok" || orderStyle === "ioc") warnings.push(`${orderStyle.toUpperCase()} orders may not fill if liquidity is insufficient and will be cancelled automatically.`);
   if (currency && currency.length === 40) warnings.push("Currency uses a 40-char hex code — confirm you recognize this issuer address.");
+  if (entry > 0 && sl > 0 && side === "buy" && sl >= entry) warnings.push("For a long/buy plan, stop loss should usually be below entry.");
+  if (entry > 0 && tp > 0 && side === "buy" && tp <= entry) warnings.push("For a long/buy plan, take profit should usually be above entry.");
+  if (entry > 0 && sl > 0 && side === "sell" && sl <= entry) warnings.push("For a sell/short-style plan, stop loss should usually be above entry.");
+  if (entry > 0 && tp > 0 && side === "sell" && tp >= entry) warnings.push("For a sell/short-style plan, take profit should usually be below entry.");
   warnings.push("XRPL does not provide native stop-loss automation. Stop and take-profit levels are planning guides only.");
   warnings.push("All transactions are irreversible once validated on-ledger. Verify every field in Xumm before approving.");
 
-  refs.dexSafetyPanel.innerHTML = warnings.map((w) => `<p class="warning-inline">&#x26A0; ${w}</p>`).join("");
+  refs.dexSafetyPanel.innerHTML = warnings.map((w) => `<p class="warning-inline">&#x26A0; ${escapeHtml(w)}</p>`).join("");
 }
 
 function renderDex() {
@@ -5226,7 +5699,11 @@ function renderDex() {
 async function loadDexOrderBook(force = false) {
   const { currency, rawCurrency, issuer } = state.dex;
   if (!currency || !issuer) {
-    setDexTicketStatus("Select an asset or enter currency and issuer before refreshing.", true);
+    if (force) setDexTicketStatus("Select an asset or enter currency and issuer before refreshing.", true);
+    return;
+  }
+  if (!XRPL_ADDRESS_PATTERN.test(issuer)) {
+    if (force) setDexTicketStatus("Enter a valid XRPL issuer address before refreshing.", true);
     return;
   }
   if (!force && state.dex.orderBook.updatedAt && Date.now() - state.dex.orderBook.updatedAt < 10000) return;
@@ -5238,20 +5715,20 @@ async function loadDexOrderBook(force = false) {
 
   const walletState = getWalletState();
   const network = walletState.network || DEFAULT_NETWORK;
-  const xrplCurrency = rawCurrency || currency; // use raw hex form for XRPL protocol
-  const takerPays = { currency: "XRP" };
-  const takerGets = { currency: xrplCurrency, issuer };
+  const xrplCurrency = rawCurrency || currency;
+  const xrpAsset = { currency: "XRP" };
+  const tokenAsset = { currency: xrplCurrency, issuer };
 
   try {
     const [bidsResult, asksResult] = await Promise.all([
-      requestXrplCommand(network, { command: "book_offers", taker_pays: takerPays, taker_gets: takerGets, limit: DEX_BOOK_LIMIT }),
-      requestXrplCommand(network, { command: "book_offers", taker_pays: takerGets, taker_gets: takerPays, limit: DEX_BOOK_LIMIT })
+      requestXrplCommand(network, { command: "book_offers", taker_gets: xrpAsset, taker_pays: tokenAsset, ledger_index: "validated", limit: DEX_BOOK_LIMIT }),
+      requestXrplCommand(network, { command: "book_offers", taker_gets: tokenAsset, taker_pays: xrpAsset, ledger_index: "validated", limit: DEX_BOOK_LIMIT })
     ]);
     state.dex.orderBook = {
       loading: false,
       error: "",
-      bids: (bidsResult.offers || []).map((o) => normalizeDexBookOffer(o, "bids")),
-      asks: (asksResult.offers || []).map((o) => normalizeDexBookOffer(o, "asks")),
+      bids: (bidsResult.offers || []).map((o) => normalizeDexBookOffer(o, "bids")).filter((o) => o.price > 0).sort((a, b) => b.price - a.price),
+      asks: (asksResult.offers || []).map((o) => normalizeDexBookOffer(o, "asks")).filter((o) => o.price > 0).sort((a, b) => a.price - b.price),
       updatedAt: Date.now()
     };
   } catch (err) {
@@ -5269,6 +5746,9 @@ function onDexAssetChange() {
   state.dex.selectedTokenId = id;
   const token = getDexSelectedToken();
   applyDexToken(token);
+  state.dex.latestTx = null;
+  state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
+  renderDexTxPreview(null);
   void loadDexChart(true);
   if (token) void loadDexOrderBook(true);
 }
@@ -5289,6 +5769,7 @@ function onDexAnalyze() {
   const { currency, issuer, amount, price } = state.dex;
   if (!currency) { setDexTicketStatus("Enter a currency code.", true); return; }
   if (!issuer) { setDexTicketStatus("Enter an issuer address.", true); return; }
+  if (!XRPL_ADDRESS_PATTERN.test(issuer)) { setDexTicketStatus("Enter a valid XRPL issuer address.", true); return; }
   if (!(toFiniteNumber(amount, 0) > 0)) { setDexTicketStatus("Enter a token amount greater than zero.", true); return; }
   if (!(toFiniteNumber(price, 0) > 0)) { setDexTicketStatus("Enter a limit price greater than zero.", true); return; }
 
@@ -5319,16 +5800,58 @@ async function onDexSignOffer() {
   setDexTicketStatus("Opening Xumm sign flow…");
 
   try {
-    const xumm = initXumm();
-    await createTxFlow(xumm, state.dex.latestTx);
-    setDexTicketStatus("Xumm sign request sent. Approve in the Xumm/Xaman app.");
+    const walletState = getWalletState();
+    const provider = walletState.provider || sessionStorage.getItem("ike_wallet_provider");
+    if (provider === "created") {
+      renderDexTxPreview(dexPreviewFromTx(state.dex.latestTx), `
+        <div class="dex-sign-request">
+          <strong>Created wallet signing</strong>
+          <p>Transaction preview is ready. Import this wallet into Xumm/Xaman, then connect that same account here to sign on-chain.</p>
+        </div>
+      `);
+      setDexTicketStatus("Created wallets can preview offers here. Connect the same account in Xumm/Xaman to sign.", true);
+      return;
+    }
+
+    if (provider !== "xaman") {
+      openAuthModal();
+      setDexTicketStatus("Connect Xumm/Xaman before creating a sign request.", true);
+      return;
+    }
+
+    if (state.dex.latestTx.Account !== walletState.publicAddress) {
+      state.dex.latestTx.Account = walletState.publicAddress;
+    }
+
+    const xumm = await initXumm(getXamanApiKey());
+    const { qrUrl, mobileUrl, resultPromise } = await createTxFlow(xumm, state.dex.latestTx);
+    const preview = dexPreviewFromTx(state.dex.latestTx);
+    renderDexTxPreview(preview, `
+      <div class="dex-sign-request">
+        <strong>Xumm/Xaman sign request ready</strong>
+        ${qrUrl ? `<img src="${escapeHtml(qrUrl)}" alt="Scan with Xumm/Xaman to sign this DEX offer" loading="lazy" />` : ""}
+        ${mobileUrl ? `<a class="ghost table-link" href="${escapeHtml(mobileUrl)}" target="_blank" rel="noopener noreferrer">Open in Xumm/Xaman</a>` : ""}
+        <p class="muted">Approve only after the offer details match this preview.</p>
+      </div>
+    `);
+    setDexTicketStatus("Sign request created. Approve or reject it in Xumm/Xaman.");
+
+    const result = await resultPromise;
+    if (result?.signed) {
+      const txid = result.txid ? ` Transaction: ${result.txid.slice(0, 12)}...` : "";
+      setDexTicketStatus(`Offer signed successfully.${txid}`);
+      logSecurityEvent("dex_offer_signed", RISK_LEVELS.MEDIUM, {
+        context: "dex_offer",
+        network: walletState.network,
+        addressHint: formatAddress(walletState.publicAddress)
+      });
+      renderSecurity();
+    } else {
+      setDexTicketStatus("DEX offer was rejected or cancelled in Xumm/Xaman.", true);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Signing failed.";
-    if (msg.toLowerCase().includes("created") || msg.toLowerCase().includes("preview")) {
-      setDexTicketStatus("This wallet was created in IkeLedger. Import it into Xumm/Xaman to sign transactions on-chain.", true);
-    } else {
-      setDexTicketStatus(msg, true);
-    }
+    setDexTicketStatus(msg, true);
   } finally {
     state.dex.signing = false;
     if (refs.dexSignOfferButton) refs.dexSignOfferButton.disabled = false;
@@ -5574,6 +6097,7 @@ function onNetworkChange(event) {
 }
 
 function onDisconnect() {
+  stopTracker();
   disconnectWallet();
   sessionStorage.removeItem("ike_wallet_provider");
   setWalletProvider(null);
@@ -5593,7 +6117,11 @@ function onDisconnect() {
 }
 
 function onClearSession() {
+  stopTracker();
   clearSessionStorage();
+  state.tracker.wallets = [];
+  state.tracker.feed = [];
+  state.tracker.groupFilter = "";
   sessionStorage.removeItem("ike_wallet_provider");
   setWalletProvider(null);
   clearAppUserSession();
@@ -5829,6 +6357,26 @@ function openSignGateModal() {
   if (!hasSigningWallet()) {
     setFeedback(pageAccessMessage("dex"), true);
     openAuthModal();
+    return;
+  }
+  if (state.activePage === "dex" && state.dex.latestTx) {
+    const preview = dexPreviewFromTx(state.dex.latestTx);
+    refs.signGateContent.innerHTML = `
+      <p><strong>Transaction Type:</strong> OfferCreate</p>
+      <p><strong>Direction:</strong> ${escapeHtml(preview.side)}</p>
+      <p><strong>TakerGets:</strong> ${escapeHtml(preview.takerGets)}</p>
+      <p><strong>TakerPays:</strong> ${escapeHtml(preview.takerPays)}</p>
+      <p><strong>Limit Price:</strong> ${escapeHtml(preview.price)} XRP per token</p>
+      <p><strong>Order Style:</strong> ${escapeHtml(preview.orderStyle)}</p>
+      <p><strong>Account:</strong> ${escapeHtml(formatAddress(preview.account || ""))}</p>
+      <p><strong>Warning:</strong> XRPL DEX offers can execute immediately and are irreversible after validation.</p>
+    `;
+    refs.signConfirmCheckbox.checked = false;
+    refs.confirmSignButton.disabled = true;
+    if (refs.signWithWalletButton) refs.signWithWalletButton.disabled = true;
+    refs.signGateModal.classList.remove("hidden");
+    refs.signGateModal.style.display = "flex";
+    refs.signGateModal.setAttribute("aria-hidden", "false");
     return;
   }
   const preview = state.latestPreview || txToPreview(getWalletState());
@@ -6384,6 +6932,9 @@ function initEventHandlers() {
   refs.themeSelect?.addEventListener("change", (event) => {
     applyTheme(event.target.value || "dark");
   });
+  refs.accentSelect?.addEventListener("change", (event) => {
+    applyAccent(event.target.value || "aqua");
+  });
   bindClick(refs.profileButton, () => setActivePage("profile"));
   // Hero button row wires into inline tabs
   bindClick(refs.sendButton,   openHeroSend);
@@ -6462,6 +7013,7 @@ function boot() {
   state.ammWatchlist = getStoredWatchlist(STORAGE_KEYS.ammWatchlist);
   loadTrackerWallets();
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
+  applyAccent(localStorage.getItem(STORAGE_KEYS.accent) || "aqua");
   setActivePage("dashboard");
 
   if (refs.networkSelect) refs.networkSelect.value = walletState.network;

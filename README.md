@@ -12,6 +12,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - Command Center is the user landing page for XRPL network, XRP market, AMM, and liquidity overview metrics
 - XRP Market Overview includes live source chips, last-updated time, and a cached fallback so brief API misses do not blank the panel
 - Issued asset and AMM / LP market tables include load-more pagination, watchlist buttons, and risk scoring
+- Account Intelligence monitors connected accounts for wallet health, reserve pressure, security posture, asset exposure, AMM/NFT signals, whale flow, and DEX activity
 - Xumm/email sign-in appears in a popup overlay instead of replacing the dashboard
 - Email/password profile sign-in through Supabase Auth with email verification
 - Email profiles are profile-only until an XRPL wallet is connected or created
@@ -21,7 +22,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 
 ### Core wallet
 - Read-only XRPL public address lookup via WebSocket
-- Network selection — Testnet (default), Mainnet, Devnet
+- Network selection — Testnet (default) and Mainnet
 - Mainnet warning banner with real-asset notice
 - Wallet meta grid plus integrated wallet status panel - provider, address, verified status, balances, reserves, ledger objects, and last sync
 - Portfolio Intelligence KPI tiles — Total XRP, Available XRP, assets, issued tokens, NFTs, AMM positions
@@ -29,8 +30,9 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - Token holdings and issued token display
 - NFT viewer with decoded XRPL NFT URI support, IPFS/HTTP metadata lookup, and image thumbnails
 - AMM / LP position viewer
+- Account Intelligence page with watched accounts, live XRPL stream filters, account health score, risk alerts, and plain-language event insight
 - Optional market proxy/cache server for XRPL.to, CoinGecko, and token image requests
-- DEX access panel with order entry scaffold
+- DEX access panel with live order book loading, chart controls, risk/reward analysis, OfferCreate previews, and Xumm/Xaman signing requests
 - Transaction consent modal before any signing flow
 
 ### Account creation
@@ -112,8 +114,8 @@ ikeledger/
     ikeledger-keygen.js           — In-browser XRPL keypair generation (no deps)
     ikeledger-security.js         — Risk levels, event log, input screening
     ikeledger-rewards.js          — Mana and learning reward calculations
-    ikeledger-xaman.js            - XRPL payment transaction builder
-    ikeledger-xumm.js             - Official Xumm SDK sign-in and Xaman transaction payloads
+    ikeledger-xaman.js            — XRPL payment transaction builder
+    ikeledger-xumm.js             — Official Xumm SDK sign-in and Xaman transaction payloads
     ikeledger-supabase.js         — Optional Supabase sync client
     ikeledger-cdn.js              — CDN import helper with fallback chain
   server/

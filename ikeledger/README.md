@@ -13,9 +13,10 @@ All features below are implemented and functional in the current codebase.
 | Tokens | Complete | Token holdings, trust line safety info |
 | NFT Viewer | Complete | Grid view with decoded NFT URI, IPFS/HTTP metadata lookup, image thumbnails, filter scaffold |
 | NFT Listings | Complete | Offers and listings display |
-| DEX Access | Complete | Order panel scaffold, signing gate |
+| DEX Access | Complete | Live order book, trading ticket, chart controls, risk/reward analysis, and Xumm/Xaman OfferCreate signing |
 | AMM / LP | Complete | Position viewer, risk notice |
 | Activity | Complete | Transaction history, raw JSON toggle |
+| Account Intelligence | Complete | Watched accounts, live XRPL stream filters, health score, reserve/security/asset/AMM/NFT/market signals, and risk alerts |
 | Credentials & Mana | Complete | Earned credentials, Mana info, privacy controls |
 | Security Center | Complete | Safety checklist, session event log |
 | Profile | Complete | Photo upload, identity display, avatar customizer, wallet card, fund wallet |
@@ -63,11 +64,11 @@ All features below are implemented and functional in the current codebase.
 ## Next steps
 
 ### High priority
-- [ ] **Network icon strip - wire button actions**: Network button focuses the network selector; Mainnet/Testnet/Devnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address.
+- [ ] **Network icon strip - wire button actions**: Network button focuses the network selector; Mainnet/Testnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address.
 - [ ] **QR code for address sharing**: Show a scannable QR on the profile and fund wallet cards so mobile users can receive XRP without typing the address.
 
 ### Medium priority
-- [ ] **DEX live order book**: Connect to XRPL `book_offers` command to show real bids/asks for selected trading pair
+- [ ] **DEX execution follow-up**: Add offer status monitoring after a signed OfferCreate so users can see whether the order filled, partially filled, or stayed open
 - [ ] **AMM live pool data**: Use `amm_info` command to show current pool reserves, trading fee, and LP token supply
 - [ ] **Accent color system**: The accent selector (XRP Blue / Mana Gold / Emerald) is in the settings drawer but CSS variables for the accent are not yet wired — connect `accentSelect` to a set of `:root` overrides
 - [ ] **Mobile bottom nav — add Create Wallet**: Add Create Wallet as a bottom nav item or make it reachable from the Wallet page
@@ -78,7 +79,7 @@ All features below are implemented and functional in the current codebase.
 - [ ] **Pagination for transaction history**: `account_tx` currently fetches the latest 10 — add a "load more" marker-based pagination
 - [ ] **Trust line search / filter**: When a user holds many tokens, add a search input to the token holdings list
 - [ ] **Export wallet info**: Allow users to copy or download a text summary of their address, public key, and network for safekeeping
-- [ ] **Destination tag field**: Add an optional destination tag input to the DEX / payment flow for exchange withdrawals
+- [ ] **Destination tag field**: Add an optional destination tag input to the payment flow for exchange withdrawals
 
 ### Future / ecosystem
 - [ ] **Mana token XRPL integration**: Issue Mana as a real XRPL token with IOU trust lines anchored to the Ikeverse account
@@ -97,5 +98,5 @@ No build tool, no server, no npm install required.
 ```
 
 The only network calls made at runtime:
-- XRPL WebSocket endpoints (`wss://`) — for account data
+- XRPL WebSocket endpoints (`wss://`) — for account data, DEX books, and network metrics
 - CoinGecko API — for XRP live price and chart data
