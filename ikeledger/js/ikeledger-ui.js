@@ -35,11 +35,16 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
-const MARKET_RESULT_LIMIT = 100;
+const MARKET_RESULT_LIMIT = 500;
+const MARKET_PAGE_SIZE    = 100;
 const MARKET_VISIBLE_STEP = 50;
-const TOP_ISSUED_ASSETS_URL = `https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc&limit=${MARKET_RESULT_LIMIT}`;
-const TOP_AMM_POOLS_URL = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_RESULT_LIMIT}`;
-const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v3";
+const TOP_ISSUED_ASSETS_BASE_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc";
+const TOP_ISSUED_ASSETS_URL      = `${TOP_ISSUED_ASSETS_BASE_URL}&limit=${MARKET_PAGE_SIZE}`;
+const TOP_AMM_POOLS_URL          = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_PAGE_SIZE}`;
+const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v4";
+const XRPSCAN_TOKENS_URL   = "https://api.xrpscan.com/api/v1/tokens";
+const XRPSCAN_CACHE_KEY    = "ike_xrpscan_tokens_v1";
+const XRPSCAN_CACHE_MS     = 5 * 60 * 1000;
 const TOP_AMM_POOLS_CACHE_KEY = "ike_top_amm_pools_v3";
 const TOP_ISSUED_ASSETS_CACHE_MS = 6 * 60 * 60 * 1000;
 const TOP_AMM_POOLS_CACHE_MS = 6 * 60 * 60 * 1000;
@@ -65,6 +70,8 @@ const state = {
   topAmmFilter: "",
   topIssuedVisibleCount: MARKET_VISIBLE_STEP,
   topAmmVisibleCount: MARKET_VISIBLE_STEP,
+  topIssuedTab: "all",
+  topIssuedTagFilter: "",
   tokenWatchlist: new Set(),
   ammWatchlist: new Set(),
   chartTimeframe: "24H",
@@ -78,7 +85,9 @@ const state = {
     fetchedAt: 0,
     items: [],
     loading: false,
-    error: ""
+    error: "",
+    livePrices: new Map(),   // tokenId → { priceXrp, source, fetchedAt }
+    priceTimer: null
   },
   topAmmPools: {
     fetchedAt: 0,
@@ -91,6 +100,7 @@ const state = {
     selectedTokenId: "",
     side: "buy",
     currency: "",
+    rawCurrency: "",
     issuer: "",
     amount: "",
     price: "",
@@ -119,6 +129,18 @@ const state = {
       chartType: "candle",
       indicators: { ma20: true, ma50: true, ema20: false, bb: false, volume: true, rsi: false }
     }
+  },
+  tracker: {
+    wallets: [],           // [{ address, label, group }]
+    groups: [],            // string[] of group names
+    feed: [],              // [TrackerEvent]
+    feedLimit: 150,
+    running: false,
+    txFilters: new Set(["buy","sell","amm","nft","escrow","check","trustline","security","payment","offer","other"]),
+    minXrp: 0,
+    groupFilter: "",
+    socialHandles: [],     // [{ handle, label }]
+    alerts: []             // [{ type, value }]
   }
 };
 
@@ -242,6 +264,7 @@ const refs = {
   valueMix: document.getElementById("valueMix"),
   txHistory: document.getElementById("txHistory"),
   txRawJson: document.getElementById("txRawJson"),
+  trackerPage: document.getElementById("trackerPage"),
   toggleRawJsonButton: document.getElementById("toggleRawJsonButton"),
   txPreview: document.getElementById("txPreview"),
   openSignGateButton: document.getElementById("openSignGateButton"),
@@ -480,6 +503,68 @@ function formatUnsignedPercent(value) {
   return `${n.toFixed(2)}%`;
 }
 
+function formatAge(ms) {
+  if (!ms || ms <= 0) return "—";
+  const diff = Date.now() - ms;
+  const days = Math.floor(diff / 86_400_000);
+  const hrs = Math.floor(diff / 3_600_000);
+  const mins = Math.floor(diff / 60_000);
+  const yrs = Math.floor(days / 365);
+  const mos = Math.floor(days / 30);
+  if (mins < 60) return `${mins}m`;
+  if (hrs < 24) return `${hrs}h`;
+  if (days < 30) return `${days}d`;
+  if (mos < 12) {
+    const remDays = days - mos * 30;
+    return remDays > 3 ? `${mos}mo ${remDays}d` : `${mos}mo`;
+  }
+  const remMos = mos - yrs * 12;
+  return remMos > 0 ? `${yrs}y ${remMos}mo` : `${yrs}y`;
+}
+
+function formatXrpAmount(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return "—";
+  if (n === 0) return "0";
+  if (Math.abs(n) < 0.000001) return n.toExponential(2);
+  if (Math.abs(n) < 0.0001) return n.toPrecision(3);
+  if (Math.abs(n) < 1) return n.toFixed(4);
+  if (Math.abs(n) < 1000) return n.toFixed(2);
+  if (Math.abs(n) < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+function pctChip(value) {
+  const n = toFiniteNumber(value, Number.NaN);
+  if (!Number.isFinite(n)) return `<span class="pct-chip pct-neutral">—</span>`;
+  const cls = n > 0 ? "pct-pos" : n < 0 ? "pct-neg" : "pct-neutral";
+  const sign = n > 0 ? "+" : "";
+  return `<span class="pct-chip ${cls}">${sign}${n.toFixed(1)}%</span>`;
+}
+
+function tokenSparklineSvg(token) {
+  const w = 80, h = 30;
+  const c7  = Number.isFinite(token.change7d)  ? token.change7d  : 0;
+  const c24 = Number.isFinite(token.change24h) ? token.change24h : 0;
+  const c1h = Number.isFinite(token.change1h)  ? token.change1h  : 0;
+  const c5m = Number.isFinite(token.change5m)  ? token.change5m  : 0;
+  const raw = [c7, (c7 + c24) / 2, c24, (c24 + c1h) / 2, c1h, (c1h + c5m) / 2, c5m];
+  const min = Math.min(...raw), max = Math.max(...raw);
+  const range = max - min || 0.01;
+  const pad = 3, xStep = (w - pad * 2) / (raw.length - 1);
+  const pts = raw.map((v, i) => ({
+    x: +(pad + i * xStep).toFixed(1),
+    y: +(pad + (1 - (v - min) / range) * (h - pad * 2)).toFixed(1)
+  }));
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length; i++) {
+    const cpx = ((pts[i - 1].x + pts[i].x) / 2).toFixed(1);
+    d += ` C${cpx},${pts[i - 1].y} ${cpx},${pts[i].y} ${pts[i].x},${pts[i].y}`;
+  }
+  const color = raw[raw.length - 1] >= raw[0] ? "#44d999" : "#ff5f6d";
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" style="display:block"><path d="${d}" stroke="${color}" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>`;
+}
+
 function formatAmmFee(value) {
   const n = toFiniteNumber(value, Number.NaN);
   if (!Number.isFinite(n)) return "n/a";
@@ -516,21 +601,17 @@ function tokenLogoUrl(token = {}) {
   if (localLogo.startsWith("./") || localLogo.startsWith("/")) return localLogo;
 
   const directLogo = normalizeLogoSource(
-    token.tomlIcon
-    || token.icon
-    || token.logo
-    || token.logoUrl
-    || token.image
-    || token.imageUrl
-    || ""
+    token.tomlIcon || token.icon || token.logo || token.logoUrl || token.image || token.imageUrl || ""
   );
   if (directLogo) return imageProxyUrl(directLogo);
 
+  // xrpl.to CDN — use md5 (= _id) with the extension the API provides
   const md5 = String(token.md5 || token._id || "").trim();
-  if (!/^[a-f0-9]{32}$/i.test(md5)) return "";
-  const version = token.imgUpdated || token.time || token.lastModified || token.dateon || "";
-  const versionQuery = version ? `&t=${encodeURIComponent(String(version))}` : "";
-  return imageProxyUrl(`https://www.xrpl.to/api/proxy/api/thumb/${encodeURIComponent(md5)}?w=96${versionQuery}`);
+  if (/^[a-f0-9]{32}$/i.test(md5)) {
+    const ext = String(token.ext || "").replace(/[^a-z0-9]/gi, "");
+    return `https://s1.xrpl.to/token/${md5}${ext ? "." + ext : ""}`;
+  }
+  return "";
 }
 
 function tokenLogoMarkup(token = {}, label = "") {
@@ -540,6 +621,10 @@ function tokenLogoMarkup(token = {}, label = "") {
   const safeLogoUrl = logoUrl.startsWith("./")
     || logoUrl.startsWith("/")
     || logoUrl.startsWith("https://wsrv.nl/")
+    || logoUrl.startsWith("https://s1.xrpl.to/")
+    || logoUrl.startsWith("https://s1.xrplmeta.org/")
+    || logoUrl.startsWith("https://ipfs.io/ipfs/")
+    || logoUrl.startsWith("https://cloudflare-ipfs.com/ipfs/")
     || (proxyBase && logoUrl.startsWith(`${proxyBase}/image?`))
     ? logoUrl : "";
   if (!safeLogoUrl) {
@@ -774,6 +859,18 @@ function setActivePage(page) {
 
   if (page === "tokens") {
     void loadTopIssuedAssets();
+    // Start live WebSocket price refresh for visible tokens
+    if (!state.topIssuedAssets.priceTimer) {
+      state.topIssuedAssets.priceTimer = setInterval(() => {
+        if (state.activePage === "tokens") void refreshVisibleTokenPrices();
+      }, 30_000);
+    }
+  } else {
+    // Stop price refresh when navigating away
+    if (state.topIssuedAssets.priceTimer) {
+      clearInterval(state.topIssuedAssets.priceTimer);
+      state.topIssuedAssets.priceTimer = null;
+    }
   }
 
   if (page === "dex") {
@@ -784,6 +881,10 @@ function setActivePage(page) {
 
   if (page === "amm") {
     void loadTopAmmPools();
+  }
+
+  if (page === "tracker") {
+    renderTrackerPage();
   }
 }
 
@@ -803,16 +904,17 @@ async function fetchJson(url) {
   return response.json();
 }
 
-const _mjCache          = new Map(); // url → { data, ts }
-const _mjInFlight       = new Map(); // url → Promise
-const _domainTail       = new Map(); // hostname → tail of sequential queue
-const _rateLimitedUntil = new Map(); // hostname → timestamp: don't request before this
-const MJ_TTL = 120_000;              // 2-minute cache
+const _mjCache      = new Map(); // url → { data, ts }
+const _mjInFlight   = new Map(); // url → Promise
+const _domainTail   = new Map(); // hostname → tail of sequential queue (prevents burst)
+const _urlSkipUntil = new Map(); // url → timestamp: skip this exact URL until then (after 429)
+const _cgIdCache    = new Map(); // symbol_lower → coingecko_id | null
+const MJ_TTL = 120_000;          // 2-minute response cache
 
-// Serialize all requests to the same host so we never fire concurrent fetches
+// Serialize requests to each host to prevent concurrent burst firing
 function _queuedFetch(url, fn) {
   let host = "";
-  try { host = new URL(url).hostname; } catch { /* noop */ }
+  try { host = new URL(url).hostname; } catch { }
   const prev = _domainTail.get(host) ?? Promise.resolve();
   const task = prev.then(fn);
   _domainTail.set(host, task.then(() => {}, () => {})); // tail never rejects
@@ -822,30 +924,32 @@ function _queuedFetch(url, fn) {
 async function fetchMarketJson(url) {
   const hit = _mjCache.get(url);
   if (hit && Date.now() - hit.ts < MJ_TTL) return hit.data;
+
+  // If this exact URL was 429'd recently, skip it immediately so fallbacks run now
+  const skipUntil = _urlSkipUntil.get(url) || 0;
+  if (Date.now() < skipUntil) {
+    const err = new Error("Market API rate limited (429)");
+    err.status = 429;
+    throw err;
+  }
+
   if (_mjInFlight.has(url)) return _mjInFlight.get(url);
 
   const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
   const requestUrl = proxyBase ? `${proxyBase}/market?url=${encodeURIComponent(url)}` : url;
 
-  let reqHost = "";
-  try { reqHost = new URL(requestUrl).hostname; } catch { /* noop */ }
-
   const doFetch = async () => {
-    // Adaptive rate-limit backoff — if recently 429'd, wait it out
-    const rlUntil = _rateLimitedUntil.get(reqHost) || 0;
-    if (Date.now() < rlUntil) await new Promise((r) => setTimeout(r, rlUntil - Date.now()));
-
     const response = await fetch(requestUrl, { headers: { accept: "application/json" } });
     if (response.status === 429) {
-      _rateLimitedUntil.set(reqHost, Date.now() + 4000); // 4-second cooldown for this host
-      const error = new Error("Market API rate limited (429)");
-      error.status = 429;
-      throw error;
+      _urlSkipUntil.set(url, Date.now() + 30_000); // skip this URL for 30s — no blocking wait
+      const err = new Error("Market API rate limited (429)");
+      err.status = 429;
+      throw err;
     }
     if (!response.ok) {
-      const error = new Error(`Market API failed (${response.status})`);
-      error.status = response.status;
-      throw error;
+      const err = new Error(`Market API failed (${response.status})`);
+      err.status = response.status;
+      throw err;
     }
     const data = await response.json();
     _mjCache.set(url, { data, ts: Date.now() });
@@ -888,8 +992,8 @@ async function fetchXrpSpotPrice() {
   return 0;
 }
 
-// ── Kraken — XRP/USD only (CORS-friendly, globally accessible) ───────
-// All issued XRPL tokens use xrpl.to. Kraken is used only for XRP itself.
+// ── Kraken — XRP/USD OHLCV (CORS-friendly, no API key required) ─────
+// Used for XRP/USD chart and as the denominator when converting CoinGecko USD→XRP prices.
 async function fetchKrakenXrpOhlcv(krakenInterval, limit) {
   const since = Math.floor(Date.now() / 1000) - krakenInterval * 60 * (limit + 2);
   const url = `https://api.kraken.com/0/public/OHLC?pair=XRPUSD&interval=${krakenInterval}&since=${since}`;
@@ -901,6 +1005,27 @@ async function fetchKrakenXrpOhlcv(krakenInterval, limit) {
     .map((k) => ({ t: Number(k[0]) * 1000, o: Number(k[1]), h: Number(k[2]), l: Number(k[3]), c: Number(k[4]), v: Number(k[6]) }))
     .filter((c) => c.c > 0)
     .slice(-limit);
+}
+
+// Look up a token's CoinGecko coin ID by symbol; caches results for the session.
+async function fetchCoinGeckoId(symbol) {
+  const key = (symbol || "").toLowerCase().trim();
+  if (!key) return null;
+  if (_cgIdCache.has(key)) return _cgIdCache.get(key);
+  try {
+    const data = await fetchMarketJson(
+      `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(key)}`
+    );
+    const coins = Array.isArray(data?.coins) ? data.coins : [];
+    // Prefer exact symbol match (e.g. "solo" → solo-coin), fall back to first result
+    const match = coins.find(c => c.symbol?.toLowerCase() === key) || null;
+    const id = match?.id || null;
+    _cgIdCache.set(key, id);
+    return id;
+  } catch {
+    _cgIdCache.set(key, null);
+    return null;
+  }
 }
 
 async function fetchXrpOverview() {
@@ -937,8 +1062,17 @@ async function fetchXrpChartPoints(timeframe) {
 
 // ── XRPL WebSocket connection pool (one persistent socket per network) ──
 const _xrplWs      = new Map(); // networkKey → WebSocket
-const _xrplPending = new Map(); // networkKey → Map<id, {resolve, reject, timer}>
+const _xrplPending       = new Map(); // networkKey → Map<id, {resolve, reject, timer}>
+const _xrplStreamHandlers = new Map(); // networkKey → Set<fn(payload)>
 let   _xrplNextId  = 1;
+
+function _xrplAddStreamHandler(networkKey, fn) {
+  if (!_xrplStreamHandlers.has(networkKey)) _xrplStreamHandlers.set(networkKey, new Set());
+  _xrplStreamHandlers.get(networkKey).add(fn);
+}
+function _xrplRemoveStreamHandler(networkKey, fn) {
+  _xrplStreamHandlers.get(networkKey)?.delete(fn);
+}
 
 function _xrplEnsureConnection(networkKey) {
   const existing = _xrplWs.get(networkKey);
@@ -954,7 +1088,13 @@ function _xrplEnsureConnection(networkKey) {
   ws.addEventListener("message", (event) => {
     try {
       const payload = JSON.parse(event.data);
-      const entry   = pending.get(payload?.id);
+      // Route streaming subscription messages to registered handlers
+      if (payload.type === "transaction" || payload.type === "ledgerClosed") {
+        const handlers = _xrplStreamHandlers.get(networkKey);
+        if (handlers) for (const fn of handlers) { try { fn(payload); } catch { /* */ } }
+        return;
+      }
+      const entry = pending.get(payload?.id);
       if (!entry) return;
       pending.delete(payload.id);
       clearTimeout(entry.timer);
@@ -1180,6 +1320,433 @@ function renderMarketSnapshot(snapshot) {
       : changePercent >= 0 ? "var(--emerald)" : "var(--danger)";
   }
   renderMarketSourceStatus(snapshot);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LIVE TRACKER
+// ══════════════════════════════════════════════════════════════
+
+const TRACKER_TX_LABELS = {
+  buy:        { label: "Buy",       color: "var(--emerald)",  icon: "↑" },
+  sell:       { label: "Sell",      color: "var(--danger)",   icon: "↓" },
+  amm:        { label: "AMM",       color: "var(--cyan)",     icon: "⇄" },
+  nft:        { label: "NFT",       color: "var(--violet)",   icon: "🖼" },
+  escrow:     { label: "Escrow",    color: "var(--warn)",     icon: "⏳" },
+  check:      { label: "Check",     color: "var(--warn)",     icon: "✓" },
+  trustline:  { label: "Trust",     color: "var(--xrp-blue)", icon: "🔗" },
+  security:   { label: "⚠ Security",color: "var(--danger)",  icon: "🚨" },
+  payment:    { label: "Payment",   color: "var(--turquoise)","icon": "→" },
+  offer:      { label: "Offer",     color: "var(--mana-gold)","icon": "📋" },
+  other:      { label: "Other",     color: "var(--ink-2)",    icon: "·"  }
+};
+
+const SECURITY_TX_TYPES = new Set([
+  "AccountDelete", "SetRegularKey", "SignerListSet", "Clawback",
+  "DepositPreauth", "AccountSet"
+]);
+const NFT_TX_TYPES = new Set([
+  "NFTokenMint", "NFTokenBurn", "NFTokenCreateOffer",
+  "NFTokenAcceptOffer", "NFTokenCancelOffer"
+]);
+const AMM_TX_TYPES = new Set([
+  "AMMCreate", "AMMDeposit", "AMMWithdraw", "AMMVote", "AMMBid", "AMMDelete"
+]);
+
+function classifyTrackerTx(txType, tx) {
+  if (SECURITY_TX_TYPES.has(txType)) return "security";
+  if (NFT_TX_TYPES.has(txType))      return "nft";
+  if (AMM_TX_TYPES.has(txType))      return "amm";
+  if (txType === "EscrowCreate" || txType === "EscrowFinish" || txType === "EscrowCancel") return "escrow";
+  if (txType === "CheckCreate"  || txType === "CheckCash"    || txType === "CheckCancel")  return "check";
+  if (txType === "TrustSet")         return "trustline";
+  if (txType === "OfferCreate" || txType === "OfferCancel")   return "offer";
+  if (txType === "Payment") {
+    const dest = tx.Destination;
+    const amt  = tx.Amount;
+    if (typeof amt === "object" && amt?.currency) return "payment"; // issued currency payment
+    return "payment";
+  }
+  return "other";
+}
+
+function trackerXrpAmount(tx, meta) {
+  // Try DeliveredAmount first (most accurate for payments)
+  const delivered = meta?.delivered_amount || meta?.DeliveredAmount;
+  if (typeof delivered === "string") return Number(delivered) / 1e6;
+  if (typeof tx.Amount === "string") return Number(tx.Amount) / 1e6;
+  return 0;
+}
+
+function trackerEventDescription(txType, tx, meta, walletEntry) {
+  const addr = tx.Account;
+  const lbl  = walletEntry?.label || formatAddress(addr);
+  switch (txType) {
+    case "Payment":   return `${lbl} sent payment`;
+    case "OfferCreate": {
+      const gets = tx.TakerGets, pays = tx.TakerPays;
+      const getsXrp = typeof gets === "string";
+      const currency = getsXrp ? (typeof pays === "object" ? pays.currency : "XRP") : (typeof gets === "object" ? gets.currency : "XRP");
+      return `${lbl} placed ${getsXrp ? "buy" : "sell"} order for ${currency}`;
+    }
+    case "TrustSet":    return `${lbl} set trust line for ${tx.LimitAmount?.currency || "token"}`;
+    case "NFTokenMint": return `${lbl} minted NFT`;
+    case "AMMDeposit":  return `${lbl} deposited to AMM`;
+    case "AMMWithdraw": return `${lbl} withdrew from AMM`;
+    case "AccountDelete": return `${lbl} deleted account`;
+    case "SetRegularKey": return `${lbl} changed signing key`;
+    case "SignerListSet": return `${lbl} updated signer list`;
+    case "Clawback":    return `${lbl} clawback issued`;
+    case "EscrowCreate": return `${lbl} created escrow`;
+    case "EscrowFinish": return `${lbl} finished escrow`;
+    case "CheckCreate": return `${lbl} created check`;
+    case "CheckCash":   return `${lbl} cashed check`;
+    default:            return `${lbl} — ${txType}`;
+  }
+}
+
+function processTrackerStream(payload) {
+  const tx   = payload.transaction || payload.tx_json || {};
+  const meta = payload.meta || {};
+  if (!tx.Account) return;
+  if (meta.TransactionResult && meta.TransactionResult !== "tesSUCCESS") return;
+
+  const txType = tx.TransactionType || "";
+  const category = classifyTrackerTx(txType, tx);
+
+  // Find which watched wallet triggered this
+  const involvedAddr = [tx.Account, tx.Destination].filter(Boolean);
+  const walletEntry = state.tracker.wallets.find(w => involvedAddr.includes(w.address));
+  if (!walletEntry && state.tracker.wallets.length > 0) return; // not from a watched wallet
+
+  const xrpAmt = trackerXrpAmount(tx, meta);
+
+  const event = {
+    id:          tx.hash || String(Date.now()),
+    type:        category,
+    account:     tx.Account,
+    label:       walletEntry?.label || "",
+    group:       walletEntry?.group || "",
+    xrpAmount:   xrpAmt,
+    description: trackerEventDescription(txType, tx, meta, walletEntry),
+    txType,
+    isAlert:     category === "security",
+    timestamp:   Date.now(),
+    txHash:      tx.hash || ""
+  };
+
+  // Check min-XRP filter
+  if (state.tracker.minXrp > 0 && xrpAmt < state.tracker.minXrp && category !== "security") return;
+
+  state.tracker.feed.unshift(event);
+  if (state.tracker.feed.length > state.tracker.feedLimit) {
+    state.tracker.feed.pop();
+  }
+
+  if (state.activePage === "tracker") renderTrackerFeed();
+}
+
+let _trackerStreamHandler = null;
+
+function startTracker() {
+  if (state.tracker.running) return;
+  if (!state.tracker.wallets.length) return;
+
+  const walletState = getWalletState();
+  const networkKey  = walletState.network || DEFAULT_NETWORK;
+
+  _xrplEnsureConnection(networkKey);
+  const ws = _xrplWs.get(networkKey);
+  if (!ws) return;
+
+  const addresses = state.tracker.wallets.map(w => w.address);
+  const subCmd = () => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ id: _xrplNextId++, command: "subscribe", accounts: addresses }));
+    }
+  };
+
+  if (ws.readyState === WebSocket.OPEN) subCmd();
+  else ws.addEventListener("open", subCmd, { once: true });
+
+  _trackerStreamHandler = processTrackerStream;
+  _xrplAddStreamHandler(networkKey, _trackerStreamHandler);
+  state.tracker.running = true;
+  renderTrackerPage();
+}
+
+function stopTracker() {
+  if (!state.tracker.running) return;
+  const walletState = getWalletState();
+  const networkKey  = walletState.network || DEFAULT_NETWORK;
+  if (_trackerStreamHandler) {
+    _xrplRemoveStreamHandler(networkKey, _trackerStreamHandler);
+    _trackerStreamHandler = null;
+  }
+  const ws = _xrplWs.get(networkKey);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const addresses = state.tracker.wallets.map(w => w.address);
+    if (addresses.length) {
+      ws.send(JSON.stringify({ id: _xrplNextId++, command: "unsubscribe", accounts: addresses }));
+    }
+  }
+  state.tracker.running = false;
+}
+
+function saveTrackerWallets() {
+  try { localStorage.setItem("ike_tracker_wallets_v1", JSON.stringify(state.tracker.wallets)); } catch { }
+}
+function loadTrackerWallets() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("ike_tracker_wallets_v1") || "[]");
+    if (Array.isArray(raw)) state.tracker.wallets = raw;
+  } catch { }
+}
+
+function renderTrackerFeed() {
+  const feedEl = document.getElementById("trackerFeedList");
+  if (!feedEl) return;
+  const { feed, txFilters, minXrp, groupFilter } = state.tracker;
+  const filtered = feed.filter(ev => {
+    if (!txFilters.has(ev.type)) return false;
+    if (minXrp > 0 && ev.xrpAmount < minXrp && !ev.isAlert) return false;
+    if (groupFilter && ev.group !== groupFilter) return false;
+    return true;
+  });
+  if (!filtered.length) {
+    feedEl.innerHTML = `<div class="tracker-feed-empty"><span>No transactions yet</span><p>Watching ${state.tracker.wallets.length} wallet${state.tracker.wallets.length !== 1 ? "s" : ""} — events will stream here in real time.</p></div>`;
+    return;
+  }
+  feedEl.innerHTML = filtered.slice(0, 80).map(ev => {
+    const meta = TRACKER_TX_LABELS[ev.type] || TRACKER_TX_LABELS.other;
+    const timeStr = new Date(ev.timestamp).toLocaleTimeString();
+    const xrpStr = ev.xrpAmount > 0 ? `<span class="tfe-xrp">${ev.xrpAmount.toFixed(2)} XRP</span>` : "";
+    const hashUrl = ev.txHash ? `https://xrpl.to/tx/${ev.txHash}` : "";
+    return `
+      <div class="tracker-feed-event${ev.isAlert ? " is-alert" : ""}">
+        <div class="tfe-icon" style="color:${meta.color}">${meta.icon}</div>
+        <div class="tfe-body">
+          <div class="tfe-top">
+            <span class="tfe-type" style="color:${meta.color}">${meta.label}</span>
+            <span class="tfe-label">${escapeHtml(ev.label || formatAddress(ev.account))}</span>
+            ${ev.group ? `<span class="tfe-group">${escapeHtml(ev.group)}</span>` : ""}
+            ${xrpStr}
+            <span class="tfe-time">${timeStr}</span>
+          </div>
+          <div class="tfe-desc">${escapeHtml(ev.description)}</div>
+          ${hashUrl ? `<a class="tfe-hash" href="${hashUrl}" target="_blank" rel="noopener noreferrer">${ev.txHash.slice(0, 16)}…</a>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function renderTrackerPage() {
+  if (!refs.trackerPage) return;
+  const walletState = getWalletState();
+  const connected   = Boolean(walletState?.address);
+  const { wallets, running, txFilters, minXrp, groupFilter, groups } = state.tracker;
+
+  if (!connected) {
+    refs.trackerPage.innerHTML = `
+      <div class="tracker-landing">
+        <div class="tracker-hero-card glass-card">
+          <div class="tracker-hero-text">
+            <div class="mode-pill">Free · No Credit Card</div>
+            <h3>IkeLedger Wallet Tracker</h3>
+            <p>Watch every address, every mention, in real time. Whale moves, AMM trades, NFT activity, trustline changes, and security events — streamed live to your console.</p>
+            <div class="tracker-free-tier">
+              <span class="chip chip-cyan">50 labeled wallets</span>
+              <span class="chip chip-cyan">50 live watchers</span>
+              <span class="chip chip-cyan">Real-time stream</span>
+            </div>
+            <p class="muted">Connect your wallet or create one to start tracking.</p>
+          </div>
+          <div class="tracker-features-grid">
+            ${[
+              ["↑↓","Live Trade Feed","Real-time tx stream — buys, sells, AMM, NFT, trustlines — all filterable."],
+              ["⚡","11 Filter Types","Buy · Sell · AMM · NFT · Escrow · Check · Security + min-XRP threshold."],
+              ["🚨","Security Alerts","AccountDelete, SetRegularKey, SignerListSet, Clawback flagged distinctly."],
+              ["🏷","Groups & Labels","Label wallets, group them (whales, bots, DCA), scope the feed per group."],
+              ["📊","Social Tracker","Track @handles alongside wallets — sentiment, follower deltas, mentions."],
+              ["🔔","Custom Alerts","Set mention thresholds and get notified when a wallet moves."],
+            ].map(([icon, title, desc]) => `
+              <div class="tracker-feature-item">
+                <div class="tfi-icon">${icon}</div>
+                <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(desc)}</p></div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        <div class="tracker-tier-row">
+          ${[
+            ["Free","0 XRP/mo","50 labels · 50 watchers · 24h history","chip-cyan"],
+            ["VIP","VIP","200 labels · 200 watchers · 7d history · Priority alerts","chip-gold"],
+            ["Nova","Nova","Unlimited labels · 30d history · API access","chip-violet"],
+            ["Diamond","Diamond","Everything + dedicated node · white-label","chip-diamond"],
+          ].map(([name, price, perks, chipClass]) => `
+            <div class="tracker-tier-card glass-card">
+              <span class="chip ${chipClass}">${escapeHtml(name)}</span>
+              <strong class="tier-price">${escapeHtml(price)}</strong>
+              <p>${escapeHtml(perks)}</p>
+            </div>
+          `).join("")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  const allGroups = [...new Set(wallets.map(w => w.group).filter(Boolean))];
+  const filterChips = Object.entries(TRACKER_TX_LABELS).map(([key, meta]) => {
+    const active = txFilters.has(key);
+    return `<button class="trk-filter-chip${active ? " active" : ""}" data-filter="${key}" type="button" style="${active ? `--chip-color:${meta.color}` : ""}">${meta.icon} ${meta.label}</button>`;
+  }).join("");
+
+  refs.trackerPage.innerHTML = `
+    <div class="tracker-active-layout">
+
+      <!-- Left panel: wallets + groups -->
+      <aside class="tracker-sidebar glass-card">
+        <div class="section-top">
+          <h3>Watched Wallets</h3>
+          <button class="trk-start-btn${running ? " is-running" : ""}" id="trackerToggleBtn" type="button">
+            ${running ? "⬛ Stop" : "▶ Start"}
+          </button>
+        </div>
+        <div class="tracker-status-chip">
+          ${running
+            ? `<span class="chip chip-live">● Live</span> watching ${wallets.length} wallet${wallets.length !== 1 ? "s" : ""}`
+            : `<span class="chip">Paused</span> ${wallets.length} wallet${wallets.length !== 1 ? "s" : ""} ready`}
+        </div>
+
+        <!-- Add wallet form -->
+        <form class="tracker-add-form" id="trackerAddForm">
+          <input class="trk-input" id="trackerAddressInput" type="text" placeholder="rXRPL address…" autocomplete="off" maxlength="35" />
+          <input class="trk-input" id="trackerLabelInput"   type="text" placeholder="Label (optional)" autocomplete="off" maxlength="32" />
+          <div class="trk-row">
+            <input class="trk-input" id="trackerGroupInput" type="text" placeholder="Group (optional)" autocomplete="off" maxlength="24" list="trackerGroupList" />
+            <datalist id="trackerGroupList">${allGroups.map(g => `<option value="${escapeHtml(g)}">`).join("")}</datalist>
+            <button class="ghost" type="submit">Add</button>
+          </div>
+        </form>
+
+        <!-- Wallet list -->
+        <div class="tracker-wallet-list" id="trackerWalletList">
+          ${wallets.length ? wallets.map((w, i) => `
+            <div class="tracker-wallet-item">
+              <div class="twi-info">
+                <strong>${escapeHtml(w.label || formatAddress(w.address))}</strong>
+                <span>${escapeHtml(formatAddress(w.address))}</span>
+                ${w.group ? `<span class="tfe-group">${escapeHtml(w.group)}</span>` : ""}
+              </div>
+              <button class="ghost trk-remove-btn" data-wallet-index="${i}" type="button" title="Remove">✕</button>
+            </div>
+          `).join("") : `<p class="muted" style="padding:0.6rem">Add wallets above to start tracking.</p>`}
+        </div>
+
+        <!-- Group filter -->
+        ${allGroups.length ? `
+        <div class="tracker-group-filter">
+          <span>Filter group:</span>
+          <div class="tracker-group-chips">
+            <button class="tag-chip${!groupFilter ? " active" : ""}" data-group="" type="button">All</button>
+            ${allGroups.map(g => `<button class="tag-chip${groupFilter === g ? " active" : ""}" data-group="${escapeHtml(g)}" type="button">${escapeHtml(g)}</button>`).join("")}
+          </div>
+        </div>` : ""}
+
+        <!-- Social tracker stub -->
+        <div class="tracker-social-stub">
+          <div class="section-top" style="margin-top:0.9rem">
+            <h4>Social Tracker</h4>
+            <span class="chip chip-cyan">Beta</span>
+          </div>
+          <p class="muted" style="font-size:0.78rem">Track @handles alongside wallets — sentiment, follower deltas, mentions.</p>
+          <input class="trk-input" type="text" placeholder="@handle (coming soon)" disabled />
+        </div>
+      </aside>
+
+      <!-- Right panel: feed + filters -->
+      <div class="tracker-feed-panel">
+        <!-- Filter chips -->
+        <div class="tracker-filter-row">
+          <div class="tracker-filter-chips">${filterChips}</div>
+          <div class="tracker-min-xrp">
+            <label>
+              <span>Min XRP</span>
+              <input id="trackerMinXrp" class="trk-input" type="number" min="0" step="1" value="${minXrp}" placeholder="0" style="width:70px" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Live feed -->
+        <div class="tracker-feed-wrap glass-card">
+          <div class="section-top">
+            <h3>Live Feed</h3>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              ${running ? `<span class="chip chip-live">● Streaming</span>` : `<span class="chip">Paused</span>`}
+              <button class="ghost" id="trackerClearFeedBtn" type="button">Clear</button>
+            </div>
+          </div>
+          <div class="tracker-feed-list" id="trackerFeedList"></div>
+        </div>
+      </div>
+    </div>`;
+
+  renderTrackerFeed();
+
+  // Wire up events
+  document.getElementById("trackerToggleBtn")?.addEventListener("click", () => {
+    if (state.tracker.running) { stopTracker(); renderTrackerPage(); }
+    else { startTracker(); }
+  });
+
+  document.getElementById("trackerAddForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const addr  = document.getElementById("trackerAddressInput")?.value.trim();
+    const label = document.getElementById("trackerLabelInput")?.value.trim() || "";
+    const group = document.getElementById("trackerGroupInput")?.value.trim() || "";
+    if (!XRPL_ADDRESS_PATTERN.test(addr)) return;
+    if (state.tracker.wallets.some(w => w.address === addr)) return;
+    if (state.tracker.wallets.length >= 50) return; // free tier limit
+    state.tracker.wallets.push({ address: addr, label, group });
+    saveTrackerWallets();
+    if (state.tracker.running) { stopTracker(); startTracker(); }
+    renderTrackerPage();
+  });
+
+  document.querySelectorAll(".trk-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.walletIndex);
+      state.tracker.wallets.splice(idx, 1);
+      saveTrackerWallets();
+      if (state.tracker.running) { stopTracker(); if (state.tracker.wallets.length) startTracker(); }
+      renderTrackerPage();
+    });
+  });
+
+  document.querySelectorAll(".trk-filter-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.filter;
+      if (state.tracker.txFilters.has(key)) state.tracker.txFilters.delete(key);
+      else state.tracker.txFilters.add(key);
+      renderTrackerPage();
+    });
+  });
+
+  document.getElementById("trackerMinXrp")?.addEventListener("change", (e) => {
+    state.tracker.minXrp = Math.max(0, Number(e.target.value) || 0);
+    renderTrackerFeed();
+  });
+
+  document.getElementById("trackerClearFeedBtn")?.addEventListener("click", () => {
+    state.tracker.feed = [];
+    renderTrackerFeed();
+  });
+
+  document.querySelectorAll("[data-group]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.tracker.groupFilter = btn.dataset.group || "";
+      renderTrackerPage();
+    });
+  });
 }
 
 async function renderMarketOverview(forceRefresh = false) {
@@ -1898,20 +2465,33 @@ function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
     rawCurrency: token.currency || currency,
     issuer,
     id,
-    priceUsd: toFiniteNumber(token.usd, Number.NaN),
+    priceXrp: toFiniteNumber(token.usd ?? token.exch, Number.NaN),   // xrpl.to "usd" is actually XRP price
+    priceUsd: toFiniteNumber(token.usd ?? token.exch, Number.NaN),
+    change5m:  toFiniteNumber(token.pro5m  ?? token.p5m,  Number.NaN),
+    change1h:  toFiniteNumber(token.pro1h  ?? token.p1h,  Number.NaN),
     change24h: toFiniteNumber(token.pro24h ?? token.p24h, Number.NaN),
+    change7d:  toFiniteNumber(token.pro7d  ?? token.p7d,  Number.NaN),
     marketCap: toFiniteNumber(token.marketcap, Number.NaN),
     holders: toFiniteNumber(token.holders, Number.NaN),
     trustlines: toFiniteNumber(token.trustlines, Number.NaN),
-    volume24h: toFiniteNumber(token.vol24hxrp ?? token.vol24h, Number.NaN),
-    holderConcentration: toFiniteNumber(token.top10 ?? token.top20 ?? token.top50, Number.NaN),
+    volume24h: toFiniteNumber(token.vol24hxrp ?? token.vol24hx ?? token.vol24h, Number.NaN),
+    tradeCount: toFiniteNumber(token.vol24htx, Number.NaN),
+    uniqueTraders: toFiniteNumber(token.uniqueTraders ?? token.uniqueTraders24h, Number.NaN),
+    liquidityRatio: toFiniteNumber(token.liquidityRatio, Number.NaN),
+    tvl: toFiniteNumber(token.tvl, Number.NaN),
+    trendingScore: toFiniteNumber(token.trendingScore, Number.NaN),
+    holderConcentration: toFiniteNumber(token.top10 ?? token.top20 ?? token.top50 ?? token.dom, Number.NaN),
     lowLiquidity: Boolean(token.lowLiquidity),
     freezeFlag: Boolean(token.globalFreeze || token.freeze || token.frozen || token.canFreeze),
     verified: Boolean(token.verified || token.kyc),
     logoUrl: tokenLogoUrl(token),
     slug: token.slug || "",
     md5: String(token.md5 || token._id || "").trim(),
-    updatedAt: token.lastUpdated || token.updatedAt || ""
+    updatedAt: token.lastUpdated || token.updatedAt || "",
+    // dateon from xrpl.to is already in milliseconds (13-digit unix ms timestamp)
+    createdAt: token.dateon ? (token.dateon > 1e12 ? token.dateon : token.dateon * 1000) : 0,
+    source: String(token.user || token.domain || "").trim(),
+    tags: Array.isArray(token.tags) ? token.tags : []
   };
 }
 
@@ -2057,134 +2637,424 @@ function scoreAmmPoolRisk(pool = {}) {
   return { level, score, reasons };
 }
 
+// ── XRPScan token normalizer ──────────────────────────────────────────
+function normalizeXRPScanToken(token = {}, index = 0) {
+  const rawCurrency = String(token.currency || "").trim();
+  const symbol      = String(token.code || decodeCurrencyCode(rawCurrency) || "").trim();
+  const issuer      = token.issuer || "";
+  const id          = `${rawCurrency}.${issuer}`;
+  const m           = token.metrics || {};
+  const metaTok     = token.meta?.token  || {};
+  const metaIss     = token.meta?.issuer || {};
+  const ia          = token.IssuingAccount || {};
+  const logoUrl     = String(metaTok.icon || metaIss.icon || "").trim();
+  return {
+    rank:        index + 1,
+    symbol:      symbol || decodeCurrencyCode(rawCurrency),
+    currency:    decodeCurrencyCode(rawCurrency),
+    rawCurrency,
+    issuer,
+    id,
+    priceXrp:    toFiniteNumber(m.price    ?? token.price,    Number.NaN),
+    priceUsd:    Number.NaN,
+    change5m:    Number.NaN,
+    change1h:    Number.NaN,
+    change24h:   Number.NaN,
+    change7d:    Number.NaN,
+    marketCap:   toFiniteNumber(m.marketcap  ?? token.marketcap, Number.NaN),
+    holders:     toFiniteNumber(m.holders    ?? token.holders,   Number.NaN),
+    trustlines:  toFiniteNumber(m.trustlines, Number.NaN),
+    volume24h:   toFiniteNumber(m.volume_24h, Number.NaN),
+    tradeCount:  toFiniteNumber(m.exchanges_24h, Number.NaN),
+    uniqueTraders: toFiniteNumber(m.takers_24h, Number.NaN),
+    liquidityRatio: Number.NaN,
+    tvl:         Number.NaN,
+    trendingScore:  toFiniteNumber(token.score, Number.NaN),
+    holderConcentration: Number.NaN,
+    lowLiquidity: false,
+    freezeFlag:  false,
+    verified:    Boolean(metaIss.kyc || ia.verified || (metaTok.trust_level ?? 0) >= 3),
+    logoUrl,
+    slug: "",
+    md5:  "",
+    updatedAt:  token.updatedAt || "",
+    createdAt:  token.createdAt ? new Date(token.createdAt).getTime() : 0,
+    source:     String(ia.name || ia.domain || metaTok.name || "").trim(),
+    tags:       []
+  };
+}
+
+// ── XRPL WebSocket live price for a single token ──────────────────────
+async function fetchLiveXrplTokenPrice(token) {
+  const network = getWalletState().network || DEFAULT_NETWORK;
+  const { rawCurrency, issuer } = token;
+  if (!rawCurrency || !issuer) return null;
+
+  // AMM pool gives most accurate spot price
+  try {
+    const r = await requestXrplCommand(network, {
+      command: "amm_info",
+      asset:  { currency: "XRP" },
+      asset2: { currency: rawCurrency, issuer }
+    });
+    const amm = r?.amm;
+    if (amm) {
+      const xrp = Number(amm.amount || 0) / 1e6;
+      const tok = Number(amm.amount2?.value || 0);
+      if (xrp > 0 && tok > 0) return { priceXrp: xrp / tok, source: "amm" };
+    }
+  } catch { /* fall through */ }
+
+  // Order-book best ask
+  try {
+    const r = await requestXrplCommand(network, {
+      command: "book_offers",
+      taker_pays: { currency: "XRP" },
+      taker_gets: { currency: rawCurrency, issuer },
+      limit: 1
+    });
+    const o = r?.offers?.[0];
+    if (o) {
+      const xrp = Number(o.TakerPays || 0) / 1e6;
+      const tok = Number(o.TakerGets?.value || 0);
+      if (xrp > 0 && tok > 0) return { priceXrp: xrp / tok, source: "book" };
+    }
+  } catch { /* */ }
+
+  return null;
+}
+
+// ── Batch-refresh live prices for currently visible tokens ────────────
+async function refreshVisibleTokenPrices() {
+  const { items, livePrices } = state.topIssuedAssets;
+  if (!items.length) return;
+  const now    = Date.now();
+  const stale  = 30_000;
+  const limit  = Math.min(state.topIssuedVisibleCount, 50);
+  const toFetch = items.slice(0, limit).filter(t => {
+    const c = livePrices.get(t.id);
+    return !c || now - c.fetchedAt > stale;
+  });
+  if (!toFetch.length) return;
+
+  const batchSize = 5;
+  for (let i = 0; i < toFetch.length; i += batchSize) {
+    await Promise.allSettled(toFetch.slice(i, i + batchSize).map(async t => {
+      const r = await fetchLiveXrplTokenPrice(t);
+      if (r) livePrices.set(t.id, { ...r, fetchedAt: Date.now() });
+    }));
+    if (state.activePage === "tokens") renderTopIssuedTokens();
+  }
+}
+
 function renderTopIssuedTokens() {
   if (!refs.topIssuedTokensPanel) return;
   const { items, loading, error, fetchedAt } = state.topIssuedAssets;
   if (refs.refreshTopIssuedTokensButton) {
     refs.refreshTopIssuedTokensButton.disabled = loading;
-    refs.refreshTopIssuedTokensButton.textContent = loading ? "Loading..." : "Refresh";
+    refs.refreshTopIssuedTokensButton.textContent = loading ? "Loading…" : "Refresh";
   }
 
   if (!items.length && loading) {
     refs.topIssuedTokensPanel.innerHTML = `
       <div class="market-token-empty">
-        <strong>Loading top issued assets...</strong>
-        <p class="muted">Fetching price, market cap, holder, and trust line data.</p>
-      </div>
-    `;
+        <strong>Loading issued assets…</strong>
+        <p class="muted">Fetching live price, volume, and market cap data from XRPL.</p>
+      </div>`;
     return;
   }
-
   if (!items.length) {
     refs.topIssuedTokensPanel.innerHTML = `
       <div class="market-token-empty">
-        <strong>${error ? "Top issued assets unavailable" : "Top issued assets loading soon"}</strong>
+        <strong>${error ? "Market data unavailable" : "Loading soon"}</strong>
         <p class="muted">${error ? escapeHtml(error) : "Live XRPL issued-asset data will appear here."}</p>
-      </div>
-    `;
+      </div>`;
     return;
   }
 
-  const totalMarketCap = items.reduce((sum, token) => sum + (Number.isFinite(token.marketCap) ? token.marketCap : 0), 0);
-  const totalHolders = items.reduce((sum, token) => sum + (Number.isFinite(token.holders) ? token.holders : 0), 0);
+  // ── Aggregate market stats ───────────────────────────────────────────
+  const totalMktCap  = items.reduce((s, t) => s + (Number.isFinite(t.marketCap)  ? t.marketCap  : 0), 0);
+  const totalVol24h  = items.reduce((s, t) => s + (Number.isFinite(t.volume24h)  ? t.volume24h  : 0), 0);
+  const totalTvl     = items.reduce((s, t) => s + (Number.isFinite(t.tvl)        ? t.tvl        : 0), 0);
+  const totalTraders = items.reduce((s, t) => s + (Number.isFinite(t.uniqueTraders) ? t.uniqueTraders : 0), 0);
   const updatedLabel = fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "cached";
-  const query = state.topIssuedFilter.trim().toLowerCase();
-  const filteredItems = query
-    ? items.filter((token) =>
-        token.symbol.toLowerCase().includes(query)
-        || token.currency.toLowerCase().includes(query)
-        || token.issuer.toLowerCase().includes(query)
-      )
-    : items;
+  const gainers     = items.filter(t => Number.isFinite(t.change24h) && t.change24h > 0).length;
+  const losers      = items.filter(t => Number.isFinite(t.change24h) && t.change24h < 0).length;
+  const buySellBase = gainers + losers || 1;
+  const buyPct      = Math.round(gainers / buySellBase * 100);
+  const topNew      = [...items].filter(t => t.createdAt > 0).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+
+  // ── Tags across all items ────────────────────────────────────────────
+  const tagCount = new Map();
+  for (const t of items) {
+    for (const tag of (t.tags || [])) {
+      tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
+    }
+  }
+  const popularTags = [...tagCount.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([tag]) => tag);
+
+  // ── Filter logic ─────────────────────────────────────────────────────
+  const query    = state.topIssuedFilter.trim().toLowerCase();
+  const tagQuery = state.topIssuedTagFilter;
+  const tab      = state.topIssuedTab || "all";
+
+  let filteredItems = items;
+  if (query) {
+    filteredItems = filteredItems.filter(t =>
+      t.symbol.toLowerCase().includes(query)
+      || t.currency.toLowerCase().includes(query)
+      || t.source.toLowerCase().includes(query)
+      || t.issuer.toLowerCase().includes(query)
+    );
+  }
+  if (tagQuery) {
+    filteredItems = filteredItems.filter(t => t.tags.includes(tagQuery));
+  }
+  if (tab === "trending") {
+    filteredItems = [...filteredItems].sort((a, b) => (b.trendingScore || 0) - (a.trendingScore || 0));
+  } else if (tab === "new") {
+    filteredItems = [...filteredItems].filter(t => t.createdAt > 0).sort((a, b) => b.createdAt - a.createdAt);
+  } else if (tab === "gainers") {
+    filteredItems = [...filteredItems].sort((a, b) => (b.change24h || 0) - (a.change24h || 0));
+  }
 
   const visibleItems = filteredItems.slice(0, state.topIssuedVisibleCount);
+
+  // ── Trending strip (top 5 by trendingScore) ──────────────────────────
+  const trendingTokens = [...items]
+    .filter(t => Number.isFinite(t.trendingScore) && t.trendingScore > 0)
+    .sort((a, b) => b.trendingScore - a.trendingScore)
+    .slice(0, 6);
+
+  const trendingStrip = trendingTokens.length ? `
+    <div class="tokens-trending-strip">
+      <div class="tokens-trending-label">
+        <span>Trending</span>
+      </div>
+      <div class="tokens-trending-cards">
+        ${trendingTokens.map((t, i) => {
+          const c24 = toFiniteNumber(t.change24h, 0);
+          const cls = c24 >= 0 ? "pct-pos" : "pct-neg";
+          const sign = c24 >= 0 ? "+" : "";
+          return `
+          <button class="tokens-trend-card" data-trend-token="${escapeHtml(t.id)}" type="button">
+            <div class="ttc-rank">${i + 1}</div>
+            ${tokenLogoMarkup(t, t.symbol)}
+            <div class="ttc-info">
+              <strong>${escapeHtml(t.symbol)}</strong>
+              <span class="${cls}">${sign}${c24.toFixed(1)}%</span>
+            </div>
+          </button>`;
+        }).join("")}
+      </div>
+    </div>
+  ` : "";
+
+  // ── Table rows ────────────────────────────────────────────────────────
   const rows = visibleItems.map((token) => {
-    const changeClass = Number.isFinite(token.change24h) && token.change24h >= 0 ? "positive" : "negative";
-    const sourceUrl = token.slug ? `https://xrpl.to/token/${encodeURIComponent(token.slug)}` : "";
-    const risk = scoreIssuedAssetRisk(token);
-    const watched = state.tokenWatchlist.has(token.id);
+    const liveEntry   = state.topIssuedAssets.livePrices.get(token.id);
+    const displayPrice = liveEntry ? liveEntry.priceXrp : token.priceXrp;
+    const isLive      = Boolean(liveEntry);
+    const sourceUrl   = token.slug ? `https://xrpl.to/token/${encodeURIComponent(token.slug)}` : "";
+    const risk        = scoreIssuedAssetRisk(token);
+    const watched     = state.tokenWatchlist.has(token.id);
+    const riskDotCls  = risk.level === "Lower Risk" ? "risk-dot-low" : risk.level === "High Risk" ? "risk-dot-high" : "risk-dot-med";
+    const riskTitle   = risk.reasons.slice(0, 3).join(" · ");
+    const liquidityStr = Number.isFinite(token.liquidityRatio) && token.liquidityRatio > 0
+      ? `XRP ${escapeHtml(formatXrpAmount(token.liquidityRatio))}`
+      : Number.isFinite(token.tvl) && token.tvl > 0
+        ? `XRP ${escapeHtml(formatXrpAmount(token.tvl))}`
+        : "—";
+    const priceSourceTitle = isLive
+      ? `Live from XRPL ${liveEntry.source === "amm" ? "AMM pool" : "order book"}`
+      : "Aggregated price";
     return `
       <tr>
         <td class="rank-cell">${token.rank}</td>
-        <td>
+        <td class="token-id-cell">
           <div class="market-token-identity">
             ${tokenLogoMarkup(token, token.symbol)}
-            <div>
-              <strong>${escapeHtml(token.symbol)}</strong>
-              <span>${escapeHtml(formatAddress(token.issuer))}</span>
+            <div class="mti-text">
+              <div class="mti-top">
+                <strong>${escapeHtml(token.symbol)}</strong>
+                <span class="risk-dot ${riskDotCls}" title="${escapeHtml(riskTitle)}"></span>
+                ${token.verified ? '<span class="tok-verified-dot" title="Verified">✓</span>' : ""}
+                <button class="star-watch${watched ? " is-watched" : ""}" type="button" data-watch-token="${escapeHtml(token.id)}" title="${watched ? "Watching" : "Watch"}">${watched ? "★" : "☆"}</button>
+              </div>
+              <span class="token-source-name">${escapeHtml(token.source || formatAddress(token.issuer))}</span>
             </div>
           </div>
         </td>
-        <td>${formatUsd(token.priceUsd)}</td>
-        <td class="${changeClass}">${formatPercent(token.change24h)}</td>
-        <td>${formatUsd(token.marketCap)}</td>
-        <td>${formatCompactNumber(token.holders, 1)}</td>
-        <td>${formatCompactNumber(token.trustlines, 1)}</td>
-        <td>${formatCompactNumber(token.volume24h, 1)} XRP</td>
-        <td>${token.verified ? '<span class="market-token-badge verified">Verified</span>' : '<span class="market-token-badge">Unverified</span>'}</td>
-        <td>${riskBadgeMarkup(risk.level, risk.reasons)}</td>
-        <td>${watchButtonMarkup("token", token.id, watched)}</td>
-        <td>${sourceUrl ? `<a class="ghost table-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer">View</a>` : "-"}</td>
-      </tr>
-    `;
+        <td class="price-xrp-cell" title="${escapeHtml(priceSourceTitle)}">
+          <strong>${escapeHtml(formatXrpAmount(displayPrice))}</strong>
+          ${isLive ? `<span class="price-live-dot" title="${escapeHtml(priceSourceTitle)}">◉</span>` : ""}
+        </td>
+        <td class="sparkline-cell">${tokenSparklineSvg(token)}</td>
+        <td class="pct-cell">${pctChip(token.change5m)}</td>
+        <td class="pct-cell">${pctChip(token.change1h)}</td>
+        <td class="pct-cell">${pctChip(token.change24h)}</td>
+        <td class="pct-cell">${pctChip(token.change7d)}</td>
+        <td class="num-cell">XRP ${escapeHtml(formatXrpAmount(token.volume24h))}</td>
+        <td class="num-cell muted-cell">${escapeHtml(formatAge(token.createdAt))}</td>
+        <td class="num-cell">${formatCompactNumber(token.tradeCount, 0)}</td>
+        <td class="num-cell">${liquidityStr}</td>
+        <td class="num-cell">XRP ${escapeHtml(formatXrpAmount(token.marketCap))}</td>
+        <td class="num-cell">${formatCompactNumber(token.holders, 1)}</td>
+        <td class="source-cell">${sourceUrl
+          ? `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" class="source-link">${escapeHtml(token.source || "↗")}</a>`
+          : escapeHtml(token.source || "—")}</td>
+      </tr>`;
   }).join("");
 
   refs.topIssuedTokensPanel.innerHTML = `
-    <div class="market-token-summary">
-      <div><span>Showing</span><strong>${visibleItems.length}/${filteredItems.length}</strong></div>
-      <div><span>Combined Market Cap</span><strong>${formatUsd(totalMarketCap)}</strong></div>
-      <div><span>Holder Count</span><strong>${formatCompactNumber(totalHolders, 1)}</strong></div>
-      <div><span>Updated</span><strong>${updatedLabel}</strong></div>
+    <div class="tokens-market-stats">
+      <div class="tms-item">
+        <span class="tms-label">MCAP / TVL</span>
+        <strong>XRP ${escapeHtml(formatXrpAmount(totalMktCap))}</strong>
+        <span class="tms-sub">TVL XRP ${escapeHtml(formatXrpAmount(totalTvl))}</span>
+      </div>
+      <div class="tms-item">
+        <span class="tms-label">24H VOLUME</span>
+        <strong>XRP ${escapeHtml(formatXrpAmount(totalVol24h))}</strong>
+        <span class="tms-sub">${gainers} up · ${losers} down</span>
+      </div>
+      <div class="tms-item">
+        <span class="tms-label">24H TRADERS</span>
+        <strong>${formatCompactNumber(totalTraders, 1)}</strong>
+        <div class="tms-sentiment-bar">
+          <div class="tms-buy-bar" style="width:${buyPct}%"></div>
+          <div class="tms-sell-bar" style="width:${100 - buyPct}%"></div>
+        </div>
+        <span class="tms-sub">${buyPct}% Buy · ${100 - buyPct}% Sell</span>
+      </div>
+      ${trendingTokens[0] ? `
+      <div class="tms-item tms-trending-mini">
+        <span class="tms-label">TRENDING</span>
+        <div class="tms-mini-token">
+          ${tokenLogoMarkup(trendingTokens[0], trendingTokens[0].symbol)}
+          <div><strong>${escapeHtml(trendingTokens[0].symbol)}</strong>${pctChip(trendingTokens[0].change24h)}</div>
+        </div>
+        ${trendingTokens[1] ? `<div class="tms-mini-token">
+          ${tokenLogoMarkup(trendingTokens[1], trendingTokens[1].symbol)}
+          <div><strong>${escapeHtml(trendingTokens[1].symbol)}</strong>${pctChip(trendingTokens[1].change24h)}</div>
+        </div>` : ""}
+      </div>` : ""}
+      ${topNew ? `
+      <div class="tms-item">
+        <span class="tms-label">NEW LAUNCHES</span>
+        <div class="tms-mini-token">
+          ${tokenLogoMarkup(topNew, topNew.symbol)}
+          <div>
+            <strong>${escapeHtml(topNew.symbol)}</strong>
+            <span class="tms-sub">${escapeHtml(formatAge(topNew.createdAt))} ago</span>
+          </div>
+        </div>
+      </div>` : ""}
+      <div class="tms-item tms-updated">
+        <span class="tms-label">UPDATED</span>
+        <strong>${escapeHtml(updatedLabel)}</strong>
+      </div>
     </div>
-    <label class="market-token-filter">
-      <span>Filter assets</span>
-      <input id="topIssuedTokenFilter" type="search" placeholder="Search symbol or issuer..." value="${escapeHtml(state.topIssuedFilter)}" autocomplete="off" />
-    </label>
-    ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
+
+    ${trendingStrip}
+
+    <div class="tokens-controls-row">
+      <div class="tokens-tab-bar">
+        <button class="ttab-btn${tab === "all"      ? " active" : ""}" data-tab="all"      type="button">All</button>
+        <button class="ttab-btn${tab === "trending" ? " active" : ""}" data-tab="trending" type="button">Trending</button>
+        <button class="ttab-btn${tab === "new"      ? " active" : ""}" data-tab="new"      type="button">New</button>
+        <button class="ttab-btn${tab === "gainers"  ? " active" : ""}" data-tab="gainers"  type="button">Gainers</button>
+      </div>
+      <input id="topIssuedTokenFilter" class="tokens-search-input" type="search" placeholder="Search token or issuer…" value="${escapeHtml(state.topIssuedFilter)}" autocomplete="off" />
+    </div>
+
+    ${popularTags.length ? `
+    <div class="tokens-tag-row" aria-label="Filter by tag">
+      <button class="tag-chip${!tagQuery ? " active" : ""}" data-tag="" type="button">All</button>
+      ${popularTags.map(tag => `<button class="tag-chip${tagQuery === tag ? " active" : ""}" data-tag="${escapeHtml(tag)}" type="button">${escapeHtml(tag)}</button>`).join("")}
+    </div>` : ""}
+
+    ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data.</p>` : ""}
+
     <div class="issued-token-table-wrap" role="region" aria-label="XRPL issued assets" tabindex="0">
       <table class="issued-token-table">
         <thead>
           <tr>
             <th>#</th>
-            <th>Asset / Issuer</th>
-            <th>Price</th>
-            <th>24h</th>
-            <th>Market Cap</th>
+            <th>Token</th>
+            <th>Price (XRP)</th>
+            <th>Trend 24H</th>
+            <th>5M%</th>
+            <th>1H%</th>
+            <th>24H%</th>
+            <th>7D%</th>
+            <th>Volume 24h</th>
+            <th>Created</th>
+            <th>Trades</th>
+            <th>Liquidity</th>
+            <th>Mkt Cap</th>
             <th>Holders</th>
-            <th>Trust Lines</th>
-            <th>Volume</th>
-            <th>Status</th>
-            <th>Risk</th>
-            <th>Watch</th>
-            <th>Link</th>
+            <th>Source</th>
           </tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="12" class="empty-table-cell">No issued assets match this filter.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="15" class="empty-table-cell">No assets match this filter.</td></tr>`}</tbody>
       </table>
     </div>
     <div class="market-load-row">
-      <span>${items.length} assets loaded from the market feed. ${state.tokenWatchlist.size} watched.</span>
+      <span>${items.length} assets · ${state.tokenWatchlist.size} watched</span>
       ${visibleItems.length < filteredItems.length
         ? `<button id="loadMoreTopIssuedTokensButton" class="ghost" type="button">Load ${Math.min(MARKET_VISIBLE_STEP, filteredItems.length - visibleItems.length)} more</button>`
-        : '<span class="market-load-complete">All matching assets shown</span>'}
+        : `<span class="market-load-complete">All ${filteredItems.length} shown</span>`}
     </div>
   `;
 
-  const filterInput = refs.topIssuedTokensPanel.querySelector("#topIssuedTokenFilter");
-  filterInput?.addEventListener("input", (event) => {
-    state.topIssuedFilter = event.target.value || "";
-    state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
-    renderTopIssuedTokens();
+  refs.topIssuedTokensPanel.querySelector("#topIssuedTokenFilter")
+    ?.addEventListener("input", (e) => {
+      state.topIssuedFilter = e.target.value || "";
+      state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
+      renderTopIssuedTokens();
+    });
+
+  refs.topIssuedTokensPanel.querySelector("#loadMoreTopIssuedTokensButton")
+    ?.addEventListener("click", () => {
+      state.topIssuedVisibleCount = Math.min(state.topIssuedVisibleCount + MARKET_VISIBLE_STEP, filteredItems.length);
+      renderTopIssuedTokens();
+    });
+
+  refs.topIssuedTokensPanel.querySelectorAll("[data-watch-token]").forEach((btn) => {
+    btn.addEventListener("click", () => toggleWatchlist("token", btn.dataset.watchToken || ""));
   });
 
-  const loadMoreButton = refs.topIssuedTokensPanel.querySelector("#loadMoreTopIssuedTokensButton");
-  loadMoreButton?.addEventListener("click", () => {
-    state.topIssuedVisibleCount = Math.min(state.topIssuedVisibleCount + MARKET_VISIBLE_STEP, filteredItems.length);
-    renderTopIssuedTokens();
+  refs.topIssuedTokensPanel.querySelectorAll(".ttab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.topIssuedTab = btn.dataset.tab || "all";
+      state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
+      renderTopIssuedTokens();
+    });
   });
 
-  refs.topIssuedTokensPanel.querySelectorAll("[data-watch-token]").forEach((button) => {
-    button.addEventListener("click", () => toggleWatchlist("token", button.dataset.watchToken || ""));
+  refs.topIssuedTokensPanel.querySelectorAll(".tag-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.topIssuedTagFilter = btn.dataset.tag || "";
+      state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
+      renderTopIssuedTokens();
+    });
+  });
+
+  refs.topIssuedTokensPanel.querySelectorAll(".tokens-trend-card").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tokenId = btn.dataset.trendToken || "";
+      const tok = items.find(t => t.id === tokenId);
+      if (tok) {
+        state.topIssuedFilter = tok.symbol;
+        state.topIssuedVisibleCount = MARKET_VISIBLE_STEP;
+        renderTopIssuedTokens();
+      }
+    });
   });
 }
 
@@ -2198,9 +3068,10 @@ async function loadTopIssuedAssets(forceRefresh = false) {
     return;
   }
 
-  const cached = !forceRefresh ? getCachedTopIssuedAssets() : null;
+  const cached = !forceRefresh ? getCachedXRPScanTokens() : null;
   if (cached) {
     state.topIssuedAssets = {
+      ...state.topIssuedAssets,
       fetchedAt: cached.fetchedAt,
       items: cached.items,
       loading: false,
@@ -2208,6 +3079,7 @@ async function loadTopIssuedAssets(forceRefresh = false) {
     };
     renderTopIssuedTokens();
     renderDex();
+    void refreshVisibleTokenPrices();
     return;
   }
 
@@ -2216,36 +3088,85 @@ async function loadTopIssuedAssets(forceRefresh = false) {
   renderTopIssuedTokens();
 
   try {
-    const data = await fetchMarketJson(TOP_ISSUED_ASSETS_URL);
-    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-    const items = tokens.slice(0, MARKET_RESULT_LIMIT).map(normalizeIssuedAssetMarketToken);
+    // ── Primary: XRPScan (ledger-sourced, logos from xrplmeta CDN) ──────
+    const xrpScanData = await fetchMarketJson(XRPSCAN_TOKENS_URL);
+    if (Array.isArray(xrpScanData) && xrpScanData.length) {
+      const sorted = [...xrpScanData].sort((a, b) =>
+        Number(b.metrics?.marketcap || b.marketcap || 0) -
+        Number(a.metrics?.marketcap || a.marketcap || 0)
+      );
+      const items = sorted.map(normalizeXRPScanToken);
+      state.topIssuedAssets = {
+        ...state.topIssuedAssets,
+        fetchedAt: Date.now(),
+        items,
+        loading: false,
+        error: ""
+      };
+      setCachedXRPScanTokens(items);
+      syncXrplToSourceStatus("Live");
+      renderTopIssuedTokens();
+      renderDex();
+      void refreshVisibleTokenPrices();
+      return;
+    }
+  } catch { /* fall through to xrpl.to backup */ }
+
+  try {
+    // ── Fallback: xrpl.to paginated (up to MARKET_RESULT_LIMIT) ─────────
+    const allRaw = [];
+    const pages = Math.ceil(MARKET_RESULT_LIMIT / MARKET_PAGE_SIZE);
+    for (let p = 0; p < pages && allRaw.length < MARKET_RESULT_LIMIT; p++) {
+      const url = `${TOP_ISSUED_ASSETS_BASE_URL}&limit=${MARKET_PAGE_SIZE}&start=${p * MARKET_PAGE_SIZE}`;
+      try {
+        const data = await fetchMarketJson(url);
+        const batch = Array.isArray(data?.tokens) ? data.tokens : [];
+        allRaw.push(...batch);
+        if (batch.length < MARKET_PAGE_SIZE) break;
+      } catch { break; }
+    }
+    const items = allRaw.slice(0, MARKET_RESULT_LIMIT).map(normalizeIssuedAssetMarketToken);
     state.topIssuedAssets = {
+      ...state.topIssuedAssets,
       fetchedAt: Date.now(),
       items,
       loading: false,
-      error: ""
+      error: "Primary source unavailable — showing xrpl.to data."
     };
     setCachedTopIssuedAssets(items);
     syncXrplToSourceStatus("Cached");
   } catch (error) {
-    const cachedFallback = getCachedTopIssuedAssets();
+    const cachedFallback = getCachedXRPScanTokens() || getCachedTopIssuedAssets();
     state.topIssuedAssets = {
+      ...state.topIssuedAssets,
       fetchedAt: cachedFallback?.fetchedAt || 0,
       items: cachedFallback?.items || state.topIssuedAssets.items || [],
       loading: false,
       error: error?.status === 429
-        ? "Market API rate limit reached. Showing cached data when available."
-        : error instanceof Error ? error.message : "Could not load issued asset market data."
+        ? "Rate limit reached — showing cached data."
+        : "Could not load market data."
     };
-    if (cachedFallback?.items?.length || state.topIssuedAssets.items.length) {
-      syncXrplToSourceStatus("Cached");
-    } else {
-      syncXrplToSourceStatus("Degraded");
-    }
+    syncXrplToSourceStatus(state.topIssuedAssets.items.length ? "Cached" : "Degraded");
   }
 
   renderTopIssuedTokens();
   renderDex();
+  if (state.topIssuedAssets.items.length) void refreshVisibleTokenPrices();
+}
+
+function getCachedXRPScanTokens() {
+  try {
+    const c = JSON.parse(localStorage.getItem(XRPSCAN_CACHE_KEY) || "null");
+    if (!c?.items?.length || !c.fetchedAt) return null;
+    if (Date.now() - c.fetchedAt > XRPSCAN_CACHE_MS) return null;
+    return c;
+  } catch { return null; }
+}
+
+function setCachedXRPScanTokens(items) {
+  try {
+    localStorage.setItem(XRPSCAN_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), items }));
+  } catch { /* storage full */ }
 }
 
 function normalizeAmmPoolMarketToken(token = {}, index = 0) {
@@ -2985,14 +3906,19 @@ function populateDexAssetSelect() {
 
 function applyDexToken(token) {
   if (!token) return;
-  state.dex.currency = token.currency;
-  state.dex.issuer = token.issuer;
+  state.dex.currency    = token.currency;                        // decoded (display)
+  state.dex.rawCurrency = token.rawCurrency || token.currency;   // raw hex for XRPL protocol
+  state.dex.issuer      = token.issuer;
   if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = token.currency;
   if (refs.dexIssuerInput) refs.dexIssuerInput.value = token.issuer;
 }
 
 function syncDexStateFromInputs() {
-  state.dex.currency = refs.dexCurrencyInput?.value.trim() || "";
+  const typedCurrency = refs.dexCurrencyInput?.value.trim() || "";
+  state.dex.currency = typedCurrency;
+  // If the user typed a 40-char hex code it is already the raw form; otherwise keep whatever applyDexToken set
+  if (/^[A-Fa-f0-9]{40}$/.test(typedCurrency)) state.dex.rawCurrency = typedCurrency;
+  else if (!state.dex.rawCurrency || state.dex.currency !== typedCurrency) state.dex.rawCurrency = typedCurrency;
   state.dex.issuer = refs.dexIssuerInput?.value.trim() || "";
   state.dex.amount = refs.dexAmountInput?.value || "";
   state.dex.price = refs.dexPriceInput?.value || "";
@@ -3019,12 +3945,16 @@ function xrplAmountNumber(amount) {
 }
 
 function normalizeDexBookOffer(offer, side) {
-  const takerGets = xrplAmountNumber(offer.taker_gets);
-  const takerPays = xrplAmountNumber(offer.taker_pays);
+  // XRPL response uses PascalCase (TakerGets/TakerPays), not snake_case
+  const takerGets = xrplAmountNumber(offer.TakerGets);
+  const takerPays = xrplAmountNumber(offer.TakerPays);
+  // bids query: taker_pays=XRP, taker_gets=TOKEN  → price(XRP/TOKEN) = takerPays / takerGets
+  // asks query: taker_pays=TOKEN, taker_gets=XRP  → price(XRP/TOKEN) = takerGets / takerPays
   const price = side === "asks"
-    ? (takerGets > 0 ? takerPays / takerGets : 0)
-    : (takerPays > 0 ? takerGets / takerPays : 0);
-  return { price, amount: side === "asks" ? takerGets : takerPays, raw: offer };
+    ? (takerPays > 0 ? takerGets / takerPays : 0)
+    : (takerGets > 0 ? takerPays / takerGets : 0);
+  const amount = side === "asks" ? takerPays : takerGets; // TOKEN quantity for both sides
+  return { price, amount, raw: offer };
 }
 
 function dexOrderStats() {
@@ -3041,12 +3971,13 @@ function dexOrderStats() {
 }
 
 function buildDexOfferTx() {
-  const { side, orderStyle, currency, issuer } = state.dex;
+  const { side, orderStyle, currency, rawCurrency, issuer } = state.dex;
   if (!currency || !issuer) return null;
   const amount = toFiniteNumber(state.dex.amount, 0);
   const price = toFiniteNumber(state.dex.price, 0);
   if (amount <= 0 || price <= 0) return null;
 
+  const xrplCurrency = rawCurrency || currency; // raw hex for XRPL protocol (non-3-char codes need hex)
   const xrpDrops = xrpToDrops(decimalString(amount * price, 6));
   const issuedValue = decimalString(amount, 6);
 
@@ -3064,9 +3995,9 @@ function buildDexOfferTx() {
 
   if (side === "buy") {
     tx.TakerGets = xrpDrops;
-    tx.TakerPays = { currency, issuer, value: issuedValue };
+    tx.TakerPays = { currency: xrplCurrency, issuer, value: issuedValue };
   } else {
-    tx.TakerGets = { currency, issuer, value: issuedValue };
+    tx.TakerGets = { currency: xrplCurrency, issuer, value: issuedValue };
     tx.TakerPays = xrpDrops;
   }
 
@@ -3310,8 +4241,45 @@ function dexTfParams(tf) {
   return                   { krakenInterval: 1440,  xrplPeriod: "1d",  limit: 730 };  // 1D: ~2 years
 }
 
+// ── Sologenic DEX OHLCV helpers ──────────────────────────────────
+
+function sologenicPeriod(tf) {
+  if (tf === "5M" || tf === "15M") return "5m";
+  if (tf === "1H" || tf === "4H") return "1h";
+  return "1d"; // 1D, 1W
+}
+
+function sologenicFromTs(tf) {
+  const now = Math.floor(Date.now() / 1000);
+  if (tf === "5M")  return now - 6   * 3600;
+  if (tf === "15M") return now - 24  * 3600;
+  if (tf === "1H")  return now - 7   * 86400;
+  if (tf === "4H")  return now - 30  * 86400;
+  if (tf === "1W")  return now - 365 * 86400;
+  return              now - 90  * 86400; // 1D
+}
+
+async function fetchSologenicOhlcv(token, tf) {
+  const { rawCurrency, issuer } = token;
+  if (!rawCurrency || !issuer) return [];
+  const period = sologenicPeriod(tf);
+  const from   = sologenicFromTs(tf);
+  const to     = Math.floor(Date.now() / 1000);
+  const symbol = encodeURIComponent(`${rawCurrency}+${issuer}/XRP`);
+  const url    = `https://api.sologenic.org/api/v1/ohlc?symbol=${symbol}&period=${period}&from=${from}&to=${to}`;
+  const raw    = await fetchMarketJson(url);
+  if (!Array.isArray(raw) || !raw.length) return [];
+  return raw
+    .filter(c => Array.isArray(c) && c.length >= 5)
+    .map(([ts, o, h, l, c, v = 0]) => ({
+      t: ts * 1000,
+      o: +o || 0, h: +h || 0, l: +l || 0, c: +c || 0, v: +v || 0
+    }))
+    .filter(c => c.c > 0);
+}
+
 async function fetchDexChartData(token, tf = "1D") {
-  const { krakenInterval, xrplPeriod, limit } = dexTfParams(tf);
+  const { krakenInterval, limit } = dexTfParams(tf);
 
   if (!token) {
     // XRP/USD — Kraken public API (CORS-friendly, XRP is native so not on xrpl.to)
@@ -3320,42 +4288,66 @@ async function fetchDexChartData(token, tf = "1D") {
     return { candles, label: `XRP / USD — ${tf}` };
   }
 
-  // ── Issued token — multi-source OHLCV with XRPL live fallback ────
-  const { md5, slug, rawCurrency, issuer, symbol, currency } = token;
+  const { symbol, currency } = token;
   const chartLabel = `${symbol || currency} / XRP — ${tf}`;
 
-  const parseOhlcv = (raw) =>
-    (Array.isArray(raw) ? raw : []).map((k) => {
-      if (Array.isArray(k)) {
-        const [t, o, h, l, c, v = 0] = k;
-        return { t: toFiniteNumber(t, 0), o: toFiniteNumber(o, 0), h: toFiniteNumber(h, 0), l: toFiniteNumber(l, 0), c: toFiniteNumber(c, 0), v: toFiniteNumber(v, 0) };
+  // Source 1 — Sologenic DEX OHLCV (XRPL-native prices in XRP, no rate limits)
+  try {
+    const candles = await fetchSologenicOhlcv(token, tf);
+    if (candles.length) return { candles, label: chartLabel };
+  } catch { /* fall through */ }
+
+  // Source 2 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
+  const cgSymbol = symbol || currency;
+  if (cgSymbol) {
+    try {
+      const cgId = await fetchCoinGeckoId(cgSymbol);
+      if (cgId) {
+        // Map tf → CoinGecko days (granularity: 1=30min, 14=4h, 90=daily, 365=weekly)
+        const cgDays = tf === "5M" || tf === "15M" || tf === "1H" ? 1
+          : tf === "4H" ? 14
+          : tf === "1W" ? 365
+          : 90;
+        const cgRaw = await fetchMarketJson(
+          `https://api.coingecko.com/api/v3/coins/${cgId}/ohlc?vs_currency=usd&days=${cgDays}`
+        );
+        if (Array.isArray(cgRaw) && cgRaw.length) {
+          const usdCandles = cgRaw
+            .map(([t, o, h, l, c]) => ({ t: +t || 0, o: +o || 0, h: +h || 0, l: +l || 0, c: +c || 0, v: 0 }))
+            .filter(c => c.c > 0);
+          if (usdCandles.length) {
+            try {
+              const xrpCandles = await fetchKrakenXrpOhlcv(krakenInterval, usdCandles.length + 10);
+              if (xrpCandles.length) {
+                const sorted = xrpCandles.slice().sort((a, b) => a.t - b.t);
+                const closestXrpPrice = (tMs) => {
+                  let lo = 0, hi = sorted.length - 1, best = sorted[0].c;
+                  while (lo <= hi) {
+                    const mid = (lo + hi) >> 1;
+                    if (sorted[mid].t <= tMs) { best = sorted[mid].c; lo = mid + 1; }
+                    else hi = mid - 1;
+                  }
+                  return best;
+                };
+                const converted = usdCandles.map(c => {
+                  const xrp = closestXrpPrice(c.t);
+                  if (!xrp || xrp <= 0) return null;
+                  return { t: c.t, o: c.o / xrp, h: c.h / xrp, l: c.l / xrp, c: c.c / xrp, v: c.v };
+                }).filter(Boolean);
+                if (converted.length) return { candles: converted, label: chartLabel };
+              }
+            } catch { /* fall through: show USD */ }
+            return {
+              candles: usdCandles,
+              label: `${symbol || currency} / USD — ${tf}`
+            };
+          }
+        }
       }
-      return { t: toFiniteNumber(k.t ?? k.time ?? k.date ?? k.timestamp ?? 0, 0), o: toFiniteNumber(k.o ?? k.open ?? 0, 0), h: toFiniteNumber(k.h ?? k.high ?? 0, 0), l: toFiniteNumber(k.l ?? k.low ?? 0, 0), c: toFiniteNumber(k.c ?? k.close ?? k.last ?? 0, 0), v: toFiniteNumber(k.v ?? k.vol ?? k.volume ?? k.base_volume ?? k.counter_volume ?? 0, 0) };
-    }).filter((c) => c.c > 0);
-
-  const tryFetch = async (url) => {
-    const data = await fetchMarketJson(url);
-    return parseOhlcv(Array.isArray(data) ? data : (data?.data ?? data?.ohlcv ?? data?.result ?? []));
-  };
-
-  // Source 1 — xrpl.to by currency+issuer (xrpl.to requires decoded code, not 40-char hex)
-  const urlCurrency = currency || symbol; // decoded form (e.g. "CULT" not "43554C54...")
-  if (urlCurrency && issuer) {
-    try {
-      const c = await tryFetch(`https://api.xrpl.to/v1/tokens/${encodeURIComponent(urlCurrency)}+${encodeURIComponent(issuer)}/ohlcv?period=${xrplPeriod}&limit=${limit}`);
-      if (c.length) return { candles: c, label: chartLabel };
-    } catch { /* try next */ }
+    } catch { /* try live price fallback */ }
   }
 
-  // Source 2 — xrpl.to by md5 hash (when available and is a real 32-char hex)
-  if (md5 && /^[a-f0-9]{32}$/i.test(md5)) {
-    try {
-      const c = await tryFetch(`https://api.xrpl.to/v1/tokens/${md5}/ohlcv?period=${xrplPeriod}&limit=${limit}`);
-      if (c.length) return { candles: c, label: chartLabel };
-    } catch { /* try next */ }
-  }
-
-  // Source 3 — XRPL ledger live price via amm_info + book_offers (no history — single point)
+  // Source 3 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
   const livePrice = await fetchTokenSpotFromXrpl(token);
   if (livePrice > 0) {
     const now = Date.now();
@@ -3613,7 +4605,7 @@ function ensureDexChartControls() {
       const dxPx    = e.clientX - dexChartDragX;
       const plotPx  = Math.max(r.width - 76, 1); // plot area in CSS pixels (W - RP - LP)
       const barsPerPx = dexChartBarsVis / plotPx;
-      const delta   = Math.round(-dxPx * barsPerPx);
+      const delta   = Math.round(dxPx * barsPerPx);
       const total   = state.dex.chart.candles.length;
       dexChartOffset = Math.max(0, Math.min(Math.max(0, total - dexChartBarsVis), dexChartDragOff + delta));
     }
@@ -3678,7 +4670,7 @@ function ensureDexChartControls() {
       const dxPx   = e.touches[0].clientX - touchX0;
       const tr     = canvas.getBoundingClientRect();
       const plotPx = Math.max(tr.width - 76, 1);
-      const delta  = Math.round(-dxPx * (dexChartBarsVis / plotPx));
+      const delta  = Math.round(dxPx * (dexChartBarsVis / plotPx));
       const total  = state.dex.chart.candles.length;
       dexChartOffset = Math.max(0, Math.min(Math.max(0, total - dexChartBarsVis), dexChartDragOff + delta));
       drawDexAnalysisChart();
@@ -4232,7 +5224,7 @@ function renderDex() {
 }
 
 async function loadDexOrderBook(force = false) {
-  const { currency, issuer } = state.dex;
+  const { currency, rawCurrency, issuer } = state.dex;
   if (!currency || !issuer) {
     setDexTicketStatus("Select an asset or enter currency and issuer before refreshing.", true);
     return;
@@ -4246,8 +5238,9 @@ async function loadDexOrderBook(force = false) {
 
   const walletState = getWalletState();
   const network = walletState.network || DEFAULT_NETWORK;
+  const xrplCurrency = rawCurrency || currency; // use raw hex form for XRPL protocol
   const takerPays = { currency: "XRP" };
-  const takerGets = { currency, issuer };
+  const takerGets = { currency: xrplCurrency, issuer };
 
   try {
     const [bidsResult, asksResult] = await Promise.all([
@@ -5467,6 +6460,7 @@ function boot() {
   state.appUser = getStoredAppUser();
   state.tokenWatchlist = getStoredWatchlist(STORAGE_KEYS.tokenWatchlist);
   state.ammWatchlist = getStoredWatchlist(STORAGE_KEYS.ammWatchlist);
+  loadTrackerWallets();
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
   setActivePage("dashboard");
 

@@ -5,7 +5,18 @@
       "Bash(node -e ' *)",
       "Bash(node --check \"c:\\\\Users\\\\dkaua\\\\AMP\\\\Ikeledger-\\\\ikeledger\\\\js\\\\ikeledger-ui.js\")",
       "Bash(node --check \"c:\\\\Users\\\\dkaua\\\\AMP\\\\Ikeledger-\\\\ikeledger\\\\js\\\\ikeledger-xumm.js\")",
-      "Bash(node --check \"c:\\\\Users\\\\dkaua\\\\AMP\\\\Ikeledger-\\\\ikeledger\\\\js\\\\ikeledger-xaman.js\")"
+      "Bash(node --check \"c:\\\\Users\\\\dkaua\\\\AMP\\\\Ikeledger-\\\\ikeledger\\\\js\\\\ikeledger-xaman.js\")",
+      "Bash(curl -s -I \"https://api.onthedex.live/public/v1/ohlc\")",
+      "Bash(curl -s \"https://api.xrpscan.com/api/v1/tokens?limit=5&sortby=marketcap\" -H \"Accept: application/json\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"https://api.xrpscan.com/api/v1/tokens?limit=3\" -H \"Accept: application/json\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s \"https://api.xrpscan.com/api/v1/token/534F4C4F00000000000000000000000000000000/rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz\" -H \"Accept: application/json\")",
+      "Bash(curl -s \"https://api.coingecko.com/api/v3/search?query=solo\" -H \"Accept: application/json\")",
+      "Bash(curl -s \"https://api.coingecko.com/api/v3/coins/solo-coin/ohlc?vs_currency=usd&days=90\" -H \"Accept: application/json\")",
+      "Bash(curl -s 'https://api.onthedex.live/public/v1/ohlc?base_currency=534F4C4F00000000000000000000000000000000&base_issuer=rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz&counter_currency=XRP&day_count=30' -H 'Accept: application/json')",
+      "Bash(curl -s https://api.xrpscan.com/api/v1/token/534F4C4F00000000000000000000000000000000.rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz/trades?limit=5 -H 'Accept: application/json')",
+      "Bash(curl -s 'https://api.xrpscan.com/api/v1/token/534F4C4F00000000000000000000000000000000.rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz/ohlc?interval=1d&limit=30' -H 'Accept: application/json')"
     ]
   }
 }

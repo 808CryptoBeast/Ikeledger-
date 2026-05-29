@@ -1,0 +1,13 @@
+{
+  "name": "IkeLedger",
+  "short_name": "IkeLedger",
+  "description": "Where ancestral knowledge meets verifiable value. XRPL wallet, DEX, and live tracker.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050711",
+  "theme_color": "#f5c76b",
+  "icons": [
+    { "src": "./ikeledger/assets/images/Ikeledger.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./ikeledger/assets/images/Ikeledger.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
