@@ -6955,3 +6955,54 @@ button.ghost:hover {
   .pct-cell:nth-child(4),
   .pct-cell:nth-child(8) { display: none; }
 }
+
+/* Mobile navigation final pass */
+@media (max-width: 768px) {
+  .bottom-nav {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 0.24rem !important;
+    padding-inline: 0.32rem !important;
+    overflow: hidden;
+  }
+
+  .bottom-link {
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 54px;
+    border-radius: 11px;
+    padding: 0.22rem 0.02rem;
+    overflow: hidden;
+  }
+
+  .bottom-nav-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .bottom-link-label {
+    font-size: 0.51rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .bottom-nav {
+    gap: 0.2rem;
+    padding-inline: 0.28rem;
+  }
+
+  .bottom-link {
+    min-height: 52px;
+    border-radius: 10px;
+  }
+
+  .bottom-nav-icon {
+    width: 25px;
+    height: 25px;
+  }
+
+  .bottom-link-label {
+    font-size: 0.48rem;
+  }
+}

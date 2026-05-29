@@ -10,11 +10,10 @@ All features below are implemented and functional in the current codebase.
 |---|---|---|
 | Command Center (dashboard) | Complete | XRPL network, XRP market, AMM, liquidity, security, and account overview; sign-in opens as an overlay |
 | Wallet Status | Complete | Account overview, reserve system info, connection mode |
-| Tokens | Complete | Token holdings, trust line safety info |
-| NFT Viewer | Complete | Grid view with decoded NFT URI, IPFS/HTTP metadata lookup, image thumbnails, filter scaffold |
-| NFT Listings | Complete | Offers and listings display |
+| Tokens | Complete | Wallet holdings plus top issued asset tables with stats, watchlists, load-more controls, and risk scoring |
+| NFTs & Listings | Complete | Combined NFT viewer and listings page with decoded NFT URI, IPFS/HTTP metadata lookup, image thumbnails, and offer details |
 | DEX Access | Complete | Live order book, trading ticket, chart controls, risk/reward analysis, and Xumm/Xaman OfferCreate signing |
-| AMM / LP | Complete | Position viewer, risk notice |
+| AMM / LP | Complete | Position viewer, top AMM / LP pool table, watchlists, and risk notice |
 | Activity | Complete | Transaction history, raw JSON toggle |
 | Account Intelligence | Complete | Watched accounts, live XRPL stream filters, health score, reserve/security/asset/AMM/NFT/market signals, and risk alerts |
 | Credentials & Mana | Complete | Earned credentials, Mana info, privacy controls |
@@ -36,6 +35,12 @@ All features below are implemented and functional in the current codebase.
 - Connecting Xumm while already signed in by email links the approved XRPL account to that email profile
 - DEX access requires a Xumm signing wallet or an XRPL wallet created inside IkeLedger
 - Clearing the session signs out of email auth and Xumm; disconnecting only removes the wallet connection
+
+**Mobile model**
+- Full navigation remains available from the slide-out sidebar
+- Bottom navigation is reserved for high-frequency paths: Home, Wallet, Account Intelligence, DEX, NFTs, and Profile
+- Xumm/Xaman sign-in is optimized for same-device mobile deep links while desktop users can continue using QR signing
+- Wide market, token, AMM, and DEX data views keep horizontal scrolling on small screens instead of compressing critical columns into unreadable text
 
 
 **ikeledger-keygen.js** — Self-contained browser XRPL keypair generation
@@ -65,13 +70,13 @@ All features below are implemented and functional in the current codebase.
 
 ### High priority
 - [ ] **Network icon strip - wire button actions**: Network button focuses the network selector; Mainnet/Testnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address.
-- [ ] **QR code for address sharing**: Show a scannable QR on the profile and fund wallet cards so mobile users can receive XRP without typing the address.
+- [ ] **Mobile QA pass**: Verify Xumm same-device sign-in, Account Intelligence stream, DEX signing, NFT viewer, and token/AMM tables on iPhone and Android screen sizes.
 
 ### Medium priority
 - [ ] **DEX execution follow-up**: Add offer status monitoring after a signed OfferCreate so users can see whether the order filled, partially filled, or stayed open
 - [ ] **AMM live pool data**: Use `amm_info` command to show current pool reserves, trading fee, and LP token supply
-- [ ] **Accent color system**: The accent selector (XRP Blue / Mana Gold / Emerald) is in the settings drawer but CSS variables for the accent are not yet wired — connect `accentSelect` to a set of `:root` overrides
-- [ ] **Mobile bottom nav — add Create Wallet**: Add Create Wallet as a bottom nav item or make it reachable from the Wallet page
+- [ ] **Profile/fund QR polish**: Add a larger scannable receive QR to the profile and fund wallet cards for quick mobile deposits.
+- [ ] **Create Wallet mobile shortcut**: Add a contextual Create Wallet shortcut on Wallet Status for profile-only users without crowding the bottom nav.
 
 ### Lower priority
 - [ ] **Supabase credential anchoring**: Wire earned Mana and lesson completions to Supabase RPC for cross-device persistence

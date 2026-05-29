@@ -35,6 +35,13 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - DEX access panel with live order book loading, chart controls, risk/reward analysis, OfferCreate previews, and Xumm/Xaman signing requests
 - Transaction consent modal before any signing flow
 
+### Mobile experience
+- Sticky top banner with compact IkeLedger branding, profile access, and price/network context
+- Drawer navigation for the full app map, including AMM / LP, Activity, Create Wallet, Security, Settings, and Credentials
+- Bottom mobile nav for the highest-use pages: Home, Wallet, Account Intelligence, DEX, NFTs, and Profile
+- Xumm/Xaman sign-in uses the official mobile deep-link flow when opened on the same device
+- DEX, token, NFT, and Account Intelligence panels collapse into single-column mobile layouts with horizontal table scrolling where needed
+
 ### Account creation
 - In-browser Ed25519 keypair generation — zero external dependencies, zero network calls
 - Uses `crypto.subtle.generateKey` (Web Crypto API)
