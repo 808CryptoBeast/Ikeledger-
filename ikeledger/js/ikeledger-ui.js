@@ -114,6 +114,14 @@ const state = {
     error: "",
     backoffUntil: 0
   },
+  ammTools: {
+    selectedPoolId: "",
+    depositValue: "1000",
+    priceMovePct: "25",
+    feeYieldPct: "2",
+    exitPercent: "50",
+    exitSlippagePct: "1"
+  },
   dex: {
     selectedTokenId: "",
     side: "buy",
@@ -225,6 +233,14 @@ const refs = {
   refreshTopIssuedTokensButton: document.getElementById("refreshTopIssuedTokensButton"),
   topAmmPoolsPanel: document.getElementById("topAmmPoolsPanel"),
   refreshTopAmmPoolsButton: document.getElementById("refreshTopAmmPoolsButton"),
+  ammToolPoolSelect: document.getElementById("ammToolPoolSelect"),
+  ammDepositValueInput: document.getElementById("ammDepositValueInput"),
+  ammPriceMoveInput: document.getElementById("ammPriceMoveInput"),
+  ammFeeYieldInput: document.getElementById("ammFeeYieldInput"),
+  ammExitPercentInput: document.getElementById("ammExitPercentInput"),
+  ammExitSlippageInput: document.getElementById("ammExitSlippageInput"),
+  ammToolResults: document.getElementById("ammToolResults"),
+  ammWhaleAlerts: document.getElementById("ammWhaleAlerts"),
   nftsPagePanel: document.getElementById("nftsPagePanel"),
   nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
   dexPagePanel: document.getElementById("dexPagePanel"),
@@ -2886,6 +2902,136 @@ function scoreAmmPoolRisk(pool = {}) {
   return { level, score, reasons };
 }
 
+function scoreAmmPoolHealth(pool = {}) {
+  const reasons = [];
+  let score = 48;
+  const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+  const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+  const lpHolders = toFiniteNumber(pool.lpHolders, Number.NaN);
+  const trustlines = toFiniteNumber(pool.trustlines, Number.NaN);
+  const holders = toFiniteNumber(pool.holders, Number.NaN);
+  const burned = toFiniteNumber(pool.lpBurnedPercent, Number.NaN);
+
+  if (Number.isFinite(tvl)) {
+    if (tvl >= 5_000_000) { score += 18; reasons.push("Deep TVL"); }
+    else if (tvl >= 1_000_000) { score += 14; reasons.push("Solid TVL"); }
+    else if (tvl >= 250_000) { score += 9; reasons.push("Moderate TVL"); }
+    else if (tvl < 50_000) { score -= 18; reasons.push("Thin TVL"); }
+  } else {
+    score -= 8;
+    reasons.push("Missing TVL");
+  }
+
+  if (Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0) {
+    const turnover = volume / tvl;
+    if (turnover >= 0.03 && turnover <= 1.2) { score += 12; reasons.push("Healthy turnover"); }
+    else if (turnover > 1.2) { score -= 6; reasons.push("High churn"); }
+    else if (turnover < 0.01) { score -= 8; reasons.push("Low pool flow"); }
+  } else if (Number.isFinite(volume) && volume > 10_000) {
+    score += 4;
+    reasons.push("Active volume");
+  }
+
+  if (Number.isFinite(lpHolders)) {
+    if (lpHolders >= 250) { score += 12; reasons.push("Distributed LP base"); }
+    else if (lpHolders >= 50) { score += 6; reasons.push("Some LP diversity"); }
+    else { score -= 12; reasons.push("Few LP holders"); }
+  }
+
+  if (Number.isFinite(holders) && holders >= 1000) score += 5;
+  if (Number.isFinite(trustlines) && trustlines >= 1000) score += 5;
+  if (pool.verified) { score += 8; reasons.push("Verified asset"); }
+  else { score -= 6; reasons.push("Unverified asset"); }
+  if (pool.lowLiquidity) { score -= 12; reasons.push("Low liquidity flag"); }
+  if (Number.isFinite(burned) && burned > 40) { score -= 6; reasons.push("Large LP burn"); }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const level = score >= 76 ? "Strong"
+    : score >= 58 ? "Watch"
+      : score >= 40 ? "Thin"
+        : "Fragile";
+  return { level, score, reasons };
+}
+
+function scoreAmmIssuerRisk(pool = {}) {
+  const reasons = [];
+  let score = 0;
+  const holders = toFiniteNumber(pool.holders, Number.NaN);
+  const trustlines = toFiniteNumber(pool.trustlines, Number.NaN);
+
+  if (!pool.issuer) { score += 2; reasons.push("Issuer unknown"); }
+  if (!pool.verified) { score += 2; reasons.push("Unverified issuer"); }
+  if (Number.isFinite(holders) && holders < 100) { score += 1; reasons.push("Low holder base"); }
+  if (Number.isFinite(trustlines) && trustlines < 100) { score += 1; reasons.push("Few trust lines"); }
+  if (pool.lowLiquidity) { score += 1; reasons.push("Low liquidity flag"); }
+
+  const level = score >= 4 ? "Issuer Risk" : score >= 2 ? "Issuer Watch" : "Known Issuer";
+  return { level, score, reasons };
+}
+
+function healthBadgeMarkup(health = {}) {
+  const cls = health.level === "Strong" ? "verified"
+    : health.level === "Fragile" ? "danger"
+      : health.level === "Thin" ? "warning"
+        : "";
+  const title = health.reasons?.length ? ` title="${escapeHtml(health.reasons.join(" | "))}"` : "";
+  return `
+    <span class="market-token-badge ${cls}"${title}>${escapeHtml(health.level || "Watch")} ${Number.isFinite(health.score) ? health.score : "—"}</span>
+    ${health.reasons?.length ? `<span class="market-risk-reasons">${escapeHtml(health.reasons.slice(0, 2).join(" • "))}</span>` : ""}
+  `;
+}
+
+function issuerRiskBadgeMarkup(risk = {}) {
+  const cls = risk.level === "Known Issuer" ? "verified"
+    : risk.level === "Issuer Risk" ? "danger"
+      : "warning";
+  const title = risk.reasons?.length ? ` title="${escapeHtml(risk.reasons.join(" | "))}"` : "";
+  return `
+    <span class="market-token-badge ${cls}"${title}>${escapeHtml(risk.level || "Issuer Watch")}</span>
+    ${risk.reasons?.length ? `<span class="market-risk-reasons">${escapeHtml(risk.reasons.slice(0, 2).join(" • "))}</span>` : ""}
+  `;
+}
+
+function calculateImpermanentLoss(priceMovePct) {
+  const ratio = Math.max(0.0001, 1 + toFiniteNumber(priceMovePct, 0) / 100);
+  return ((2 * Math.sqrt(ratio)) / (1 + ratio) - 1) * 100;
+}
+
+function getAmmToolPool() {
+  const items = state.topAmmPools.items || [];
+  if (!items.length) return null;
+  const selected = items.find((pool) => pool.id === state.ammTools.selectedPoolId);
+  if (selected) return selected;
+  const watched = items.find((pool) => state.ammWatchlist.has(pool.id));
+  const fallback = watched || items[0];
+  state.ammTools.selectedPoolId = fallback.id;
+  return fallback;
+}
+
+function ammWhaleAlerts(items = []) {
+  const alerts = [];
+  for (const pool of items) {
+    const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+    const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+    const lpHolders = toFiniteNumber(pool.lpHolders, Number.NaN);
+    const burned = toFiniteNumber(pool.lpBurnedPercent, Number.NaN);
+    const turnover = Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0 ? volume / tvl : Number.NaN;
+    if (Number.isFinite(tvl) && tvl >= 250_000 && Number.isFinite(lpHolders) && lpHolders < 30) {
+      alerts.push({ tone: "warning", title: `${pool.symbol} LP concentration`, detail: `${formatUsd(tvl)} TVL spread across ${formatCompactNumber(lpHolders, 0)} LP holders.` });
+    }
+    if (Number.isFinite(turnover) && turnover > 1.25) {
+      alerts.push({ tone: "warning", title: `${pool.symbol} high churn`, detail: `24h AMM volume is ${(turnover * 100).toFixed(0)}% of TVL. Check for wash trading or fast liquidity rotation.` });
+    }
+    if (Number.isFinite(burned) && burned > 40) {
+      alerts.push({ tone: "medium", title: `${pool.symbol} LP burn concentration`, detail: `${formatUnsignedPercent(burned)} LP burned. Verify what that means for exit depth and fee voting.` });
+    }
+    if (pool.lowLiquidity) {
+      alerts.push({ tone: "danger", title: `${pool.symbol} low-liquidity flag`, detail: "Use smaller test actions and compare AMM price against order-book price." });
+    }
+  }
+  return alerts.slice(0, 5);
+}
+
 // ── XRPScan token normalizer ──────────────────────────────────────────
 function normalizeXRPScanToken(token = {}, index = 0) {
   const rawCurrency = String(token.currency || "").trim();
@@ -3626,9 +3772,123 @@ function setCachedTopAmmPools(items) {
   }
 }
 
+function renderAmmTools() {
+  const items = state.topAmmPools.items || [];
+  const pool = getAmmToolPool();
+
+  if (refs.ammToolPoolSelect) {
+    refs.ammToolPoolSelect.innerHTML = items.length
+      ? items.slice(0, MARKET_RESULT_LIMIT).map((item) => `
+          <option value="${escapeHtml(item.id)}"${item.id === state.ammTools.selectedPoolId ? " selected" : ""}>${escapeHtml(item.symbol)} / XRP • ${formatUsd(item.tvl)}</option>
+        `).join("")
+      : '<option value="">Load AMM pools first</option>';
+    refs.ammToolPoolSelect.disabled = !items.length;
+  }
+  if (refs.ammDepositValueInput) refs.ammDepositValueInput.value = state.ammTools.depositValue;
+  if (refs.ammPriceMoveInput) refs.ammPriceMoveInput.value = state.ammTools.priceMovePct;
+  if (refs.ammFeeYieldInput) refs.ammFeeYieldInput.value = state.ammTools.feeYieldPct;
+  if (refs.ammExitPercentInput) refs.ammExitPercentInput.value = state.ammTools.exitPercent;
+  if (refs.ammExitSlippageInput) refs.ammExitSlippageInput.value = state.ammTools.exitSlippagePct;
+
+  if (!refs.ammToolResults || !refs.ammWhaleAlerts) return;
+  if (!pool) {
+    refs.ammToolResults.innerHTML = `
+      <div class="market-token-empty">
+        <strong>AMM intelligence waiting for pool data</strong>
+        <p class="muted">Load the top AMM / LP pool feed to calculate impermanent loss, exit value, health score, issuer risk, and LP concentration signals.</p>
+      </div>
+    `;
+    refs.ammWhaleAlerts.innerHTML = "";
+    return;
+  }
+
+  const health = scoreAmmPoolHealth(pool);
+  const issuerRisk = scoreAmmIssuerRisk(pool);
+  const deposit = Math.max(0, toFiniteNumber(state.ammTools.depositValue, 0));
+  const movePct = toFiniteNumber(state.ammTools.priceMovePct, 0);
+  const feeYieldPct = Math.max(0, toFiniteNumber(state.ammTools.feeYieldPct, 0));
+  const exitPct = Math.max(0, Math.min(100, toFiniteNumber(state.ammTools.exitPercent, 0)));
+  const slippagePct = Math.max(0, toFiniteNumber(state.ammTools.exitSlippagePct, 0));
+  const ratio = Math.max(0.0001, 1 + movePct / 100);
+  const ilPct = calculateImpermanentLoss(movePct);
+  const holdValue = deposit * ((1 + ratio) / 2);
+  const lpValueBeforeFees = holdValue * (1 + ilPct / 100);
+  const feeValue = deposit * (feeYieldPct / 100);
+  const projectedLpValue = lpValueBeforeFees + feeValue;
+  const exitGross = projectedLpValue * (exitPct / 100);
+  const exitAfterSlippage = exitGross * (1 - slippagePct / 100);
+  const remainingValue = projectedLpValue - exitGross;
+  const netPnl = projectedLpValue - deposit;
+  const netPnlPct = deposit > 0 ? (netPnl / deposit) * 100 : 0;
+  const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+  const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+  const turnover = Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0 ? (volume / tvl) * 100 : Number.NaN;
+
+  refs.ammToolResults.innerHTML = `
+    <div class="amm-tool-kpi-grid">
+      <div><span>Pool health</span><strong>${health.score}/100</strong><em>${escapeHtml(health.level)}</em></div>
+      <div><span>Issuer risk</span><strong>${escapeHtml(issuerRisk.level)}</strong><em>${issuerRisk.reasons.length ? escapeHtml(issuerRisk.reasons[0]) : "No major issuer warning"}</em></div>
+      <div><span>Impermanent loss</span><strong>${formatPercent(ilPct)}</strong><em>vs holding both assets</em></div>
+      <div><span>Projected LP value</span><strong>${formatUsd(projectedLpValue)}</strong><em>${formatPercent(netPnlPct)} net after fee estimate</em></div>
+      <div><span>Exit receive</span><strong>${formatUsd(exitAfterSlippage)}</strong><em>${formatUnsignedPercent(exitPct)} exit after ${formatUnsignedPercent(slippagePct)} slippage</em></div>
+      <div><span>Remainder</span><strong>${formatUsd(remainingValue)}</strong><em>Estimated value left in pool</em></div>
+    </div>
+    <div class="amm-tool-selected-pool">
+      <div class="market-token-identity">
+        ${tokenLogoMarkup(pool, pool.symbol)}
+        <div>
+          <strong>${escapeHtml(pool.symbol)} / XRP</strong>
+          <span>TVL ${formatUsd(pool.tvl)} • AMM volume ${formatCompactNumber(pool.volume24hAmm, 1)} XRP • turnover ${Number.isFinite(turnover) ? `${turnover.toFixed(1)}%` : "n/a"}</span>
+        </div>
+      </div>
+      <div class="amm-tool-badge-row">
+        ${healthBadgeMarkup(health)}
+        ${issuerRiskBadgeMarkup(issuerRisk)}
+        ${riskBadgeMarkup(scoreAmmPoolRisk(pool).level, scoreAmmPoolRisk(pool).reasons)}
+      </div>
+    </div>
+  `;
+
+  const alerts = ammWhaleAlerts(items);
+  refs.ammWhaleAlerts.innerHTML = alerts.length
+    ? `
+      <div class="section-top compact">
+        <h4>LP Whale / Flow Signals</h4>
+        <span class="mode-pill">${alerts.length} signal${alerts.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="amm-alert-grid">
+        ${alerts.map((alert) => `
+          <div class="amm-alert-item ${alert.tone}">
+            <strong>${escapeHtml(alert.title)}</strong>
+            <p>${escapeHtml(alert.detail)}</p>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : `
+      <div class="amm-alert-empty">
+        <strong>No major LP concentration signals in the loaded view.</strong>
+        <p class="muted">Still verify issuer controls, spread, pool depth, and fee votes before depositing.</p>
+      </div>
+    `;
+}
+
+function onAmmToolInputChange(event) {
+  const id = event?.target?.id || "";
+  const value = event?.target?.value ?? "";
+  if (id === "ammToolPoolSelect") state.ammTools.selectedPoolId = value;
+  if (id === "ammDepositValueInput") state.ammTools.depositValue = value;
+  if (id === "ammPriceMoveInput") state.ammTools.priceMovePct = value;
+  if (id === "ammFeeYieldInput") state.ammTools.feeYieldPct = value;
+  if (id === "ammExitPercentInput") state.ammTools.exitPercent = value;
+  if (id === "ammExitSlippageInput") state.ammTools.exitSlippagePct = value;
+  renderAmmTools();
+}
+
 function renderTopAmmPools() {
   if (!refs.topAmmPoolsPanel) return;
   const { items, loading, error, fetchedAt } = state.topAmmPools;
+  renderAmmTools();
   if (refs.refreshTopAmmPoolsButton) {
     refs.refreshTopAmmPoolsButton.disabled = loading;
     refs.refreshTopAmmPoolsButton.textContent = loading ? "Loading..." : "Refresh";
@@ -3673,7 +3933,9 @@ function renderTopAmmPools() {
   const rows = visibleItems.map((pool) => {
     const sourceUrl = pool.slug ? `https://xrpl.to/token/${encodeURIComponent(pool.slug)}` : "";
     const ammUrl = pool.ammAccount ? `https://xrpscan.com/account/${encodeURIComponent(pool.ammAccount)}` : "";
-    const risk = scoreAmmPoolRisk(pool);
+    const poolRisk = scoreAmmPoolRisk(pool);
+    const health = scoreAmmPoolHealth(pool);
+    const issuerRisk = scoreAmmIssuerRisk(pool);
     const watched = state.ammWatchlist.has(pool.id);
     const status = pool.lowLiquidity
       ? '<span class="market-token-badge warning">Low Liquidity</span>'
@@ -3704,7 +3966,9 @@ function renderTopAmmPools() {
         <td>${formatCompactNumber(pool.holders, 1)}</td>
         <td>${formatCompactNumber(pool.trustlines, 1)}</td>
         <td>${status}</td>
-        <td>${riskBadgeMarkup(risk.level, risk.reasons)}</td>
+        <td>${healthBadgeMarkup(health)}</td>
+        <td>${issuerRiskBadgeMarkup(issuerRisk)}</td>
+        <td>${riskBadgeMarkup(poolRisk.level, poolRisk.reasons)}</td>
         <td>${watchButtonMarkup("amm", pool.id, watched)}</td>
         <td>
           <div class="table-link-stack">
@@ -3744,12 +4008,14 @@ function renderTopAmmPools() {
             <th>Holders</th>
             <th>Trust Lines</th>
             <th>Status</th>
+            <th>Health</th>
+            <th>Issuer</th>
             <th>Risk</th>
             <th>Watch</th>
             <th>Links</th>
           </tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="14" class="empty-table-cell">No AMM pools match this filter.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="16" class="empty-table-cell">No AMM pools match this filter.</td></tr>`}</tbody>
       </table>
     </div>
     <div class="market-load-row">
@@ -7674,6 +7940,10 @@ function initEventHandlers() {
   bindClick(refs.commandEmailSignInButton, () => { void onEmailProfileSignIn(); });
   bindClick(refs.refreshTopIssuedTokensButton, () => { void loadTopIssuedAssets(true); });
   bindClick(refs.refreshTopAmmPoolsButton, () => { void loadTopAmmPools(true); });
+  [refs.ammToolPoolSelect, refs.ammDepositValueInput, refs.ammPriceMoveInput, refs.ammFeeYieldInput, refs.ammExitPercentInput, refs.ammExitSlippageInput].forEach((el) => {
+    el?.addEventListener("input", onAmmToolInputChange);
+    el?.addEventListener("change", onAmmToolInputChange);
+  });
 
   // DEX controls
   refs.dexAssetSelect?.addEventListener("change", onDexAssetChange);

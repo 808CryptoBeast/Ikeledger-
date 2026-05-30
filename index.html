@@ -630,7 +630,7 @@
             </div>
             <div class="card-grid structured-grid">
               <article class="glass-card wide pool-positions-card">
-                <img class="section-visual wide-visual pool-positions-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM pool positions" loading="lazy" />
+                <img class="section-visual wide-visual pool-positions-visual" src="./ikeledger/assets/images/ike-amm-banner.png" alt="AMM pool positions" loading="lazy" />
                 <div class="section-top">
                   <h3>Pool Positions</h3>
                   <span class="mode-pill">XLS-30 Standard</span>
@@ -727,6 +727,44 @@
                 </div>
                 </div>
               </details>
+
+              <article class="glass-card wide amm-tools-card">
+                <div class="section-top">
+                  <div>
+                    <h3>AMM Intelligence Lab</h3>
+                    <p class="muted">Estimate impermanent loss, exit values, pool health, issuer risk, and LP whale-pressure signals from the loaded AMM pool feed.</p>
+                  </div>
+                  <span class="mode-pill">Live tools</span>
+                </div>
+                <div class="amm-tool-input-grid">
+                  <label>
+                    Pool focus
+                    <select id="ammToolPoolSelect" aria-label="Select AMM pool for intelligence"></select>
+                  </label>
+                  <label>
+                    Position value
+                    <input id="ammDepositValueInput" type="number" min="0" step="10" value="1000" inputmode="decimal" />
+                  </label>
+                  <label>
+                    Token price move %
+                    <input id="ammPriceMoveInput" type="number" step="1" value="25" inputmode="decimal" />
+                  </label>
+                  <label>
+                    Fees earned %
+                    <input id="ammFeeYieldInput" type="number" min="0" step="0.1" value="2" inputmode="decimal" />
+                  </label>
+                  <label>
+                    Exit portion %
+                    <input id="ammExitPercentInput" type="number" min="0" max="100" step="1" value="50" inputmode="decimal" />
+                  </label>
+                  <label>
+                    Exit slippage %
+                    <input id="ammExitSlippageInput" type="number" min="0" step="0.1" value="1" inputmode="decimal" />
+                  </label>
+                </div>
+                <div id="ammToolResults" class="amm-tool-results"></div>
+                <div id="ammWhaleAlerts" class="amm-alert-list"></div>
+              </article>
 
               <article class="glass-card wide amm-market-card">
                 <div class="section-top">
