@@ -51,8 +51,17 @@ All features below are implemented and functional in the current codebase.
 - Returns `{ classicAddress, publicKey, privateKey }` — private key never stored
 
 **ikeledger-xrpl.js** — WebSocket XRPL client
-- `fetchAccountSnapshot(address, network)` — queries account_info, account_lines, account_tx, account_nfts, gateway_balances, account_objects, server_info
-- Returns typed snapshot object with account, tokenHoldings, issuedTokenEntries, nftItems (including decoded URI), amm, valueMix, txItems
+- `ensureXrplConnection(network)` and `requestXrplCommand(network, command)` — shared persistent WebSocket service used by snapshots, market metrics, DEX books, and Account Intelligence
+- `fetchAccountSnapshot(address, network)` — queries account_info, account_lines, account_tx, account_nfts, gateway_balances, account_objects, server_info using the shared service
+- `fetchAccountTransactionsPage`, `fetchAccountLinesPage`, and `fetchAccountNftsPage` — marker-based pagination helpers for deeper account loading
+- `fetchNftOfferSummaries` — lazy marketplace offer lookup for selected/visible NFTs instead of scanning every NFT on account load
+- Returns typed snapshot object with account, markers, tokenHoldings, issuedTokenEntries, nftItems (including decoded URI), amm, valueMix, txItems
+
+**Market data flow**
+- XRP price and XRPL network metrics refresh independently from chart history so brief API misses do not blank the market card
+- XRP chart points are cached per timeframe for five minutes unless the user changes timeframe
+- Top issued assets load up to 200 ranked items, then live XRPL price probing is limited to visible rows plus watched tokens
+- Token logos prefer XRPScan/xrplmeta sources because several XRPL.to image URLs block third-party hotlinking
 
 **ikeledger-wallet.js** — Wallet state
 - `hydrateWalletState()` — restore from localStorage on boot
@@ -71,6 +80,7 @@ All features below are implemented and functional in the current codebase.
 ### High priority
 - [ ] **Network icon strip - wire button actions**: Network button focuses the network selector; Mainnet/Testnet buttons switch the active network; Chart scrolls to the market chart; Market opens CoinGecko XRP page; Explorer opens XRPL Explorer for the loaded address.
 - [ ] **Mobile QA pass**: Verify Xumm same-device sign-in, Account Intelligence stream, DEX signing, NFT viewer, and token/AMM tables on iPhone and Android screen sizes.
+- [ ] **Pagination UI**: Expose "Load more" actions for wallet transaction history, trust lines, and NFT inventory using the new marker helpers.
 
 ### Medium priority
 - [ ] **DEX execution follow-up**: Add offer status monitoring after a signed OfferCreate so users can see whether the order filled, partially filled, or stayed open
@@ -81,7 +91,6 @@ All features below are implemented and functional in the current codebase.
 ### Lower priority
 - [ ] **Supabase credential anchoring**: Wire earned Mana and lesson completions to Supabase RPC for cross-device persistence
 - [ ] **Profile photo compression**: The FileReader approach stores full-resolution base64. Add canvas-based resize before storing to keep localStorage usage under 1 MB
-- [ ] **Pagination for transaction history**: `account_tx` currently fetches the latest 10 — add a "load more" marker-based pagination
 - [ ] **Trust line search / filter**: When a user holds many tokens, add a search input to the token holdings list
 - [ ] **Export wallet info**: Allow users to copy or download a text summary of their address, public key, and network for safekeeping
 - [ ] **Destination tag field**: Add an optional destination tag input to the payment flow for exchange withdrawals

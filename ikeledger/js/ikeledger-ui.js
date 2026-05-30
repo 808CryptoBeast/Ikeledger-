@@ -21,6 +21,13 @@ import {
 import { getManaSummary } from "./ikeledger-rewards.js";
 import { buildPaymentTx, xrpToDrops } from "./ikeledger-xaman.js";
 import { initXumm, signInWithXumm, createTxFlow, resetXumm, clearXummSession } from "./ikeledger-xumm.js";
+import {
+  addXrplStreamHandler,
+  ensureXrplConnection,
+  fetchNftOfferSummaries,
+  removeXrplStreamHandler,
+  requestXrplCommand
+} from "./ikeledger-xrpl.js";
 import { generateXrplWallet, isKeygenSupported } from "./ikeledger-keygen.js";
 import {
   getSupabaseConfig,
@@ -35,9 +42,14 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
-const MARKET_RESULT_LIMIT = 500;
+const MARKET_RESULT_LIMIT = 200;
 const MARKET_PAGE_SIZE    = 100;
 const MARKET_VISIBLE_STEP = 50;
+const LIVE_TOKEN_PRICE_VISIBLE_LIMIT = 12;
+const LIVE_TOKEN_PRICE_STALE_MS = 2 * 60 * 1000;
+const LIVE_TOKEN_PRICE_REFRESH_MS = 60 * 1000;
+const MARKET_LIVE_CACHE_MS = 15 * 1000;
+const MARKET_CHART_CACHE_MS = 5 * 60 * 1000;
 const TOP_ISSUED_ASSETS_BASE_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc";
 const TOP_AMM_POOLS_URL          = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_PAGE_SIZE}`;
 const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v5";
@@ -78,8 +90,13 @@ const state = {
   marketCache: {
     key: "",
     fetchedAt: 0,
-    snapshot: null
+    snapshot: null,
+    chartKey: "",
+    chartFetchedAt: 0,
+    points: []
   },
+  nftOfferCache: new Map(),
+  nftOfferLoading: new Set(),
   topIssuedAssets: {
     fetchedAt: 0,
     items: [],
@@ -837,6 +854,11 @@ function cycleTheme() {
   applyTheme(next);
 }
 
+function clearNftOfferState() {
+  state.nftOfferCache.clear();
+  state.nftOfferLoading.clear();
+}
+
 function setActivePage(page) {
   if (page === "nft-listings") {
     page = "nfts";
@@ -875,7 +897,7 @@ function setActivePage(page) {
     if (!state.topIssuedAssets.priceTimer) {
       state.topIssuedAssets.priceTimer = setInterval(() => {
         if (state.activePage === "tokens") void refreshVisibleTokenPrices();
-      }, 30_000);
+      }, LIVE_TOKEN_PRICE_REFRESH_MS);
     }
   } else {
     // Stop price refresh when navigating away
@@ -898,7 +920,7 @@ function setActivePage(page) {
   if (page === "tracker") {
     renderTrackerPage();
     if (hasXrplAccount() && state.tracker.wallets.length && !state.tracker.running) {
-      startTracker();
+      void startTracker();
     }
   }
 }
@@ -1073,85 +1095,6 @@ async function fetchXrpChartPoints(timeframe) {
   const points = candles.map((c) => c.c);
   if (!points.length) throw new Error("XRP chart data unavailable.");
   return points;
-}
-
-// ── XRPL WebSocket connection pool (one persistent socket per network) ──
-const _xrplWs      = new Map(); // networkKey → WebSocket
-const _xrplPending       = new Map(); // networkKey → Map<id, {resolve, reject, timer}>
-const _xrplStreamHandlers = new Map(); // networkKey → Set<fn(payload)>
-let   _xrplNextId  = 1;
-
-function _xrplAddStreamHandler(networkKey, fn) {
-  if (!_xrplStreamHandlers.has(networkKey)) _xrplStreamHandlers.set(networkKey, new Set());
-  _xrplStreamHandlers.get(networkKey).add(fn);
-}
-function _xrplRemoveStreamHandler(networkKey, fn) {
-  _xrplStreamHandlers.get(networkKey)?.delete(fn);
-}
-
-function _xrplEnsureConnection(networkKey) {
-  const existing = _xrplWs.get(networkKey);
-  if (existing && existing.readyState <= WebSocket.OPEN) return; // CONNECTING(0) or OPEN(1)
-
-  const network = NETWORKS[networkKey] || NETWORKS[DEFAULT_NETWORK];
-  const ws      = new WebSocket(network.endpoint);
-  const pending  = new Map();
-
-  _xrplWs.set(networkKey, ws);
-  _xrplPending.set(networkKey, pending);
-
-  ws.addEventListener("message", (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      // Route streaming subscription messages to registered handlers
-      if (payload.type === "transaction" || payload.type === "ledgerClosed") {
-        const handlers = _xrplStreamHandlers.get(networkKey);
-        if (handlers) for (const fn of handlers) { try { fn(payload); } catch { /* */ } }
-        return;
-      }
-      const entry = pending.get(payload?.id);
-      if (!entry) return;
-      pending.delete(payload.id);
-      clearTimeout(entry.timer);
-      if (payload.status === "error" || payload.error) {
-        entry.reject(new Error(payload.error_message || payload.error || "XRPL request failed."));
-      } else {
-        entry.resolve(payload.result || {});
-      }
-    } catch { /* ignore */ }
-  });
-
-  const cleanup = (msg) => {
-    if (_xrplPending.get(networkKey) !== pending) return; // already replaced
-    for (const { reject, timer } of pending.values()) { clearTimeout(timer); reject(new Error(msg)); }
-    pending.clear();
-    _xrplPending.delete(networkKey);
-    _xrplWs.delete(networkKey);
-  };
-
-  ws.addEventListener("error", () => cleanup("XRPL WebSocket error."));
-  ws.addEventListener("close", () => cleanup("XRPL WebSocket closed."));
-}
-
-async function requestXrplCommand(networkKey, command) {
-  _xrplEnsureConnection(networkKey);
-  const ws      = _xrplWs.get(networkKey);
-  const pending  = _xrplPending.get(networkKey);
-  if (!ws || !pending) return Promise.reject(new Error("No XRPL connection available."));
-
-  return new Promise((resolve, reject) => {
-    const id    = _xrplNextId++;
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error("XRPL metric request timeout.")); }, 8000);
-
-    pending.set(id, { resolve, reject, timer });
-
-    const send = () => ws.send(JSON.stringify({ id, ...command }));
-    if (ws.readyState === WebSocket.OPEN) {
-      send();
-    } else {
-      ws.addEventListener("open", send, { once: true });
-    }
-  });
 }
 
 function ledgerTransactionCount(ledgerResult = {}) {
@@ -1495,31 +1438,34 @@ function processTrackerStream(payload) {
 
 let _trackerStreamHandler = null;
 
-function startTracker() {
+async function startTracker() {
   if (state.tracker.running) return;
   if (!state.tracker.wallets.length) return;
 
   const walletState = getWalletState();
   const networkKey  = walletState.network || DEFAULT_NETWORK;
+  const addresses = state.tracker.wallets.map(w => w.address).filter(Boolean);
+  if (!addresses.length) return;
 
-  _xrplEnsureConnection(networkKey);
-  const ws = _xrplWs.get(networkKey);
-  if (!ws) return;
-
-  const addresses = state.tracker.wallets.map(w => w.address);
-  const subCmd = () => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ id: _xrplNextId++, command: "subscribe", accounts: addresses }));
+  try {
+    await ensureXrplConnection(networkKey);
+    if (_trackerStreamHandler) {
+      removeXrplStreamHandler(networkKey, _trackerStreamHandler);
     }
-  };
-
-  if (ws.readyState === WebSocket.OPEN) subCmd();
-  else ws.addEventListener("open", subCmd, { once: true });
-
-  _trackerStreamHandler = processTrackerStream;
-  _xrplAddStreamHandler(networkKey, _trackerStreamHandler);
-  state.tracker.running = true;
-  renderTrackerPage();
+    _trackerStreamHandler = processTrackerStream;
+    addXrplStreamHandler(networkKey, _trackerStreamHandler);
+    await requestXrplCommand(networkKey, { command: "subscribe", accounts: addresses });
+    state.tracker.running = true;
+  } catch (error) {
+    if (_trackerStreamHandler) {
+      removeXrplStreamHandler(networkKey, _trackerStreamHandler);
+      _trackerStreamHandler = null;
+    }
+    state.tracker.running = false;
+    setFeedback(error instanceof Error ? `Account Intelligence stream unavailable: ${error.message}` : "Account Intelligence stream unavailable.", true);
+  } finally {
+    renderTrackerPage();
+  }
 }
 
 function stopTracker() {
@@ -1527,15 +1473,12 @@ function stopTracker() {
   const walletState = getWalletState();
   const networkKey  = walletState.network || DEFAULT_NETWORK;
   if (_trackerStreamHandler) {
-    _xrplRemoveStreamHandler(networkKey, _trackerStreamHandler);
+    removeXrplStreamHandler(networkKey, _trackerStreamHandler);
     _trackerStreamHandler = null;
   }
-  const ws = _xrplWs.get(networkKey);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const addresses = state.tracker.wallets.map(w => w.address);
-    if (addresses.length) {
-      ws.send(JSON.stringify({ id: _xrplNextId++, command: "unsubscribe", accounts: addresses }));
-    }
+  const addresses = state.tracker.wallets.map(w => w.address).filter(Boolean);
+  if (addresses.length) {
+    void requestXrplCommand(networkKey, { command: "unsubscribe", accounts: addresses }).catch(() => {});
   }
   state.tracker.running = false;
 }
@@ -1596,7 +1539,7 @@ function getAccountIntelligence(walletState = getWalletState()) {
   const ammCount = toFiniteNumber(amm.objectCount, 0);
   const ammActivity = toFiniteNumber(amm.recentActivityCount, 0);
   const txCount = toFiniteNumber(account.recentActivityCount ?? snapshot?.txItems?.length, 0);
-  const nftOffers = nfts.reduce((sum, nft) => sum + toFiniteNumber(nft.offers?.sellOffers, 0) + toFiniteNumber(nft.offers?.buyOffers, 0), 0);
+  const nftOffers = nfts.reduce((sum, nft) => sum + nftOfferCount(nft), 0);
   const totalAccountXrp = Number.isFinite(balance) ? balance : 0;
   const reserveRatio = Number.isFinite(reserve) && totalAccountXrp > 0 ? (reserve / totalAccountXrp) * 100 : 0;
   const highFeedAlerts = feed.filter((ev) => ev.severity === "high").length;
@@ -1974,7 +1917,7 @@ function renderTrackerPage() {
   // Wire up events
   document.getElementById("trackerToggleBtn")?.addEventListener("click", () => {
     if (state.tracker.running) { stopTracker(); renderTrackerPage(); }
-    else { startTracker(); }
+    else { void startTracker(); }
   });
 
   document.getElementById("trackerAddForm")?.addEventListener("submit", (e) => {
@@ -1987,7 +1930,7 @@ function renderTrackerPage() {
     if (state.tracker.wallets.length >= 50) return;
     state.tracker.wallets.push({ address: addr, label, group });
     saveTrackerWallets();
-    if (state.tracker.running) { stopTracker(); startTracker(); }
+    if (state.tracker.running) { stopTracker(); void startTracker(); }
     renderTrackerPage();
   });
 
@@ -1996,7 +1939,7 @@ function renderTrackerPage() {
       const idx = Number(btn.dataset.walletIndex);
       state.tracker.wallets.splice(idx, 1);
       saveTrackerWallets();
-      if (state.tracker.running) { stopTracker(); if (state.tracker.wallets.length) startTracker(); }
+      if (state.tracker.running) { stopTracker(); if (state.tracker.wallets.length) void startTracker(); }
       renderTrackerPage();
     });
   });
@@ -2029,32 +1972,44 @@ function renderTrackerPage() {
   });
 }
 
-async function renderMarketOverview(forceRefresh = false) {
+async function renderMarketOverview(forceRefresh = false, options = {}) {
   try {
     const cacheKey = state.chartTimeframe;
     const shouldUseCache = !forceRefresh
       && state.marketCache.key === cacheKey
-      && Date.now() - state.marketCache.fetchedAt < 15000
+      && Date.now() - state.marketCache.fetchedAt < MARKET_LIVE_CACHE_MS
       && state.marketCache.snapshot;
 
     let snapshot = state.marketCache.snapshot;
     if (!shouldUseCache) {
+      const chartCacheReady = state.marketCache.chartKey === cacheKey
+        && Array.isArray(state.marketCache.points)
+        && state.marketCache.points.length
+        && Date.now() - state.marketCache.chartFetchedAt < MARKET_CHART_CACHE_MS;
+      const chartPromise = chartCacheReady && !options.forceChart
+        ? Promise.resolve(state.marketCache.points)
+        : fetchXrpChartPoints(state.chartTimeframe).catch(() => state.marketCache.points || []);
+
       const [overview, points, networkMetrics] = await Promise.all([
         fetchXrpOverview(),
-        fetchXrpChartPoints(state.chartTimeframe),
+        chartPromise,
         fetchXrplNetworkMetrics()
           .then((metrics) => ({ ...metrics, sourceOk: true }))
           .catch(() => ({ ledgerIndex: 0, tps: "n/a", feeDrops: "n/a", sourceOk: false }))
       ]);
       const fetchedAt = Date.now();
+      const nextPoints = Array.isArray(points) && points.length ? points : (state.marketCache.points || []);
+      const chartFetchedAt = nextPoints === state.marketCache.points
+        ? state.marketCache.chartFetchedAt
+        : fetchedAt;
 
       snapshot = {
         ...overview,
         ...networkMetrics,
-        points,
+        points: nextPoints,
         fetchedAt,
         sources: {
-          coingecko: "XRPL DEX",
+          coingecko: chartCacheReady && !options.forceChart ? "Cached" : "XRPL DEX",
           xrpl: networkMetrics.sourceOk ? "Live" : "Degraded",
           xrplTo: state.topIssuedAssets.items.length || state.topAmmPools.items.length ? "Cached" : "On demand"
         }
@@ -2062,7 +2017,10 @@ async function renderMarketOverview(forceRefresh = false) {
       state.marketCache = {
         key: cacheKey,
         fetchedAt,
-        snapshot
+        snapshot,
+        chartKey: cacheKey,
+        chartFetchedAt,
+        points: nextPoints
       };
     }
 
@@ -3008,16 +2966,18 @@ async function fetchLiveXrplTokenPrice(token) {
 async function refreshVisibleTokenPrices() {
   const { items, livePrices } = state.topIssuedAssets;
   if (!items.length) return;
-  const now    = Date.now();
-  const stale  = 30_000;
-  const limit  = Math.min(state.topIssuedVisibleCount, 50);
-  const toFetch = items.slice(0, limit).filter(t => {
+  const now = Date.now();
+  const visibleLimit = Math.min(state.topIssuedVisibleCount, LIVE_TOKEN_PRICE_VISIBLE_LIMIT);
+  const visibleItems = items.slice(0, visibleLimit);
+  const watchedItems = items.filter((token) => state.tokenWatchlist.has(token.id)).slice(0, 20);
+  const candidates = [...new Map([...visibleItems, ...watchedItems].map((token) => [token.id, token])).values()];
+  const toFetch = candidates.filter(t => {
     const c = livePrices.get(t.id);
-    return !c || now - c.fetchedAt > stale;
+    return !c || now - c.fetchedAt > LIVE_TOKEN_PRICE_STALE_MS;
   });
   if (!toFetch.length) return;
 
-  const batchSize = 5;
+  const batchSize = 3;
   for (let i = 0; i < toFetch.length; i += batchSize) {
     await Promise.allSettled(toFetch.slice(i, i + batchSize).map(async t => {
       const r = await fetchLiveXrplTokenPrice(t);
@@ -3925,6 +3885,56 @@ function nftDisplayName(nft) {
   return nft?.metadata?.name || `NFT ${formatAddress(nft?.nftId || "")}`;
 }
 
+function emptyNftOfferSummary() {
+  return { sellOffers: 0, buyOffers: 0, lowestSell: "", highestBuy: "" };
+}
+
+function nftOfferSummary(nft) {
+  if (!nft?.nftId) return emptyNftOfferSummary();
+  return state.nftOfferCache.get(nft.nftId) || nft.offers || emptyNftOfferSummary();
+}
+
+function nftOfferCount(nft) {
+  const offers = nftOfferSummary(nft);
+  return (offers.sellOffers || 0) + (offers.buyOffers || 0);
+}
+
+async function hydrateNftOffers(nfts, force = false) {
+  if (!Array.isArray(nfts) || !nfts.length) return;
+  const walletState = getWalletState();
+  const network = walletState.network || DEFAULT_NETWORK;
+  const selected = nfts.find((nft) => nft.nftId === state.selectedNftId);
+  const prioritized = [...new Map([
+    ...(selected ? [selected] : []),
+    ...nfts.slice(0, 12)
+  ].filter(Boolean).map((nft) => [nft.nftId, nft])).values()];
+  const missing = prioritized.filter((nft) => {
+    if (!nft?.nftId || state.nftOfferLoading.has(nft.nftId)) return false;
+    return force || !state.nftOfferCache.has(nft.nftId);
+  });
+  if (!missing.length) return;
+
+  missing.forEach((nft) => state.nftOfferLoading.add(nft.nftId));
+  try {
+    const offerMap = await fetchNftOfferSummaries(missing, network, {
+      limit: missing.length,
+      timeoutMs: 12000
+    });
+    Object.entries(offerMap).forEach(([nftId, offers]) => {
+      state.nftOfferCache.set(nftId, offers || emptyNftOfferSummary());
+    });
+  } catch {
+    // Offer APIs can fail for NFTs with no active marketplace data. Keep media rendering usable.
+  } finally {
+    missing.forEach((nft) => state.nftOfferLoading.delete(nft.nftId));
+  }
+
+  if (state.activePage === "nfts" || state.activePage === "dashboard") {
+    renderNfts(getWalletState());
+    refreshAccountIntelligenceOverview();
+  }
+}
+
 function resolveNftImageSource(nft) {
   const uri = toIpfsGateway(nft?.metadata?.imageUrl || nft?.imageUrl || nft?.uri || "");
   if (!uri) return { imageUrl: "", metadataUrl: "" };
@@ -4008,7 +4018,7 @@ function nftThumbMarkup(nft) {
 }
 
 function nftOfferSummaryMarkup(nft) {
-  const offers = nft?.offers || {};
+  const offers = nftOfferSummary(nft);
   const sellOffers = Number.isFinite(offers.sellOffers) ? offers.sellOffers : 0;
   const buyOffers = Number.isFinite(offers.buyOffers) ? offers.buyOffers : 0;
   return `
@@ -4022,8 +4032,7 @@ function nftOfferSummaryMarkup(nft) {
 }
 
 function renderNftGalleryItem(nft, isSelected = false) {
-  const offers = nft?.offers || {};
-  const totalOffers = (offers.sellOffers || 0) + (offers.buyOffers || 0);
+  const totalOffers = nftOfferCount(nft);
   return `
     <button class="nft-item nft-select ${isSelected ? "is-selected" : ""}" type="button" data-nft-select="${escapeHtml(nft.nftId)}" data-nft-id="${escapeHtml(nft.nftId)}">
       ${nftThumbMarkup(nft)}
@@ -4041,15 +4050,25 @@ function bindNftViewerEvents() {
       renderNfts(getWalletState());
     });
   });
+  refs.nftsPagePanel?.querySelectorAll("[data-refresh-nft-offers]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nftId = button.dataset.refreshNftOffers || "";
+      const nft = getWalletState().snapshot?.nftItems?.find((item) => item.nftId === nftId);
+      if (!nft) return;
+      state.nftOfferCache.delete(nftId);
+      button.textContent = "Refreshing...";
+      void hydrateNftOffers([nft], true);
+    });
+  });
 }
 
 function renderNftViewer(nfts) {
   const selected = nfts.find((nft) => nft.nftId === state.selectedNftId) || nfts[0];
   state.selectedNftId = selected.nftId;
-  const offers = selected.offers || {};
+  const offers = nftOfferSummary(selected);
   const selectedHasOffers = (offers.sellOffers || 0) + (offers.buyOffers || 0) > 0;
-  const totalSellOffers = nfts.reduce((sum, nft) => sum + (nft.offers?.sellOffers || 0), 0);
-  const totalBuyOffers = nfts.reduce((sum, nft) => sum + (nft.offers?.buyOffers || 0), 0);
+  const totalSellOffers = nfts.reduce((sum, nft) => sum + (nftOfferSummary(nft).sellOffers || 0), 0);
+  const totalBuyOffers = nfts.reduce((sum, nft) => sum + (nftOfferSummary(nft).buyOffers || 0), 0);
   const source = resolveNftImageSource(selected);
   const openUri = selected.uri ? toIpfsGateway(selected.uri) || selected.uri : "";
 
@@ -4079,7 +4098,7 @@ function renderNftViewer(nfts) {
           <div class="button-row">
             ${openUri ? `<a class="ghost table-link" href="${escapeHtml(openUri)}" target="_blank" rel="noopener noreferrer">Open URI</a>` : ""}
             <button class="ghost" type="button">Create Listing</button>
-            <button class="ghost" type="button">Refresh Offers</button>
+            <button class="ghost" type="button" data-refresh-nft-offers="${escapeHtml(selected.nftId)}">Refresh Offers</button>
           </div>
         </div>
       </section>
@@ -4098,7 +4117,7 @@ function renderNftViewer(nfts) {
 }
 
 function renderNftListingPanel(nfts) {
-  const offerNfts = nfts.filter((nft) => (nft.offers?.sellOffers || 0) + (nft.offers?.buyOffers || 0) > 0);
+  const offerNfts = nfts.filter((nft) => nftOfferCount(nft) > 0);
 
   if (!offerNfts.length) {
     return `
@@ -4119,17 +4138,20 @@ function renderNftListingPanel(nfts) {
         <span class="mode-pill">Live offer scan</span>
       </div>
       <div class="nft-listing-grid">
-        ${offerNfts.slice(0, 12).map((nft) => `
+        ${offerNfts.slice(0, 12).map((nft) => {
+          const offers = nftOfferSummary(nft);
+          return `
           <div class="nft-listing-row" data-nft-id="${escapeHtml(nft.nftId)}">
             ${nftThumbMarkup(nft)}
             <div>
               <strong>${escapeHtml(nftDisplayName(nft))}</strong>
               <span>${escapeHtml(formatAddress(nft.nftId))}</span>
             </div>
-            <div><span>Sell</span><strong>${nft.offers?.sellOffers || 0}</strong></div>
-            <div><span>Buy</span><strong>${nft.offers?.buyOffers || 0}</strong></div>
+            <div><span>Sell</span><strong>${offers.sellOffers || 0}</strong></div>
+            <div><span>Buy</span><strong>${offers.buyOffers || 0}</strong></div>
           </div>
-        `).join("")}
+          `;
+        }).join("")}
       </div>
     </div>
   `;
@@ -4169,6 +4191,9 @@ function renderNfts(walletState) {
   }
 
   hydrateNftImages(nfts);
+  if (state.activePage === "nfts" || state.activePage === "dashboard") {
+    void hydrateNftOffers(nfts);
+  }
 }
 
 function renderAmm(walletState) {
@@ -6060,6 +6085,7 @@ async function onLookup() {
   setFeedback("Loading read-only ledger account...");
 
   try {
+    clearNftOfferState();
     setPublicAddress(address);
     setWalletProvider("read-only");
     sessionStorage.removeItem("ike_wallet_provider");
@@ -6089,6 +6115,7 @@ async function onLookup() {
 function onNetworkChange(event) {
   const selected = event.target.value;
   setNetwork(selected);
+  clearNftOfferState();
   logSecurityEvent("network_changed", RISK_LEVELS.LOW, {
     context: "network_selector",
     network: selected
@@ -6098,6 +6125,7 @@ function onNetworkChange(event) {
 
 function onDisconnect() {
   stopTracker();
+  clearNftOfferState();
   disconnectWallet();
   sessionStorage.removeItem("ike_wallet_provider");
   setWalletProvider(null);
@@ -6118,6 +6146,7 @@ function onDisconnect() {
 
 function onClearSession() {
   stopTracker();
+  clearNftOfferState();
   clearSessionStorage();
   state.tracker.wallets = [];
   state.tracker.feed = [];
@@ -6309,6 +6338,7 @@ async function verifyXummAccount(approvedAddress = "") {
     setNetwork("xrpl-mainnet");
     if (refs.networkSelect) refs.networkSelect.value = "xrpl-mainnet";
 
+    clearNftOfferState();
     setPublicAddress(address);
     sessionStorage.setItem("ike_wallet_provider", "xaman");
     setWalletProvider("xaman");
@@ -6598,6 +6628,7 @@ function onKeygenLoadAddress() {
   if (!createWalletState.address) return;
   const address = createWalletState.address;
   if (refs.addressInput) refs.addressInput.value = address;
+  clearNftOfferState();
   setPublicAddress(address);
   setWalletProvider("created");
   sessionStorage.setItem("ike_wallet_provider", "created");
@@ -6982,7 +7013,7 @@ function initEventHandlers() {
       refs.timeframeButtons.forEach((item) => item.classList.remove("is-active"));
       button.classList.add("is-active");
       state.chartTimeframe = button.dataset.tf || "24H";
-      void renderMarketOverview(true);
+      void renderMarketOverview(true, { forceChart: true });
     });
   });
 
@@ -7047,7 +7078,7 @@ function boot() {
     clearInterval(state.marketTimer);
   }
   state.marketTimer = setInterval(() => {
-    void renderMarketOverview(true);
+    void renderMarketOverview(true, { forceChart: false });
   }, 15000);
   renderAll();
 }

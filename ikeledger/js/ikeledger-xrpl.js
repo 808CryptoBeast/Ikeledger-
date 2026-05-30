@@ -2,140 +2,11 @@ import { NETWORKS } from "./ikeledger-config.js";
 
 const WS_TIMEOUT_MS = 15000;
 
-class XrplWsClient {
-  constructor(endpoint) {
-    this.endpoint = endpoint;
-    this.ws = null;
-    this.nextId = 1;
-    this.pending = new Map();
-  }
-
-  connect() {
-    if (this.isConnected()) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.endpoint);
-      let settled = false;
-      const timeoutId = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          try {
-            ws.close();
-          } catch {
-            // noop
-          }
-          reject(new Error(`XRPL websocket connect timeout: ${this.endpoint}`));
-        }
-      }, WS_TIMEOUT_MS);
-
-      ws.addEventListener("open", () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeoutId);
-        this.ws = ws;
-        resolve();
-      });
-
-      ws.addEventListener("message", (event) => {
-        this.onMessage(event);
-      });
-
-      ws.addEventListener("error", () => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeoutId);
-          reject(new Error(`XRPL websocket failed: ${this.endpoint}`));
-        }
-      });
-
-      ws.addEventListener("close", () => {
-        const message = "XRPL websocket connection closed.";
-        for (const pending of this.pending.values()) {
-          pending.reject(new Error(message));
-        }
-        this.pending.clear();
-
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeoutId);
-          reject(new Error(message));
-        }
-
-        this.ws = null;
-      });
-    });
-  }
-
-  onMessage(event) {
-    let payload;
-    try {
-      payload = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    const pending = this.pending.get(payload.id);
-    if (!pending) return;
-
-    this.pending.delete(payload.id);
-    if (payload.status === "error" || payload.error) {
-      const message = payload.error_message || payload.error || "XRPL request failed.";
-      pending.reject(new Error(message));
-      return;
-    }
-
-    pending.resolve(payload);
-  }
-
-  request(body) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("XRPL websocket is not connected."));
-    }
-
-    const id = this.nextId++;
-    const requestBody = { ...body, id };
-
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`XRPL request timeout for command: ${body.command || "unknown"}`));
-      }, WS_TIMEOUT_MS);
-
-      this.pending.set(id, {
-        resolve: (payload) => {
-          clearTimeout(timeoutId);
-          resolve(payload);
-        },
-        reject: (error) => {
-          clearTimeout(timeoutId);
-          reject(error);
-        }
-      });
-
-      try {
-        this.ws.send(JSON.stringify(requestBody));
-      } catch (error) {
-        clearTimeout(timeoutId);
-        this.pending.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }
-
-  isConnected() {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  disconnect() {
-    if (this.ws && this.ws.readyState < WebSocket.CLOSING) {
-      this.ws.close();
-    }
-    this.ws = null;
-    return Promise.resolve();
-  }
-}
+const sharedSockets = new Map();
+const sharedPending = new Map();
+const sharedOpenPromises = new Map();
+const sharedStreamHandlers = new Map();
+let sharedNextId = 1;
 
 function getNetwork(networkKey) {
   const network = NETWORKS[networkKey];
@@ -143,6 +14,177 @@ function getNetwork(networkKey) {
     throw new Error("Unsupported network selected.");
   }
   return network;
+}
+
+function normalizeNetworkKey(networkKey) {
+  return getNetwork(networkKey).key || networkKey;
+}
+
+function rejectPendingRequests(networkKey, message) {
+  const pending = sharedPending.get(networkKey);
+  if (!pending) return;
+
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timeoutId);
+    entry.reject(new Error(message));
+  }
+  pending.clear();
+}
+
+function routeStreamPayload(networkKey, payload) {
+  if (payload?.type !== "transaction" && payload?.type !== "ledgerClosed") return false;
+
+  const handlers = sharedStreamHandlers.get(networkKey);
+  if (!handlers?.size) return true;
+
+  handlers.forEach((handler) => {
+    try {
+      handler(payload);
+    } catch {
+      // A single stream consumer should not break the shared socket.
+    }
+  });
+
+  return true;
+}
+
+function routeResponsePayload(networkKey, payload) {
+  if (routeStreamPayload(networkKey, payload)) return;
+
+  const pending = sharedPending.get(networkKey);
+  const entry = pending?.get(payload?.id);
+  if (!entry) return;
+
+  pending.delete(payload.id);
+  clearTimeout(entry.timeoutId);
+
+  if (payload.status === "error" || payload.error) {
+    entry.reject(new Error(payload.error_message || payload.error || "XRPL request failed."));
+    return;
+  }
+
+  entry.resolve(payload.result || {});
+}
+
+export function ensureXrplConnection(networkKey) {
+  const network = getNetwork(networkKey);
+  const key = network.key || networkKey;
+  const existing = sharedSockets.get(key);
+
+  if (existing?.readyState === WebSocket.OPEN) return Promise.resolve(existing);
+  if (existing?.readyState === WebSocket.CONNECTING && sharedOpenPromises.has(key)) {
+    return sharedOpenPromises.get(key);
+  }
+
+  const socket = new WebSocket(network.endpoint);
+  const pending = new Map();
+  sharedSockets.set(key, socket);
+  sharedPending.set(key, pending);
+
+  const openPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.close();
+      } catch {
+        // noop
+      }
+      sharedOpenPromises.delete(key);
+      reject(new Error(`XRPL websocket connect timeout: ${network.label}`));
+    }, WS_TIMEOUT_MS);
+
+    const settleOpen = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      sharedOpenPromises.delete(key);
+      resolve(socket);
+    };
+
+    const settleError = (message) => {
+      if (sharedSockets.get(key) === socket) {
+        rejectPendingRequests(key, message);
+        sharedPending.delete(key);
+        sharedSockets.delete(key);
+      }
+
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        sharedOpenPromises.delete(key);
+        reject(new Error(message));
+      }
+    };
+
+    socket.addEventListener("open", settleOpen, { once: true });
+    socket.addEventListener("message", (event) => {
+      try {
+        routeResponsePayload(key, JSON.parse(event.data));
+      } catch {
+        // Ignore malformed WebSocket payloads.
+      }
+    });
+    socket.addEventListener("error", () => settleError(`XRPL websocket error: ${network.label}`), { once: true });
+    socket.addEventListener("close", () => settleError(`XRPL websocket closed: ${network.label}`), { once: true });
+  });
+
+  sharedOpenPromises.set(key, openPromise);
+  return openPromise;
+}
+
+export async function requestXrplCommand(networkKey, command, options = {}) {
+  const network = getNetwork(networkKey);
+  const key = network.key || networkKey;
+  const socket = await ensureXrplConnection(key);
+  const pending = sharedPending.get(key);
+  if (!pending || socket.readyState !== WebSocket.OPEN) {
+    throw new Error("XRPL websocket is not connected.");
+  }
+
+  const id = sharedNextId++;
+  const timeoutMs = options.timeoutMs || WS_TIMEOUT_MS;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`XRPL request timeout for command: ${command.command || "unknown"}`));
+    }, timeoutMs);
+
+    pending.set(id, { resolve, reject, timeoutId });
+
+    try {
+      socket.send(JSON.stringify({ ...command, id }));
+    } catch (error) {
+      clearTimeout(timeoutId);
+      pending.delete(id);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
+export function addXrplStreamHandler(networkKey, handler) {
+  const key = normalizeNetworkKey(networkKey);
+  if (!sharedStreamHandlers.has(key)) sharedStreamHandlers.set(key, new Set());
+  sharedStreamHandlers.get(key).add(handler);
+}
+
+export function removeXrplStreamHandler(networkKey, handler) {
+  const key = normalizeNetworkKey(networkKey);
+  sharedStreamHandlers.get(key)?.delete(handler);
+}
+
+export function closeXrplConnection(networkKey) {
+  const key = normalizeNetworkKey(networkKey);
+  const socket = sharedSockets.get(key);
+  if (socket && socket.readyState < WebSocket.CLOSING) {
+    socket.close();
+  }
+  rejectPendingRequests(key, "XRPL websocket closed.");
+  sharedPending.delete(key);
+  sharedSockets.delete(key);
+  sharedOpenPromises.delete(key);
 }
 
 function isAccountNotFoundError(error) {
@@ -167,20 +209,6 @@ function decodeHexUri(uri) {
     return new TextDecoder().decode(new Uint8Array(bytes)).replace(/\0/g, "").trim();
   } catch {
     return clean;
-  }
-}
-
-async function withClient(networkKey, callback) {
-  const network = getNetwork(networkKey);
-  const client = new XrplWsClient(network.endpoint);
-
-  await client.connect();
-  try {
-    return await callback(client, network);
-  } finally {
-    if (client.isConnected()) {
-      await client.disconnect();
-    }
   }
 }
 
@@ -250,14 +278,14 @@ function formatOfferAmount(amount) {
   return `${normalized.value} ${normalized.asset}`;
 }
 
-async function fetchNftOfferSummary(client, nftId) {
+async function fetchNftOfferSummary(request, nftId) {
   const [sellResponse, buyResponse] = await Promise.all([
-    client.request({ command: "nft_sell_offers", nft_id: nftId }).catch(() => ({ result: { offers: [] } })),
-    client.request({ command: "nft_buy_offers", nft_id: nftId }).catch(() => ({ result: { offers: [] } }))
+    request({ command: "nft_sell_offers", nft_id: nftId }).catch(() => ({ offers: [] })),
+    request({ command: "nft_buy_offers", nft_id: nftId }).catch(() => ({ offers: [] }))
   ]);
 
-  const sellOffers = sellResponse.result?.offers || [];
-  const buyOffers = buyResponse.result?.offers || [];
+  const sellOffers = sellResponse.offers || [];
+  const buyOffers = buyResponse.offers || [];
 
   return {
     sellOffers: sellOffers.length,
@@ -265,6 +293,25 @@ async function fetchNftOfferSummary(client, nftId) {
     lowestSell: sellOffers[0]?.amount ? formatOfferAmount(sellOffers[0].amount) : "",
     highestBuy: buyOffers[0]?.amount ? formatOfferAmount(buyOffers[0].amount) : ""
   };
+}
+
+export async function fetchNftOfferSummaries(nftsOrIds, networkKey, options = {}) {
+  const limit = Math.max(1, Number(options.limit || 24));
+  const ids = nftsOrIds
+    .map((entry) => typeof entry === "string" ? entry : entry?.nftId || entry?.NFTokenID || "")
+    .filter(Boolean)
+    .slice(0, limit);
+  const request = (command) => requestXrplCommand(networkKey, command, options);
+
+  const entries = await Promise.all(ids.map(async (nftId) => ({
+    nftId,
+    offers: await fetchNftOfferSummary(request, nftId)
+  })));
+
+  return entries.reduce((acc, entry) => {
+    acc[entry.nftId] = entry.offers;
+    return acc;
+  }, {});
 }
 
 function toNumber(value) {
@@ -306,167 +353,233 @@ function buildValueMix(balanceXrp, tokenHoldings) {
   return slices.sort((a, b) => b.percentage - a.percentage).slice(0, 8);
 }
 
-export async function fetchAccountSnapshot(address, networkKey) {
-  return withClient(networkKey, async (client, network) => {
-    const accountInfo = await client.request({
-      command: "account_info",
-      account: address,
-      ledger_index: "validated"
-    }).catch((error) => {
-      if (isAccountNotFoundError(error)) {
-        throw new Error(`No funded XRPL account was found for this address on ${network.label}. Check the selected network or fund the address first.`);
-      }
-      throw error;
-    });
+function normalizeTransactionItem(item = {}) {
+  const txJson = item.tx_json || item.tx || {};
+  const normalizedAmount = normalizeAmount(txJson.Amount);
+  const memoHex = txJson.Memos?.[0]?.Memo?.MemoData;
 
-    const linesResponse = await client.request({
+  return {
+    hash: txJson.hash || item.hash || "Unknown",
+    type: txJson.TransactionType || "Unknown",
+    label: classifyTransaction({ ...item, tx_json: txJson }),
+    date: txJson.date || item.close_time_iso || null,
+    fee: txJson.Fee || "0",
+    sendingAccount: txJson.Account || "-",
+    receivingAccount: txJson.Destination || "-",
+    amount: normalizedAmount.value,
+    asset: normalizedAmount.asset,
+    destinationTag: txJson.DestinationTag ?? null,
+    memo: memoHex || null,
+    validated: Boolean(item.validated),
+    raw: txJson
+  };
+}
+
+function normalizeTokenHolding(line = {}) {
+  return {
+    currency: line.currency || "Unknown",
+    counterparty: line.account || "-",
+    balance: line.balance || "0",
+    limit: line.limit || "0"
+  };
+}
+
+function normalizeNftItem(nft = {}) {
+  return {
+    nftId: nft.NFTokenID,
+    issuer: nft.Issuer || "-",
+    taxon: nft.NFTokenTaxon ?? "-",
+    transferFee: nft.TransferFee ?? "-",
+    uri: decodeHexUri(nft.URI || nft.uri || "")
+  };
+}
+
+export async function fetchAccountTransactionsPage(address, networkKey, options = {}) {
+  const result = await requestXrplCommand(networkKey, {
+    command: "account_tx",
+    account: address,
+    ledger_index_min: -1,
+    ledger_index_max: -1,
+    limit: options.limit || 20,
+    marker: options.marker || undefined,
+    forward: false
+  });
+
+  return {
+    items: (result.transactions || []).map(normalizeTransactionItem),
+    marker: result.marker || null
+  };
+}
+
+export async function fetchAccountLinesPage(address, networkKey, options = {}) {
+  const result = await requestXrplCommand(networkKey, {
+    command: "account_lines",
+    account: address,
+    ledger_index: "validated",
+    limit: options.limit || 200,
+    marker: options.marker || undefined
+  });
+
+  return {
+    items: (result.lines || []).map(normalizeTokenHolding),
+    marker: result.marker || null
+  };
+}
+
+export async function fetchAccountNftsPage(address, networkKey, options = {}) {
+  const result = await requestXrplCommand(networkKey, {
+    command: "account_nfts",
+    account: address,
+    limit: options.limit || 100,
+    marker: options.marker || undefined
+  }).catch(() => ({ account_nfts: [], marker: null }));
+
+  return {
+    items: (result.account_nfts || []).map(normalizeNftItem),
+    marker: result.marker || null
+  };
+}
+
+export async function fetchAccountSnapshot(address, networkKey, options = {}) {
+  const network = getNetwork(networkKey);
+  const includeNftOffers = options.includeNftOffers === true;
+  const request = (command) => requestXrplCommand(network.key, command, options);
+
+  const accountInfo = await request({
+    command: "account_info",
+    account: address,
+    ledger_index: "validated"
+  }).catch((error) => {
+    if (isAccountNotFoundError(error)) {
+      throw new Error(`No funded XRPL account was found for this address on ${network.label}. Check the selected network or fund the address first.`);
+    }
+    throw error;
+  });
+
+  const [
+    linesResponse,
+    txResponse,
+    nftsResponse,
+    gatewayBalancesResponse,
+    accountObjectsResponse,
+    serverInfoResponse
+  ] = await Promise.all([
+    request({
       command: "account_lines",
       account: address,
       ledger_index: "validated",
-      limit: 400
-    });
-
-    const txResponse = await client.request({
+      limit: options.trustLineLimit || 200
+    }),
+    request({
       command: "account_tx",
       account: address,
       ledger_index_min: -1,
       ledger_index_max: -1,
-      limit: 10,
+      limit: options.txLimit || 10,
       forward: false
-    });
-
-    const nftsResponse = await client.request({
+    }),
+    request({
       command: "account_nfts",
       account: address,
-      limit: 100
-    }).catch(() => ({ result: { account_nfts: [] } }));
-
-    const gatewayBalancesResponse = await client.request({
+      limit: options.nftLimit || 100
+    }).catch(() => ({ account_nfts: [], marker: null })),
+    request({
       command: "gateway_balances",
       account: address,
       strict: true
-    }).catch(() => ({ result: { obligations: {} } }));
-
-    const accountObjectsResponse = await client.request({
+    }).catch(() => ({ obligations: {} })),
+    request({
       command: "account_objects",
       account: address,
       ledger_index: "validated",
-      limit: 200
-    }).catch(() => ({ result: { account_objects: [] } }));
+      limit: options.objectLimit || 200
+    }).catch(() => ({ account_objects: [], marker: null })),
+    request({ command: "server_info" }).catch(() => ({ info: {} }))
+  ]);
 
-    const serverInfoResponse = await client.request({
-      command: "server_info"
-    }).catch(() => ({ result: { info: {} } }));
+  const accountData = accountInfo.account_data || {};
+  const balanceDrops = accountData.Balance || "0";
+  const txItems = (txResponse.transactions || []).map(normalizeTransactionItem);
+  const tokenHoldings = (linesResponse.lines || [])
+    .map(normalizeTokenHolding)
+    .sort((a, b) => Math.abs(toNumber(b.balance)) - Math.abs(toNumber(a.balance)));
 
-    const balanceDrops = accountInfo.result.account_data.Balance;
+  const issuedTokenEntries = Object.entries(gatewayBalancesResponse.obligations || {})
+    .map(([currency, amount]) => ({
+      currency,
+      amount: String(amount),
+      issuer: address
+    }))
+    .sort((a, b) => toNumber(b.amount) - toNumber(a.amount));
 
-    const txItems = (txResponse.result.transactions || []).map((item) => {
-      const txJson = item.tx_json || {};
-      const normalizedAmount = normalizeAmount(txJson.Amount);
-      const memoHex = txJson.Memos?.[0]?.Memo?.MemoData;
-
-      return {
-        hash: txJson.hash || "Unknown",
-        type: txJson.TransactionType || "Unknown",
-        label: classifyTransaction(item),
-        date: txJson.date || null,
-        fee: txJson.Fee || "0",
-        sendingAccount: txJson.Account || "-",
-        receivingAccount: txJson.Destination || "-",
-        amount: normalizedAmount.value,
-        asset: normalizedAmount.asset,
-        destinationTag: txJson.DestinationTag ?? null,
-        memo: memoHex || null,
-        validated: Boolean(item.validated),
-        raw: txJson
-      };
+  const nftItems = (nftsResponse.account_nfts || []).map(normalizeNftItem);
+  if (includeNftOffers && nftItems.length) {
+    const offerMap = await fetchNftOfferSummaries(nftItems, network.key, {
+      ...options,
+      limit: options.nftOfferLimit || 12
     });
-
-    const tokenHoldings = (linesResponse.result.lines || [])
-      .map((line) => ({
-        currency: line.currency || "Unknown",
-        counterparty: line.account || "-",
-        balance: line.balance || "0",
-        limit: line.limit || "0"
-      }))
-      .sort((a, b) => Math.abs(toNumber(b.balance)) - Math.abs(toNumber(a.balance)));
-
-    const issuedTokenEntries = Object.entries(gatewayBalancesResponse.result.obligations || {})
-      .map(([currency, amount]) => ({
-        currency,
-        amount: String(amount),
-        issuer: address
-      }))
-      .sort((a, b) => toNumber(b.amount) - toNumber(a.amount));
-
-    const nftItems = (nftsResponse.result.account_nfts || []).map((nft) => ({
-      nftId: nft.NFTokenID,
-      issuer: nft.Issuer || "-",
-      taxon: nft.NFTokenTaxon ?? "-",
-      transferFee: nft.TransferFee ?? "-",
-      uri: decodeHexUri(nft.URI || nft.uri || "")
-    }));
-
-    const nftOfferSummaries = await Promise.all(
-      nftItems.slice(0, 24).map((nft) => fetchNftOfferSummary(client, nft.nftId))
-    );
-
-    nftItems.forEach((nft, index) => {
-      nft.offers = nftOfferSummaries[index] || {
+    nftItems.forEach((nft) => {
+      nft.offers = offerMap[nft.nftId] || {
         sellOffers: 0,
         buyOffers: 0,
         lowestSell: "",
         highestBuy: ""
       };
     });
+  }
 
-    const ammObjects = (accountObjectsResponse.result.account_objects || []).filter((obj) =>
-      String(obj.LedgerEntryType || "").toLowerCase().includes("amm")
-    );
+  const accountObjects = accountObjectsResponse.account_objects || [];
+  const ammObjects = accountObjects.filter((obj) =>
+    String(obj.LedgerEntryType || "").toLowerCase().includes("amm")
+  );
 
-    const ammActivity = txItems.filter((tx) =>
-      ["AMMDeposit", "AMMWithdraw", "AMMVote", "AMMBid", "AMMCreate", "AMMDelete"].includes(tx.type)
-    );
+  const ammActivity = txItems.filter((tx) =>
+    ["AMMDeposit", "AMMWithdraw", "AMMVote", "AMMBid", "AMMCreate", "AMMDelete"].includes(tx.type)
+  );
 
-    const balanceXrp = dropsToXrp(balanceDrops);
-    const reserveBaseDrops = serverInfoResponse.result?.info?.validated_ledger?.reserve_base_xrp
-      ? String(Math.round(Number.parseFloat(serverInfoResponse.result.info.validated_ledger.reserve_base_xrp) * 1000000))
-      : "10000000";
-    const reserveIncDrops = serverInfoResponse.result?.info?.validated_ledger?.reserve_inc_xrp
-      ? String(Math.round(Number.parseFloat(serverInfoResponse.result.info.validated_ledger.reserve_inc_xrp) * 1000000))
-      : "2000000";
-    const ownerReserveDrops = String(
-      toNumber(reserveBaseDrops) + toNumber(reserveIncDrops) * (accountInfo.result.account_data.OwnerCount || 0)
-    );
-    const availableDrops = Math.max(toNumber(balanceDrops) - toNumber(ownerReserveDrops), 0).toString();
-    const valueMix = buildValueMix(balanceXrp, tokenHoldings);
+  const validatedLedger = serverInfoResponse.info?.validated_ledger || {};
+  const balanceXrp = dropsToXrp(balanceDrops);
+  const reserveBaseDrops = validatedLedger.reserve_base_xrp
+    ? String(Math.round(Number.parseFloat(validatedLedger.reserve_base_xrp) * 1000000))
+    : "10000000";
+  const reserveIncDrops = validatedLedger.reserve_inc_xrp
+    ? String(Math.round(Number.parseFloat(validatedLedger.reserve_inc_xrp) * 1000000))
+    : "2000000";
+  const ownerReserveDrops = String(toNumber(reserveBaseDrops) + toNumber(reserveIncDrops) * (accountData.OwnerCount || 0));
+  const availableDrops = Math.max(toNumber(balanceDrops) - toNumber(ownerReserveDrops), 0).toString();
+  const valueMix = buildValueMix(balanceXrp, tokenHoldings);
 
-    return {
-      network,
-      accountExists: true,
-      account: {
-        address,
-        sequence: accountInfo.result.account_data.Sequence,
-        balanceXrp,
-        availableXrp: dropsToXrp(availableDrops),
-        ownerReserveXrp: dropsToXrp(ownerReserveDrops),
-        ownerCount: accountInfo.result.account_data.OwnerCount,
-        flags: accountInfo.result.account_data.Flags,
-        trustLines: linesResponse.result.lines?.length || 0,
-        nftCount: nftsResponse.result.account_nfts?.length || 0,
-        recentActivityCount: txItems.length,
-        accountStatus: accountInfo.result.account_data.AccountTxnID ? "Configured" : "Active"
-      },
-      tokenHoldings,
-      issuedTokenEntries,
-      nftItems,
-      amm: {
-        objectCount: ammObjects.length,
-        recentActivityCount: ammActivity.length,
-        recentActivity: ammActivity
-      },
-      valueMix,
-      txItems
-    };
-  });
+  return {
+    network,
+    accountExists: true,
+    markers: {
+      trustLines: linesResponse.marker || null,
+      transactions: txResponse.marker || null,
+      nfts: nftsResponse.marker || null,
+      objects: accountObjectsResponse.marker || null
+    },
+    account: {
+      address,
+      sequence: accountData.Sequence,
+      balanceXrp,
+      availableXrp: dropsToXrp(availableDrops),
+      ownerReserveXrp: dropsToXrp(ownerReserveDrops),
+      ownerCount: accountData.OwnerCount || 0,
+      flags: accountData.Flags || 0,
+      trustLines: linesResponse.lines?.length || 0,
+      nftCount: nftsResponse.account_nfts?.length || 0,
+      recentActivityCount: txItems.length,
+      accountStatus: accountData.AccountTxnID ? "Configured" : "Active"
+    },
+    tokenHoldings,
+    issuedTokenEntries,
+    nftItems,
+    amm: {
+      objectCount: ammObjects.length,
+      recentActivityCount: ammActivity.length,
+      recentActivity: ammActivity
+    },
+    valueMix,
+    txItems
+  };
 }

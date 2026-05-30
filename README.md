@@ -13,6 +13,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - XRP Market Overview includes live source chips, last-updated time, and a cached fallback so brief API misses do not blank the panel
 - Issued asset and AMM / LP market tables include load-more pagination, watchlist buttons, and risk scoring
 - Account Intelligence monitors connected accounts for wallet health, reserve pressure, security posture, asset exposure, AMM/NFT signals, whale flow, and DEX activity
+- XRPL reads share one persistent WebSocket per network across account snapshots, market metrics, DEX order books, and Account Intelligence streams
 - Xumm/email sign-in appears in a popup overlay instead of replacing the dashboard
 - Email/password profile sign-in through Supabase Auth with email verification
 - Email profiles are profile-only until an XRPL wallet is connected or created
@@ -29,10 +30,12 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - Full transaction history with type classification
 - Token holdings and issued token display
 - NFT viewer with decoded XRPL NFT URI support, IPFS/HTTP metadata lookup, and image thumbnails
+- NFT marketplace offer counts are loaded lazily for the selected and visible NFTs so large collections do not overload the XRPL WebSocket
 - AMM / LP position viewer
 - Account Intelligence page with watched accounts, live XRPL stream filters, account health score, risk alerts, and plain-language event insight
 - Optional market proxy/cache server for XRPL.to, CoinGecko, and token image requests
 - DEX access panel with live order book loading, chart controls, risk/reward analysis, OfferCreate previews, and Xumm/Xaman signing requests
+- Market refresh separates live XRP/network metrics from cached chart history, and token live-price probing is throttled to the visible set plus watchlist
 - Transaction consent modal before any signing flow
 
 ### Mobile experience
@@ -89,7 +92,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 | Layer | Technology |
 |---|---|
 | Frontend | Vanilla HTML + CSS + ES Modules (no build step) |
-| XRPL | WebSocket via `wss://` endpoints — read-only, no keys held |
+| XRPL | Shared WebSocket service via `wss://` endpoints — read-only, no keys held |
 | Signing | Official Xumm SDK sign-in plus Xaman transaction payloads using IkeLedger's public app key (no user API key or private key ever touches this app) |
 | App auth | Supabase Auth for optional email/password profiles; Xumm/Xaman for wallet-backed profile sign-in |
 | Storage | `localStorage` for local session, public wallet address, profile, appearance |
@@ -117,7 +120,7 @@ ikeledger/
     ikeledger-config.js           — Networks, storage keys, constants
     ikeledger-ui.js               — All rendering, state, and event handlers
     ikeledger-wallet.js           — Wallet state, address, profile, session
-    ikeledger-xrpl.js             — WebSocket XRPL client, account snapshot
+    ikeledger-xrpl.js             — Shared XRPL WebSocket service, account snapshots, pagination helpers
     ikeledger-keygen.js           — In-browser XRPL keypair generation (no deps)
     ikeledger-security.js         — Risk levels, event log, input screening
     ikeledger-rewards.js          — Mana and learning reward calculations
