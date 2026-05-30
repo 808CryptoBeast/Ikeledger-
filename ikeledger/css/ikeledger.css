@@ -5244,9 +5244,193 @@ button.ghost:hover {
   display: none;
 }
 
+.amm-tools-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgba(70, 188, 255, 0.24);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(70, 188, 255, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 14%, rgba(233, 199, 122, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(4, 10, 26, 0.96), rgba(8, 18, 42, 0.86));
+}
+
+.amm-tools-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0.08), transparent 18%, transparent 70%, rgba(70, 188, 255, 0.08)),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08), transparent 32%);
+  pointer-events: none;
+}
+
+.amm-tools-card .section-top {
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.amm-tool-input-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(120px, 1fr));
+  gap: 0.66rem;
+  margin-bottom: 0.82rem;
+}
+
+.amm-tool-input-grid label {
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.amm-tool-input-grid input,
+.amm-tool-input-grid select {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 0.28rem;
+  border: 1px solid rgba(116, 202, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(3, 8, 22, 0.82);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.amm-tool-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.58rem;
+  margin-bottom: 0.72rem;
+}
+
+.amm-tool-kpi-grid > div,
+.amm-tool-selected-pool,
+.amm-alert-empty,
+.amm-alert-item {
+  border: 1px solid rgba(116, 202, 255, 0.16);
+  border-radius: 15px;
+  background: rgba(3, 8, 22, 0.68);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.amm-tool-kpi-grid > div {
+  min-height: 96px;
+  padding: 0.62rem;
+}
+
+.amm-tool-kpi-grid span,
+.amm-tool-kpi-grid strong,
+.amm-tool-kpi-grid em {
+  display: block;
+}
+
+.amm-tool-kpi-grid span {
+  color: var(--mana-gold);
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.amm-tool-kpi-grid strong {
+  margin: 0.24rem 0 0.16rem;
+  color: var(--ink);
+  font-size: clamp(0.92rem, 1.6vw, 1.12rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.amm-tool-kpi-grid em {
+  color: var(--ink-2);
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.32;
+}
+
+.amm-tool-selected-pool {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.68rem;
+  padding: 0.68rem;
+}
+
+.amm-tool-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.38rem;
+}
+
+.amm-alert-list {
+  margin-top: 0.78rem;
+}
+
+.amm-alert-list .section-top.compact {
+  margin-bottom: 0.52rem;
+}
+
+.amm-alert-list h4 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.amm-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.58rem;
+}
+
+.amm-alert-item,
+.amm-alert-empty {
+  padding: 0.68rem;
+}
+
+.amm-alert-item strong,
+.amm-alert-item p,
+.amm-alert-empty strong,
+.amm-alert-empty p {
+  display: block;
+  margin: 0;
+}
+
+.amm-alert-item strong,
+.amm-alert-empty strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.amm-alert-item p,
+.amm-alert-empty p {
+  margin-top: 0.22rem;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.amm-alert-item.warning {
+  border-color: rgba(255, 212, 137, 0.34);
+}
+
+.amm-alert-item.danger {
+  border-color: rgba(255, 127, 127, 0.34);
+}
+
+.amm-alert-item.medium {
+  border-color: rgba(70, 188, 255, 0.28);
+}
+
 @media (max-width: 980px) {
   .amm-signal-grid,
-  .amm-accordion-grid {
+  .amm-accordion-grid,
+  .amm-tool-kpi-grid,
+  .amm-alert-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .amm-tool-input-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -5308,8 +5492,16 @@ button.ghost:hover {
 
   .amm-do-dont-grid,
   .amm-signal-grid,
-  .amm-accordion-grid {
+  .amm-accordion-grid,
+  .amm-tool-input-grid,
+  .amm-tool-kpi-grid,
+  .amm-alert-grid,
+  .amm-tool-selected-pool {
     grid-template-columns: 1fr;
+  }
+
+  .amm-tool-badge-row {
+    justify-content: flex-start;
   }
 }
 /* AMM Background And Token Logo Polish */
