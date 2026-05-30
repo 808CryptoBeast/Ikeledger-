@@ -8,11 +8,11 @@ All features below are implemented and functional in the current codebase.
 
 | Page | Status | Notes |
 |---|---|---|
-| Command Center (dashboard) | Complete | XRPL network, XRP market, AMM, liquidity, security, and account overview; sign-in opens as an overlay |
+| Command Center (dashboard) | Complete | XRPL network, XRP market, AMM, liquidity, account overview, and Web3 Safety Basics guide; sign-in opens as an overlay |
 | Wallet Status | Complete | Account overview, reserve system info, connection mode |
 | Tokens | Complete | Wallet holdings plus top issued asset tables with stats, watchlists, load-more controls, and risk scoring |
 | NFTs & Listings | Complete | Combined NFT viewer and listings page with decoded NFT URI, IPFS/HTTP metadata lookup, image thumbnails, and offer details |
-| DEX Access | Complete | Live order book, trading ticket, chart controls, risk/reward analysis, and Xumm/Xaman OfferCreate signing |
+| DEX Access | Complete | XRP/native charting, issued-token lookup, live order book, trading ticket, TradingView-style indicators, risk/reward analysis, market intelligence, and Xumm/Xaman OfferCreate signing |
 | AMM / LP | Complete | Position viewer, top AMM / LP pool table, watchlists, and risk notice |
 | Activity | Complete | Transaction history, raw JSON toggle |
 | Account Intelligence | Complete | Watched accounts, live XRPL stream filters, health score, reserve/security/asset/AMM/NFT/market signals, and risk alerts |
@@ -62,6 +62,7 @@ All features below are implemented and functional in the current codebase.
 - XRP chart points are cached per timeframe for five minutes unless the user changes timeframe
 - Top issued assets load up to 200 ranked items, then live XRPL price probing is limited to visible rows plus watched tokens
 - Token logos prefer XRPScan/xrplmeta sources because several XRPL.to image URLs block third-party hotlinking
+- DEX chart candles use a layered fallback: XRPL.to OHLC by token `md5`, XRPL.to trade history aggregated into candles, Sologenic OHLC, CoinGecko converted against XRP/USD, then XRPL AMM/order-book spot
 
 **ikeledger-wallet.js** — Wallet state
 - `hydrateWalletState()` — restore from localStorage on boot

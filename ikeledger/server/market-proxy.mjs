@@ -6,7 +6,10 @@ const IMAGE_CACHE_MS = Number(process.env.IMAGE_CACHE_MS || 6 * 60 * 60 * 1000);
 const ALLOWED_HOSTS = new Set([
   "api.xrpl.to",
   "www.xrpl.to",
+  "api.xrpscan.com",
   "api.coingecko.com",
+  "api.kraken.com",
+  "api.sologenic.org",
   "ipfs.io",
   "arweave.net",
   "ipfs.firstledger.net"

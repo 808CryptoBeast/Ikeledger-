@@ -52,7 +52,9 @@ const MARKET_LIVE_CACHE_MS = 15 * 1000;
 const MARKET_CHART_CACHE_MS = 5 * 60 * 1000;
 const TOP_ISSUED_ASSETS_BASE_URL = "https://api.xrpl.to/v1/tokens?sortBy=marketcap&sortType=desc";
 const TOP_AMM_POOLS_URL          = `https://api.xrpl.to/v1/tokens?sortBy=tvl&sortType=desc&limit=${MARKET_PAGE_SIZE}`;
-const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v5";
+const XRPL_TO_OHLC_BASE_URL = "https://api.xrpl.to/v1/ohlc";
+const XRPL_TO_HISTORY_BASE_URL = "https://api.xrpl.to/v1/history";
+const TOP_ISSUED_ASSETS_CACHE_KEY = "ike_top_issued_assets_v6";
 const XRPSCAN_TOKENS_URL   = "https://api.xrpscan.com/api/v1/tokens?limit=500";
 const XRPSCAN_CACHE_KEY    = "ike_xrpscan_tokens_v2";
 const XRPSCAN_CACHE_MS     = 5 * 60 * 1000;
@@ -126,6 +128,10 @@ const state = {
     takeProfit: "",
     latestTx: null,
     signing: false,
+    customTokens: [],
+    lookupResults: [],
+    lookupLoading: false,
+    lookupStatus: "",
     orderBook: {
       loading: false,
       error: "",
@@ -138,12 +144,13 @@ const state = {
       loading: false,
       error: "",
       label: "",
+      source: "",
       tokenId: "",
       cacheKey: "",
       fetchedAt: 0,
       timeframe: "1D",
       chartType: "candle",
-      indicators: { ma20: true, ma50: true, ema20: false, bb: false, volume: true, rsi: false }
+      indicators: { ma20: true, ma50: true, ema20: false, vwap: false, bb: false, volume: true, rsi: false, macd: false }
     }
   },
   tracker: {
@@ -222,6 +229,9 @@ const refs = {
   nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
   dexPagePanel: document.getElementById("dexPagePanel"),
   dexAccessBadge: document.getElementById("dexAccessBadge"),
+  dexLookupInput: document.getElementById("dexLookupInput"),
+  dexLookupButton: document.getElementById("dexLookupButton"),
+  dexLookupResults: document.getElementById("dexLookupResults"),
   dexAssetSelect: document.getElementById("dexAssetSelect"),
   dexSideSelect: document.getElementById("dexSideSelect"),
   dexCurrencyInput: document.getElementById("dexCurrencyInput"),
@@ -241,6 +251,7 @@ const refs = {
   dexOrderBookPanel: document.getElementById("dexOrderBookPanel"),
   dexAnalysisChart: document.getElementById("dexAnalysisChart"),
   dexRiskRewardPanel: document.getElementById("dexRiskRewardPanel"),
+  dexInsightPanel: document.getElementById("dexInsightPanel"),
   dexExecutionPlanPanel: document.getElementById("dexExecutionPlanPanel"),
   dexSafetyPanel: document.getElementById("dexSafetyPanel"),
   ammPagePanel: document.getElementById("ammPagePanel"),
@@ -2703,8 +2714,8 @@ function normalizeIssuedAssetMarketToken(token = {}, index = 0) {
     rawCurrency: token.currency || currency,
     issuer,
     id,
-    priceXrp: toFiniteNumber(token.usd ?? token.exch, Number.NaN),   // xrpl.to "usd" is actually XRP price
-    priceUsd: toFiniteNumber(token.usd ?? token.exch, Number.NaN),
+    priceXrp: toFiniteNumber(token.exch ?? token.xrp ?? token.priceXrp, Number.NaN),
+    priceUsd: toFiniteNumber(token.usd ?? token.priceUsd, Number.NaN),
     change5m:  toFiniteNumber(token.pro5m  ?? token.p5m,  Number.NaN),
     change1h:  toFiniteNumber(token.pro1h  ?? token.p1h,  Number.NaN),
     change24h: toFiniteNumber(token.pro24h ?? token.p24h, Number.NaN),
@@ -4352,14 +4363,47 @@ function decimalString(n, decimals = 6) {
   return Number.isFinite(n) ? n.toFixed(decimals).replace(/\.?0+$/, "") || "0" : "0";
 }
 
+function dexTokenKey(token = {}) {
+  return watchKey([token.rawCurrency || token.currency, token.issuer]).toLowerCase();
+}
+
 function dexTokenOptions() {
-  return state.topIssuedAssets.items.slice(0, 50);
+  const seen = new Set();
+  return [...state.dex.customTokens, ...state.topIssuedAssets.items].filter((token) => {
+    const key = dexTokenKey(token);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 250);
 }
 
 function getDexSelectedToken() {
   const id = state.dex.selectedTokenId;
   if (!id) return null;
   return dexTokenOptions().find((t) => t.id === id) || null;
+}
+
+function getDexManualTokenFromInputs() {
+  const currencyValue = refs.dexCurrencyInput?.value.trim() || state.dex.currency || "";
+  const issuer = refs.dexIssuerInput?.value.trim() || state.dex.issuer || "";
+  if (!currencyValue || !XRPL_ADDRESS_PATTERN.test(issuer)) return null;
+  const rawCurrency = /^[A-Fa-f0-9]{40}$/.test(currencyValue)
+    ? currencyValue
+    : state.dex.rawCurrency || currencyValue;
+  const currency = decodeCurrencyCode(currencyValue);
+  return {
+    id: watchKey([rawCurrency, issuer, "manual-chart"]),
+    symbol: currency,
+    currency,
+    rawCurrency,
+    issuer,
+    source: "Manual XRPL asset",
+    tags: ["manual"]
+  };
+}
+
+function getDexChartToken() {
+  return getDexSelectedToken() || getDexManualTokenFromInputs();
 }
 
 function populateDexAssetSelect() {
@@ -4377,6 +4421,25 @@ function populateDexAssetSelect() {
   if (current) refs.dexAssetSelect.value = current;
 }
 
+function mergeDexToken(token) {
+  if (!token?.issuer || !(token.rawCurrency || token.currency)) return null;
+  const normalized = {
+    ...token,
+    id: token.id || watchKey([token.rawCurrency || token.currency, token.issuer, "manual"]),
+    symbol: token.symbol || token.currency || "Issued Asset",
+    currency: decodeCurrencyCode(token.currency || token.rawCurrency || ""),
+    rawCurrency: token.rawCurrency || token.currency,
+    issuer: token.issuer
+  };
+  const key = dexTokenKey(normalized);
+  const existing = dexTokenOptions().find((item) => dexTokenKey(item) === key);
+  if (existing) return existing;
+  state.dex.customTokens.unshift(normalized);
+  state.dex.customTokens = state.dex.customTokens.slice(0, 25);
+  populateDexAssetSelect();
+  return normalized;
+}
+
 function applyDexToken(token) {
   if (!token) {
     state.dex.currency = "";
@@ -4391,6 +4454,245 @@ function applyDexToken(token) {
   state.dex.issuer      = token.issuer;
   if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = token.currency;
   if (refs.dexIssuerInput) refs.dexIssuerInput.value = token.issuer;
+}
+
+function selectNativeXrpDexChart() {
+  state.dex.selectedTokenId = "";
+  state.dex.currency = "";
+  state.dex.rawCurrency = "";
+  state.dex.issuer = "";
+  state.dex.latestTx = null;
+  state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
+  if (refs.dexAssetSelect) refs.dexAssetSelect.value = "";
+  if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = "";
+  if (refs.dexIssuerInput) refs.dexIssuerInput.value = "";
+  setDexTicketStatus("Showing native XRP / USD chart. Select or enter an issued asset to build XRPL DEX offers.");
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+  renderDexTxPreview(null);
+  renderDexInsightPanel();
+  void loadDexChart(true);
+}
+
+function selectDexToken(token, options = {}) {
+  const merged = mergeDexToken(token);
+  if (!merged) return;
+  state.dex.selectedTokenId = merged.id;
+  applyDexToken(merged);
+  if (refs.dexAssetSelect) refs.dexAssetSelect.value = merged.id;
+  state.dex.latestTx = null;
+  state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
+  renderDexTxPreview(null);
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+  renderDexLookupResults();
+  renderDexInsightPanel();
+  if (options.status !== false) {
+    setDexTicketStatus(`${merged.symbol || merged.currency} loaded. Refreshing chart and order book.`);
+  }
+  void loadDexChart(true);
+  void loadDexOrderBook(true);
+}
+
+function walletDexTokenCandidates() {
+  const walletState = getWalletState();
+  return (walletState.snapshot?.tokenHoldings || []).map((token, index) => {
+    const rawCurrency = token.currency || "";
+    const currency = decodeCurrencyCode(rawCurrency);
+    const issuer = token.counterparty || "";
+    return {
+      rank: index + 1,
+      symbol: currency,
+      currency,
+      rawCurrency,
+      issuer,
+      id: watchKey([rawCurrency, issuer, "wallet"]),
+      priceXrp: Number.NaN,
+      priceUsd: Number.NaN,
+      change24h: Number.NaN,
+      marketCap: Number.NaN,
+      holders: Number.NaN,
+      trustlines: Number.NaN,
+      volume24h: Number.NaN,
+      verified: false,
+      logoUrl: "",
+      source: "Wallet trust line",
+      tags: ["wallet"]
+    };
+  });
+}
+
+function allDexLookupCandidates() {
+  const seen = new Set();
+  return [...dexTokenOptions(), ...walletDexTokenCandidates()].filter((token) => {
+    const key = dexTokenKey(token);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseManualDexTokenQuery(query) {
+  const clean = String(query || "").trim();
+  if (!clean || /^xrp$/i.test(clean)) return null;
+  const parts = clean
+    .replace(/[|,:/]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const issuer = parts.find((part) => XRPL_ADDRESS_PATTERN.test(part));
+  const currency = parts.find((part) => part !== issuer && (/^[A-Za-z0-9]{3,20}$/.test(part) || /^[A-Fa-f0-9]{40}$/.test(part)));
+  if (!issuer || !currency) return null;
+
+  const decoded = decodeCurrencyCode(currency);
+  return {
+    id: watchKey([currency, issuer, "manual"]),
+    symbol: decoded,
+    currency: decoded,
+    rawCurrency: currency,
+    issuer,
+    priceXrp: Number.NaN,
+    priceUsd: Number.NaN,
+    change24h: Number.NaN,
+    marketCap: Number.NaN,
+    holders: Number.NaN,
+    trustlines: Number.NaN,
+    volume24h: Number.NaN,
+    verified: false,
+    logoUrl: "",
+    source: "Manual XRPL asset",
+    tags: ["manual"]
+  };
+}
+
+function tokenMatchesDexQuery(token, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const fields = [
+    token.symbol,
+    token.currency,
+    token.rawCurrency,
+    token.issuer,
+    token.source,
+    token.slug,
+    ...(Array.isArray(token.tags) ? token.tags : [])
+  ].map((value) => String(value || "").toLowerCase());
+  return fields.some((value) => value.includes(q));
+}
+
+function dexLookupResultCard(result, index) {
+  if (result.native) {
+    return `
+      <button class="dex-lookup-card is-native" type="button" data-dex-lookup-native="xrp">
+        <span class="dex-lookup-rank">XRP</span>
+        <span><strong>XRP / USD</strong><small>Native asset - chart only, no issuer</small></span>
+        <span class="mode-pill">Native</span>
+      </button>
+    `;
+  }
+
+  const token = result.token || result;
+  const risk = scoreIssuedAssetRisk(token);
+  const price = Number.isFinite(token.priceXrp) ? `${escapeHtml(formatXrpAmount(token.priceXrp))} XRP` : "Price pending";
+  return `
+    <button class="dex-lookup-card" type="button" data-dex-lookup-index="${index}">
+      ${tokenLogoMarkup(token, token.symbol || token.currency)}
+      <span>
+        <strong>${escapeHtml(token.symbol || token.currency || "Issued Asset")}</strong>
+        <small>${escapeHtml(token.source || formatAddress(token.issuer))}</small>
+      </span>
+      <span class="dex-lookup-meta">
+        <b>${price}</b>
+        <em>${escapeHtml(risk.level)}</em>
+      </span>
+    </button>
+  `;
+}
+
+function renderDexLookupResults() {
+  if (!refs.dexLookupResults) return;
+  if (state.dex.lookupLoading) {
+    refs.dexLookupResults.innerHTML = `<p class="muted">Searching XRPL token sources...</p>`;
+    return;
+  }
+
+  const results = state.dex.lookupResults || [];
+  if (!results.length) {
+    refs.dexLookupResults.innerHTML = state.dex.lookupStatus
+      ? `<p class="muted">${escapeHtml(state.dex.lookupStatus)}</p>`
+      : `<p class="muted">Search XRP, a ticker, issuer, or paste "currency issuer" to load any issued XRPL asset.</p>`;
+    return;
+  }
+
+  refs.dexLookupResults.innerHTML = results.map((result, index) => dexLookupResultCard(result, index)).join("");
+  refs.dexLookupResults.querySelectorAll("[data-dex-lookup-native]").forEach((button) => {
+    button.addEventListener("click", selectNativeXrpDexChart);
+  });
+  refs.dexLookupResults.querySelectorAll("[data-dex-lookup-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const result = state.dex.lookupResults[Number(button.dataset.dexLookupIndex || "-1")];
+      if (result?.token) selectDexToken(result.token);
+    });
+  });
+}
+
+async function fetchXrpScanDexLookup(query) {
+  try {
+    const data = await fetchMarketJson(XRPSCAN_TOKENS_URL);
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeXRPScanToken)
+      .filter((token) => tokenMatchesDexQuery(token, query))
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+async function onDexLookup() {
+  const query = refs.dexLookupInput?.value.trim() || "";
+  const lowered = query.toLowerCase();
+
+  if (!query || lowered === "xrp" || lowered === "native") {
+    state.dex.lookupResults = [
+      { native: true },
+      ...allDexLookupCandidates().slice(0, 8).map((token) => ({ token }))
+    ];
+    state.dex.lookupStatus = "";
+    renderDexLookupResults();
+    if (lowered === "xrp" || lowered === "native") selectNativeXrpDexChart();
+    return;
+  }
+
+  state.dex.lookupLoading = true;
+  state.dex.lookupStatus = "";
+  renderDexLookupResults();
+
+  const localMatches = allDexLookupCandidates()
+    .filter((token) => tokenMatchesDexQuery(token, query))
+    .slice(0, 14);
+  const manual = parseManualDexTokenQuery(query);
+  const xrpScanMatches = await fetchXrpScanDexLookup(query);
+
+  const seen = new Set();
+  const tokenResults = [
+    ...(manual ? [manual] : []),
+    ...localMatches,
+    ...xrpScanMatches
+  ].filter((token) => {
+    const key = dexTokenKey(token);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 18);
+
+  state.dex.lookupResults = tokenResults.map((token) => ({ token }));
+  state.dex.lookupLoading = false;
+  state.dex.lookupStatus = tokenResults.length
+    ? ""
+    : "No token found. Paste a currency and issuer address to load a custom XRPL asset.";
+  renderDexLookupResults();
 }
 
 function syncDexStateFromInputs() {
@@ -4713,6 +5015,60 @@ function chartRsi(closes, n = 14) {
   return out;
 }
 
+function chartVwap(candles = []) {
+  let cumulativePriceVolume = 0;
+  let cumulativeVolume = 0;
+  return candles.map((candle) => {
+    const typical = (candle.h + candle.l + candle.c) / 3;
+    const volume = candle.v > 0 ? candle.v : 1;
+    cumulativePriceVolume += typical * volume;
+    cumulativeVolume += volume;
+    return cumulativeVolume > 0 ? cumulativePriceVolume / cumulativeVolume : NaN;
+  });
+}
+
+function chartMacd(closes, fast = 12, slow = 26, signal = 9) {
+  const fastEma = chartEma(closes, fast);
+  const slowEma = chartEma(closes, slow);
+  const line = closes.map((_, i) =>
+    Number.isFinite(fastEma[i]) && Number.isFinite(slowEma[i]) ? fastEma[i] - slowEma[i] : NaN
+  );
+  const signalLine = chartEma(line, signal);
+  const histogram = line.map((value, i) =>
+    Number.isFinite(value) && Number.isFinite(signalLine[i]) ? value - signalLine[i] : NaN
+  );
+  return { line, signal: signalLine, histogram };
+}
+
+function chartAtr(candles = [], n = 14) {
+  const ranges = candles.map((candle, i) => {
+    const prevClose = i > 0 ? candles[i - 1].c : candle.c;
+    return Math.max(
+      candle.h - candle.l,
+      Math.abs(candle.h - prevClose),
+      Math.abs(candle.l - prevClose)
+    );
+  });
+  return chartSma(ranges, n);
+}
+
+function chartStoch(candles = [], n = 14) {
+  return candles.map((candle, i) => {
+    if (i < n - 1) return NaN;
+    const window = candles.slice(i - n + 1, i + 1);
+    const high = Math.max(...window.map((item) => item.h).filter(Number.isFinite));
+    const low = Math.min(...window.map((item) => item.l).filter(Number.isFinite));
+    if (!Number.isFinite(high) || !Number.isFinite(low) || high === low) return NaN;
+    return ((candle.c - low) / (high - low)) * 100;
+  });
+}
+
+function pctDistance(value, base) {
+  return Number.isFinite(value) && Number.isFinite(base) && base !== 0
+    ? ((value - base) / base) * 100
+    : Number.NaN;
+}
+
 // ── Trading chart — data fetching ─────────────────────────────────
 
 function dexTfParams(tf) {
@@ -4723,6 +5079,170 @@ function dexTfParams(tf) {
   if (tf === "4H")  return { krakenInterval: 240,   xrplPeriod: "4h",  limit: 500 };  // ~80 days
   if (tf === "1W")  return { krakenInterval: 10080, xrplPeriod: "1w",  limit: 200 };  // ~4 years
   return                   { krakenInterval: 1440,  xrplPeriod: "1d",  limit: 730 };  // 1D: ~2 years
+}
+
+function xrplToOhlcParams(tf) {
+  if (tf === "5M")  return { interval: "5m",  limit: 500, aggregateMs: 0 };
+  if (tf === "15M") return { interval: "15m", limit: 500, aggregateMs: 0 };
+  if (tf === "1H")  return { interval: "1h",  limit: 720, aggregateMs: 0 };
+  if (tf === "4H")  return { interval: "4h",  limit: 500, aggregateMs: 0 };
+  if (tf === "1W")  return { interval: "1d",  limit: 730, aggregateMs: 7 * 86_400_000 };
+  return                   { interval: "1d",  limit: 730, aggregateMs: 0 };
+}
+
+function tokenXrplToMd5(token = {}) {
+  const md5 = String(token.md5 || token._id || "").trim();
+  if (/^[a-f0-9]{32}$/i.test(md5)) return md5;
+  const id = String(token.id || "").trim();
+  return /^[a-f0-9]{32}$/i.test(id) ? id : "";
+}
+
+async function resolveXrplToTokenMetadata(token = {}) {
+  const existingMd5 = tokenXrplToMd5(token);
+  if (existingMd5) return token;
+
+  const issuer = String(token.issuer || "").trim();
+  const rawCurrency = String(token.rawCurrency || token.currency || "").trim();
+  if (!issuer || !rawCurrency) return token;
+
+  const slug = token.slug || `${issuer}-${rawCurrency}`;
+  try {
+    const data = await fetchMarketJson(`https://api.xrpl.to/v1/token/${encodeURIComponent(slug)}`);
+    const raw = data?.token || data;
+    if (!raw?.md5) return token;
+    const normalized = normalizeIssuedAssetMarketToken(raw);
+    const key = dexTokenKey(normalized);
+    const existing = state.dex.customTokens.findIndex((item) => dexTokenKey(item) === key);
+    if (existing >= 0) state.dex.customTokens[existing] = { ...state.dex.customTokens[existing], ...normalized };
+    else state.dex.customTokens.unshift(normalized);
+    state.dex.customTokens = state.dex.customTokens.slice(0, 25);
+    populateDexAssetSelect();
+    if (state.dex.selectedTokenId === token.id) state.dex.selectedTokenId = normalized.id;
+    return { ...token, ...normalized };
+  } catch {
+    return token;
+  }
+}
+
+function normalizeOhlcRows(rows = []) {
+  return rows
+    .filter((row) => Array.isArray(row) && row.length >= 5)
+    .map(([t, o, h, l, c, v = 0]) => ({
+      t: Number(t) || 0,
+      o: Number(o) || 0,
+      h: Number(h) || 0,
+      l: Number(l) || 0,
+      c: Number(c) || 0,
+      v: Number(v) || 0
+    }))
+    .filter((candle) => candle.t > 0 && candle.c > 0 && candle.h > 0 && candle.l > 0)
+    .sort((a, b) => a.t - b.t);
+}
+
+function aggregateCandles(candles = [], bucketMs = 0) {
+  if (!bucketMs || candles.length <= 1) return candles;
+  const buckets = new Map();
+  candles.forEach((candle) => {
+    const bucket = Math.floor(candle.t / bucketMs) * bucketMs;
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { t: bucket, o: candle.o, h: candle.h, l: candle.l, c: candle.c, v: candle.v });
+      return;
+    }
+    current.h = Math.max(current.h, candle.h);
+    current.l = Math.min(current.l, candle.l);
+    current.c = candle.c;
+    current.v += candle.v || 0;
+  });
+  return [...buckets.values()].sort((a, b) => a.t - b.t);
+}
+
+async function fetchXrplToOhlc(token, tf) {
+  const resolvedToken = await resolveXrplToTokenMetadata(token);
+  const md5 = tokenXrplToMd5(resolvedToken);
+  if (!md5) return [];
+  const { interval, limit, aggregateMs } = xrplToOhlcParams(tf);
+  const url = `${XRPL_TO_OHLC_BASE_URL}/${encodeURIComponent(md5)}?interval=${encodeURIComponent(interval)}&limit=${limit}`;
+  const data = await fetchMarketJson(url);
+  const rows = Array.isArray(data?.ohlc) ? data.ohlc : Array.isArray(data) ? data : [];
+  return aggregateCandles(normalizeOhlcRows(rows), aggregateMs);
+}
+
+function tradeAssetValue(asset = {}) {
+  return toFiniteNumber(asset.value ?? asset.amount, Number.NaN);
+}
+
+function tradeAssetIsXrp(asset = {}) {
+  return String(asset.currency || "").toUpperCase() === "XRP";
+}
+
+function tradeAssetMatchesToken(asset = {}, token = {}) {
+  const assetCurrency = String(asset.currency || "").trim();
+  const tokenRaw = String(token.rawCurrency || token.currency || "").trim();
+  const tokenDecoded = decodeCurrencyCode(tokenRaw);
+  return String(asset.issuer || "") === String(token.issuer || "")
+    && (assetCurrency === tokenRaw || decodeCurrencyCode(assetCurrency) === tokenDecoded);
+}
+
+function historyTradeToPoint(trade = {}, token = {}) {
+  const paid = trade.paid || {};
+  const got = trade.got || {};
+  const time = toFiniteNumber(trade.time, 0);
+  if (!time) return null;
+
+  let price = Number.NaN;
+  let tokenVolume = Number.NaN;
+  if (tradeAssetMatchesToken(got, token) && tradeAssetIsXrp(paid)) {
+    const xrp = tradeAssetValue(paid);
+    const tok = tradeAssetValue(got);
+    if (xrp > 0 && tok > 0) {
+      price = xrp / tok;
+      tokenVolume = tok;
+    }
+  } else if (tradeAssetMatchesToken(paid, token) && tradeAssetIsXrp(got)) {
+    const xrp = tradeAssetValue(got);
+    const tok = tradeAssetValue(paid);
+    if (xrp > 0 && tok > 0) {
+      price = xrp / tok;
+      tokenVolume = tok;
+    }
+  }
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return { t: time, price, volume: Number.isFinite(tokenVolume) ? tokenVolume : 0 };
+}
+
+function tradePointsToCandles(points = [], tf = "1D") {
+  const bucketMs = tf === "5M" ? 5 * 60_000
+    : tf === "15M" ? 15 * 60_000
+    : tf === "1H" ? 60 * 60_000
+    : tf === "4H" ? 4 * 60 * 60_000
+    : tf === "1W" ? 7 * 86_400_000
+    : 86_400_000;
+  const buckets = new Map();
+  points.sort((a, b) => a.t - b.t).forEach((point) => {
+    const bucket = Math.floor(point.t / bucketMs) * bucketMs;
+    const candle = buckets.get(bucket);
+    if (!candle) {
+      buckets.set(bucket, { t: bucket, o: point.price, h: point.price, l: point.price, c: point.price, v: point.volume || 0 });
+      return;
+    }
+    candle.h = Math.max(candle.h, point.price);
+    candle.l = Math.min(candle.l, point.price);
+    candle.c = point.price;
+    candle.v += point.volume || 0;
+  });
+  return [...buckets.values()].sort((a, b) => a.t - b.t);
+}
+
+async function fetchXrplToHistoryCandles(token, tf) {
+  const resolvedToken = await resolveXrplToTokenMetadata(token);
+  const md5 = tokenXrplToMd5(resolvedToken);
+  if (!md5) return [];
+  const url = `${XRPL_TO_HISTORY_BASE_URL}?md5=${encodeURIComponent(md5)}&limit=500`;
+  const data = await fetchMarketJson(url);
+  const trades = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+  const points = trades.map((trade) => historyTradeToPoint(trade, token)).filter(Boolean);
+  return tradePointsToCandles(points, tf);
 }
 
 // ── Sologenic DEX OHLCV helpers ──────────────────────────────────
@@ -4769,19 +5289,31 @@ async function fetchDexChartData(token, tf = "1D") {
     // XRP/USD — Kraken public API (CORS-friendly, XRP is native so not on xrpl.to)
     const candles = await fetchKrakenXrpOhlcv(krakenInterval, limit);
     if (!candles.length) throw new Error("No XRP/USD data from Kraken.");
-    return { candles, label: `XRP / USD — ${tf}` };
+    return { candles, label: `XRP / USD — ${tf} · Kraken`, source: "Kraken XRP/USD" };
   }
 
   const { symbol, currency } = token;
   const chartLabel = `${symbol || currency} / XRP — ${tf}`;
 
-  // Source 1 — Sologenic DEX OHLCV (XRPL-native prices in XRP, no rate limits)
+  // Source 1 — XRPL.to indexed OHLCV by token md5. This is the broadest XRPL-native chart source.
   try {
-    const candles = await fetchSologenicOhlcv(token, tf);
-    if (candles.length) return { candles, label: chartLabel };
+    const candles = await fetchXrplToOhlc(token, tf);
+    if (candles.length) return { candles, label: `${chartLabel} · XRPL.to OHLC`, source: "XRPL.to OHLC" };
   } catch { /* fall through */ }
 
-  // Source 2 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
+  // Source 2 — XRPL.to trade history, aggregated locally into candles.
+  try {
+    const candles = await fetchXrplToHistoryCandles(token, tf);
+    if (candles.length) return { candles, label: `${chartLabel} · XRPL.to trades`, source: "XRPL.to history" };
+  } catch { /* fall through */ }
+
+  // Source 3 — Sologenic DEX OHLCV (XRPL-native prices in XRP)
+  try {
+    const candles = await fetchSologenicOhlcv(token, tf);
+    if (candles.length) return { candles, label: `${chartLabel} · Sologenic`, source: "Sologenic OHLC" };
+  } catch { /* fall through */ }
+
+  // Source 4 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
   const cgSymbol = symbol || currency;
   if (cgSymbol) {
     try {
@@ -4818,12 +5350,13 @@ async function fetchDexChartData(token, tf = "1D") {
                   if (!xrp || xrp <= 0) return null;
                   return { t: c.t, o: c.o / xrp, h: c.h / xrp, l: c.l / xrp, c: c.c / xrp, v: c.v };
                 }).filter(Boolean);
-                if (converted.length) return { candles: converted, label: chartLabel };
+                if (converted.length) return { candles: converted, label: `${chartLabel} · CoinGecko converted`, source: "CoinGecko + Kraken" };
               }
             } catch { /* fall through: show USD */ }
             return {
               candles: usdCandles,
-              label: `${symbol || currency} / USD — ${tf}`
+              label: `${symbol || currency} / USD — ${tf} · CoinGecko`,
+              source: "CoinGecko USD"
             };
           }
         }
@@ -4831,13 +5364,14 @@ async function fetchDexChartData(token, tf = "1D") {
     } catch { /* try live price fallback */ }
   }
 
-  // Source 3 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
+  // Source 5 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
   const livePrice = await fetchTokenSpotFromXrpl(token);
   if (livePrice > 0) {
     const now = Date.now();
     return {
       candles: [{ t: now, o: livePrice, h: livePrice, l: livePrice, c: livePrice, v: 0 }],
-      label: `${chartLabel} · live only`
+      label: `${chartLabel} · live only`,
+      source: "XRPL spot"
     };
   }
 
@@ -4888,7 +5422,7 @@ async function fetchTokenSpotFromXrpl(token) {
 let _dexChartLoadId = 0; // incremented on every load; stale results are discarded
 
 async function loadDexChart(force = false) {
-  const token = getDexSelectedToken();
+  const token = getDexChartToken();
   const tokenId = token?.id || "";
   const tf = state.dex.chart.timeframe;
   const cacheKey = `${tokenId}:${tf}`;
@@ -4898,22 +5432,27 @@ async function loadDexChart(force = false) {
     && state.dex.chart.cacheKey === cacheKey
     && state.dex.chart.fetchedAt
     && Date.now() - state.dex.chart.fetchedAt < 5 * 60 * 1000
-  ) return;
+  ) {
+    renderDexInsightPanel();
+    return;
+  }
 
   const myId = ++_dexChartLoadId;
   state.dex.chart.loading = true;
   state.dex.chart.error = "";
+  state.dex.chart.source = "";
   state.dex.chart.cacheKey = cacheKey;
   state.dex.chart.tokenId = tokenId;
   drawDexAnalysisChart();
 
   try {
-    const { candles, label } = await fetchDexChartData(token, tf);
+    const { candles, label, source = "" } = await fetchDexChartData(token, tf);
     if (myId !== _dexChartLoadId) return; // superseded by a newer selection
     state.dex.chart = {
       ...state.dex.chart,
       candles,
       label,
+      source,
       loading: false,
       error: "",
       cacheKey,
@@ -4927,9 +5466,11 @@ async function loadDexChart(force = false) {
     state.dex.chart.loading = false;
     state.dex.chart.error = err instanceof Error ? err.message : "Chart unavailable.";
     state.dex.chart.candles = [];
+    state.dex.chart.source = "";
   }
 
   drawDexAnalysisChart();
+  renderDexInsightPanel();
 }
 
 // ── Trading chart — controls injection (runs once per session) ────
@@ -4977,7 +5518,7 @@ function ensureDexChartControls() {
     </div>
     <div class="dex-ctrl-divider"></div>
     <div class="dex-ctrl-group dex-ind-group">
-      ${[["ma20","MA 20"],["ma50","MA 50"],["ema20","EMA 20"],["bb","BB"],["volume","Vol"],["rsi","RSI"]].map(([k,l]) =>
+      ${[["ma20","MA 20"],["ma50","MA 50"],["ema20","EMA 20"],["vwap","VWAP"],["bb","BB"],["volume","Vol"],["rsi","RSI"],["macd","MACD"]].map(([k,l]) =>
         `<label class="dex-ind-label"><input type="checkbox" data-ind="${k}"${indicators[k] ? " checked" : ""}><span>${l}</span></label>`
       ).join("")}
     </div>
@@ -4998,7 +5539,7 @@ function ensureDexChartControls() {
     const q = filter.toLowerCase();
     const items = [
       { id: "", label: "XRP / USD", sub: "Native — Kraken data" },
-      ...state.topIssuedAssets.items
+      ...allDexLookupCandidates()
         .filter((t) => !q || t.name?.toLowerCase().includes(q) || t.symbol?.toLowerCase().includes(q) || t.currency?.toLowerCase().includes(q))
         .slice(0, 30)
         .map((t) => ({ id: t.id || t.md5 || "", label: `${t.symbol || t.currency} / XRP`, sub: t.name || t.issuer || "" }))
@@ -5033,7 +5574,7 @@ function ensureDexChartControls() {
       if (refs.dexCurrencyInput) refs.dexCurrencyInput.value = "";
       if (refs.dexIssuerInput) refs.dexIssuerInput.value = "";
     } else {
-      const tok = state.topIssuedAssets.items.find((t) => (t.id || t.md5 || "") === id);
+      const tok = allDexLookupCandidates().find((t) => (t.id || t.md5 || "") === id);
       if (tok) {
         assetBtn.textContent = `${tok.symbol || tok.currency} / XRP ▾`;
         if (refs.dexAssetSelect) refs.dexAssetSelect.value = tok.id || "";
@@ -5188,7 +5729,7 @@ function drawDexAnalysisChart() {
   const candles    = allCandles.slice(startIdx, endIdx || undefined);
 
   // ── Layout constants ──────────────────────────────────────────
-  const { volume, rsi } = state.dex.chart.indicators;
+  const { volume, rsi, macd } = state.dex.chart.indicators;
   const INFO = 36;   // top OHLCV info bar
   const MAIN = 380;  // main price area
   const SUB  = 80;   // volume / RSI sub-panel height
@@ -5198,7 +5739,7 @@ function drawDexAnalysisChart() {
 
   const dpr   = window.devicePixelRatio || 1;
   const W     = Math.max((canvas.parentElement?.clientWidth || 900), 300);
-  const H     = INFO + MAIN + (volume ? SUB : 0) + (rsi ? SUB : 0) + XBAR;
+  const H     = INFO + MAIN + (volume ? SUB : 0) + (rsi ? SUB : 0) + (macd ? SUB : 0) + XBAR;
   canvas.width  = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
   canvas.style.width  = W + "px";
@@ -5214,7 +5755,9 @@ function drawDexAnalysisChart() {
   const volBottom  = volTop + (volume ? SUB : 0);
   const rsiTop     = volume ? volBottom : mainBottom;
   const rsiBottom  = rsiTop + (rsi ? SUB : 0);
-  const xTop       = rsi ? rsiBottom : (volume ? volBottom : mainBottom);
+  const macdTop    = rsi ? rsiBottom : (volume ? volBottom : mainBottom);
+  const macdBottom = macdTop + (macd ? SUB : 0);
+  const xTop       = macd ? macdBottom : rsi ? rsiBottom : (volume ? volBottom : mainBottom);
   const plotL      = LP;
   const plotR      = W - RP;
 
@@ -5236,8 +5779,11 @@ function drawDexAnalysisChart() {
     ma20:     "#f6c85b",
     ma50:     "#7b7fdb",
     ema20:    "#f06292",
+    vwap:     "#4dd0e1",
     bb:       "#9966cc",
     rsiLine:  "#c084fc",
+    macdLine: "#42a5f5",
+    macdSignal: "#ffb74d",
   };
 
   // ── Background ────────────────────────────────────────────────
@@ -5294,14 +5840,17 @@ function drawDexAnalysisChart() {
   const ma20v   = inds.ma20  ? chartSma(closes, 20)   : [];
   const ma50v   = inds.ma50  ? chartSma(closes, 50)   : [];
   const ema20v  = inds.ema20 ? chartEma(closes, 20)   : [];
+  const vwapv   = inds.vwap  ? chartVwap(candles)     : [];
   const bbv     = inds.bb    ? chartBB(closes, 20, 2) : [];
   const rsiVals = inds.rsi   ? chartRsi(closes, 14)   : [];
+  const macdVals = inds.macd ? chartMacd(closes)       : { line: [], signal: [], histogram: [] };
 
   const allP = [
     ...candles.map((c) => c.h), ...candles.map((c) => c.l),
     ...(inds.ma20  ? ma20v.filter(Number.isFinite)                              : []),
     ...(inds.ma50  ? ma50v.filter(Number.isFinite)                              : []),
     ...(inds.ema20 ? ema20v.filter(Number.isFinite)                             : []),
+    ...(inds.vwap  ? vwapv.filter(Number.isFinite)                              : []),
     ...(inds.bb    ? bbv.flatMap((b) => [b.upper, b.lower]).filter(Number.isFinite) : [])
   ].filter(Number.isFinite);
   const rawMin = Math.min(...allP), rawMax = Math.max(...allP);
@@ -5462,6 +6011,7 @@ function drawDexAnalysisChart() {
   if (inds.ma20  && ma20v.length)  drawLine(ma20v,  C.ma20);
   if (inds.ma50  && ma50v.length)  drawLine(ma50v,  C.ma50);
   if (inds.ema20 && ema20v.length) drawLine(ema20v, C.ema20);
+  if (inds.vwap  && vwapv.length)  drawLine(vwapv,  C.vwap);
 
   // ── Current price tag on right axis ──────────────────────────
   const lastClose = closes[closes.length - 1];
@@ -5512,9 +6062,9 @@ function drawDexAnalysisChart() {
   // ── Panel separator lines ─────────────────────────────────────
   ctx.strokeStyle = C.sep; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(plotL, mainBottom); ctx.lineTo(W, mainBottom); ctx.stroke();
-  if (volume && rsi) {
-    ctx.beginPath(); ctx.moveTo(plotL, volBottom); ctx.lineTo(W, volBottom); ctx.stroke();
-  }
+  if (volume) { ctx.beginPath(); ctx.moveTo(plotL, volBottom); ctx.lineTo(W, volBottom); ctx.stroke(); }
+  if (rsi) { ctx.beginPath(); ctx.moveTo(plotL, rsiBottom); ctx.lineTo(W, rsiBottom); ctx.stroke(); }
+  if (macd) { ctx.beginPath(); ctx.moveTo(plotL, macdBottom); ctx.lineTo(W, macdBottom); ctx.stroke(); }
   // Right axis separator
   ctx.beginPath(); ctx.moveTo(plotR, 0); ctx.lineTo(plotR, xTop); ctx.stroke();
   // X-axis separator
@@ -5567,6 +6117,35 @@ function drawDexAnalysisChart() {
     }
   }
 
+  // ── MACD panel ───────────────────────────────────────────────
+  if (macd && macdVals.line.length) {
+    const values = [...macdVals.line, ...macdVals.signal, ...macdVals.histogram].filter(Number.isFinite);
+    const maxAbs = Math.max(...values.map((value) => Math.abs(value)), 0.000001);
+    const yZero = macdTop + SUB / 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.beginPath(); ctx.moveTo(plotL, yZero); ctx.lineTo(plotR, yZero); ctx.stroke();
+    macdVals.histogram.forEach((value, i) => {
+      if (!Number.isFinite(value)) return;
+      const x = toX(i);
+      const y = subToY(value, macdTop + 5, macdBottom - 5, -maxAbs, maxAbs);
+      ctx.fillStyle = value >= 0 ? C.volUp : C.volDown;
+      ctx.fillRect(x - bodyW / 2, Math.min(y, yZero), bodyW, Math.max(Math.abs(yZero - y), 1));
+    });
+    const drawSubLine = (vals, color) => {
+      const p = new Path2D(); let s = false;
+      vals.forEach((v, i) => {
+        if (!Number.isFinite(v)) return;
+        const x = toX(i), y = subToY(v, macdTop + 5, macdBottom - 5, -maxAbs, maxAbs);
+        if (!s) { p.moveTo(x, y); s = true; } else p.lineTo(x, y);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.stroke(p);
+    };
+    drawSubLine(macdVals.line, C.macdLine);
+    drawSubLine(macdVals.signal, C.macdSignal);
+    ctx.fillStyle = C.axisText; ctx.font = "9px system-ui"; ctx.textAlign = "left";
+    ctx.fillText("MACD", plotL + 4, macdTop + 12);
+  }
+
   // ── OHLCV info bar (top strip — updates with crosshair) ────────
   const hovIdx = (dexMouseX >= plotL && dexMouseX <= plotR)
     ? Math.min(Math.floor((dexMouseX - plotL) / barW), count - 1)
@@ -5616,10 +6195,11 @@ function drawDexAnalysisChart() {
   if (inds.ma20)  { ctx.fillStyle = C.ma20;  ctx.fillText("MA 20",  lx, ly); lx += 42; }
   if (inds.ma50)  { ctx.fillStyle = C.ma50;  ctx.fillText("MA 50",  lx, ly); lx += 42; }
   if (inds.ema20) { ctx.fillStyle = C.ema20; ctx.fillText("EMA 20", lx, ly); lx += 48; }
+  if (inds.vwap)  { ctx.fillStyle = C.vwap;  ctx.fillText("VWAP",   lx, ly); lx += 38; }
   if (inds.bb)    { ctx.fillStyle = C.bb;    ctx.fillText("BB(20)", lx, ly); }
 
   // ── Crosshair ────────────────────────────────────────────────
-  const fullBottom = rsi ? rsiBottom : (volume ? volBottom : mainBottom);
+  const fullBottom = macd ? macdBottom : rsi ? rsiBottom : (volume ? volBottom : mainBottom);
   if (dexMouseX >= plotL && dexMouseX <= plotR && dexMouseY >= mainTop && dexMouseY <= fullBottom) {
     const mx = dexMouseX, my = dexMouseY;
 
@@ -5708,13 +6288,277 @@ function renderDexSafetyPanel() {
   refs.dexSafetyPanel.innerHTML = warnings.map((w) => `<p class="warning-inline">&#x26A0; ${escapeHtml(w)}</p>`).join("");
 }
 
+function latestFinite(values = []) {
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (Number.isFinite(values[i])) return values[i];
+  }
+  return Number.NaN;
+}
+
+function dexChartAnalysisModel() {
+  const candles = state.dex.chart.candles || [];
+  const stats = dexOrderStats();
+  const token = getDexChartToken();
+  const last = candles.at(-1);
+  const first = candles[0];
+  const closes = candles.map((candle) => candle.c);
+  const current = last?.c || stats?.midPrice || toFiniteNumber(state.dex.price, Number.NaN);
+  const change = first?.c > 0 && last?.c > 0 ? ((last.c - first.c) / first.c) * 100 : Number.NaN;
+  const high = candles.length ? Math.max(...candles.map((candle) => candle.h).filter(Number.isFinite)) : Number.NaN;
+  const low = candles.length ? Math.min(...candles.map((candle) => candle.l).filter(Number.isFinite)) : Number.NaN;
+  const avgVolume = candles.length
+    ? candles.reduce((sum, candle) => sum + toFiniteNumber(candle.v, 0), 0) / candles.length
+    : Number.NaN;
+  const volatility = Number.isFinite(high) && Number.isFinite(low) && current > 0 ? ((high - low) / current) * 100 : Number.NaN;
+  const ma20Series = chartSma(closes, 20);
+  const ma50Series = chartSma(closes, 50);
+  const ma20 = latestFinite(ma20Series);
+  const ma50 = latestFinite(ma50Series);
+  const rsi = latestFinite(chartRsi(closes, 14));
+  const macd = chartMacd(closes);
+  const macdLine = latestFinite(macd.line);
+  const macdSignal = latestFinite(macd.signal);
+  const macdHist = latestFinite(macd.histogram);
+  const atr = latestFinite(chartAtr(candles, 14));
+  const atrPct = current > 0 ? (atr / current) * 100 : Number.NaN;
+  const stoch = latestFinite(chartStoch(candles, 14));
+  const vwap = latestFinite(chartVwap(candles));
+  const bb = chartBB(closes, 20, 2);
+  const lastBb = bb.slice().reverse().find((item) => Number.isFinite(item.upper) && Number.isFinite(item.lower)) || {};
+  const recent = candles.slice(-Math.min(50, candles.length));
+  const support = recent.length ? Math.min(...recent.map((candle) => candle.l).filter(Number.isFinite)) : Number.NaN;
+  const resistance = recent.length ? Math.max(...recent.map((candle) => candle.h).filter(Number.isFinite)) : Number.NaN;
+  const last20 = candles.slice(-20);
+  const prev20 = candles.slice(-40, -20);
+  const avg = (items) => items.length ? items.reduce((sum, candle) => sum + toFiniteNumber(candle.v, 0), 0) / items.length : Number.NaN;
+  const recentVolume = avg(last20);
+  const priorVolume = avg(prev20);
+  const volumeShift = Number.isFinite(recentVolume) && Number.isFinite(priorVolume) && priorVolume > 0
+    ? ((recentVolume - priorVolume) / priorVolume) * 100
+    : Number.NaN;
+  const ma20Prev = ma20Series.slice(0, -5).reverse().find(Number.isFinite);
+  const ma20Slope = pctDistance(ma20, ma20Prev);
+  const source = state.dex.chart.source || (candles.length ? "Unknown source" : "");
+  const dataQuality = !candles.length ? "No chart history"
+    : candles.length < 2 ? "Spot only"
+    : candles.length < 20 ? "Thin history"
+    : source.includes("XRPL.to") ? "Indexed XRPL history"
+    : source.includes("CoinGecko") ? "External market proxy"
+    : "Usable history";
+  const risk = token ? scoreIssuedAssetRisk(token) : { level: "Native XRP", reasons: ["Native asset"] };
+  const bullishVotes = [
+    Number.isFinite(ma20) && current > ma20,
+    Number.isFinite(ma50) && current > ma50,
+    Number.isFinite(ma20) && Number.isFinite(ma50) && ma20 > ma50,
+    Number.isFinite(macdHist) && macdHist > 0,
+    Number.isFinite(rsi) && rsi > 50 && rsi < 72,
+    Number.isFinite(vwap) && current > vwap
+  ].filter(Boolean).length;
+  const bearishVotes = [
+    Number.isFinite(ma20) && current < ma20,
+    Number.isFinite(ma50) && current < ma50,
+    Number.isFinite(ma20) && Number.isFinite(ma50) && ma20 < ma50,
+    Number.isFinite(macdHist) && macdHist < 0,
+    Number.isFinite(rsi) && rsi < 50 && rsi > 28,
+    Number.isFinite(vwap) && current < vwap
+  ].filter(Boolean).length;
+  const bias = bullishVotes >= bearishVotes + 2 ? "Bullish bias"
+    : bearishVotes >= bullishVotes + 2 ? "Bearish bias"
+    : "Mixed / range bias";
+
+  return {
+    token,
+    stats,
+    candles,
+    current,
+    change,
+    high,
+    low,
+    avgVolume,
+    volatility,
+    ma20,
+    ma50,
+    ma20Slope,
+    rsi,
+    macdLine,
+    macdSignal,
+    macdHist,
+    atr,
+    atrPct,
+    stoch,
+    vwap,
+    bb: lastBb,
+    support,
+    resistance,
+    recentVolume,
+    volumeShift,
+    source,
+    dataQuality,
+    bullishVotes,
+    bearishVotes,
+    bias,
+    risk
+  };
+}
+
+function renderDexInsightPanel() {
+  if (!refs.dexInsightPanel) return;
+  const model = dexChartAnalysisModel();
+  const {
+    token,
+    stats,
+    candles,
+    current,
+    change,
+    volatility,
+    ma20,
+    ma50,
+    ma20Slope,
+    rsi,
+    macdLine,
+    macdSignal,
+    macdHist,
+    atrPct,
+    stoch,
+    vwap,
+    bb,
+    support,
+    resistance,
+    volumeShift,
+    source,
+    dataQuality,
+    bullishVotes,
+    bearishVotes,
+    bias,
+    risk
+  } = model;
+  const entry = toFiniteNumber(state.dex.price, 0);
+  const amount = toFiniteNumber(state.dex.amount, 0);
+  const slippage = toFiniteNumber(state.dex.slippage, 0);
+  const rrEntry = entry || current;
+  const stop = toFiniteNumber(state.dex.stopLoss, 0);
+  const target = toFiniteNumber(state.dex.takeProfit, 0);
+  const side = state.dex.side;
+  const trend = Number.isFinite(ma20) && Number.isFinite(ma50)
+    ? ma20 > ma50 ? "Bullish MA stack" : ma20 < ma50 ? "Bearish MA stack" : "Neutral MA stack"
+    : "Trend pending";
+  const momentum = Number.isFinite(rsi)
+    ? rsi >= 70 ? "RSI overheated" : rsi <= 30 ? "RSI washed out" : "RSI balanced"
+    : "RSI pending";
+  const macdPosture = Number.isFinite(macdLine) && Number.isFinite(macdSignal)
+    ? macdLine > macdSignal ? `MACD positive ${Number.isFinite(macdHist) ? `(${decimalString(macdHist, 6)})` : ""}` : `MACD negative ${Number.isFinite(macdHist) ? `(${decimalString(macdHist, 6)})` : ""}`
+    : "MACD pending";
+  const vwapPosture = Number.isFinite(vwap) && Number.isFinite(current)
+    ? current > vwap ? `Above VWAP by ${decimalString(pctDistance(current, vwap), 2)}%` : `Below VWAP by ${decimalString(Math.abs(pctDistance(current, vwap)), 2)}%`
+    : "VWAP pending";
+  const bbPosture = Number.isFinite(bb.upper) && Number.isFinite(bb.lower) && Number.isFinite(current)
+    ? current > bb.upper ? "Above upper band" : current < bb.lower ? "Below lower band" : "Inside bands"
+    : "Bands pending";
+  const stochPosture = Number.isFinite(stoch)
+    ? stoch >= 80 ? `Stoch overbought ${stoch.toFixed(0)}` : stoch <= 20 ? `Stoch oversold ${stoch.toFixed(0)}` : `Stoch neutral ${stoch.toFixed(0)}`
+    : "Stoch pending";
+  const spreadText = stats
+    ? `${decimalString(stats.spreadPct, 2)}% spread`
+    : "Book pending";
+  const riskXrp = rrEntry && amount
+    ? side === "buy"
+      ? stop > 0 && stop < rrEntry ? (rrEntry - stop) * amount : 0
+      : stop > rrEntry ? (stop - rrEntry) * amount : 0
+    : 0;
+  const rewardXrp = rrEntry && amount
+    ? side === "buy"
+      ? target > rrEntry ? (target - rrEntry) * amount : 0
+      : target > 0 && target < rrEntry ? (rrEntry - target) * amount : 0
+    : 0;
+  const rrRatio = riskXrp > 0 ? rewardXrp / riskXrp : Number.NaN;
+  const flags = [];
+
+  if (token && !token.verified) flags.push("Issuer is not marked verified in available token metadata.");
+  if (token?.freezeFlag) flags.push("Issuer may have freeze capability. Understand what that means before holding size.");
+  if (!candles.length) flags.push("Historical chart data is not available yet for this market.");
+  if (candles.length === 1) flags.push("Only live spot data is available; avoid reading this as a trend.");
+  if (candles.length > 1 && candles.length < 20) flags.push("Short candle history. Signals are low-confidence until more trades load.");
+  if (source.includes("CoinGecko")) flags.push("Chart source is external market data, not native XRPL DEX execution history.");
+  if (stats?.spreadPct > 5) flags.push("Wide spread detected. Market orders or IOC/FOK offers can fill poorly.");
+  if (stats && (stats.bidDepth < amount || stats.askDepth < amount)) flags.push("Visible book depth is thinner than the planned amount.");
+  if (slippage > 5) flags.push("Slippage guard is high.");
+  if (Number.isFinite(rsi) && (rsi >= 75 || rsi <= 25)) flags.push("Momentum is stretched; entries can reverse quickly.");
+  if (Number.isFinite(stoch) && (stoch >= 90 || stoch <= 10)) flags.push("Stochastic is at an extreme. Watch for wick reversals or failed breakouts.");
+  if (Number.isFinite(atrPct) && atrPct > 8) flags.push("ATR is high relative to price. Position sizing should account for volatility.");
+  if (Number.isFinite(bb.upper) && Number.isFinite(current) && (current > bb.upper || current < bb.lower)) flags.push("Price is outside Bollinger Bands. Confirm continuation before chasing.");
+  if (rrEntry && stop && target && !Number.isFinite(rrRatio)) flags.push("Stop and target do not form a usable risk/reward setup.");
+
+  const stat = (label, value, tone = "") => `
+    <div class="dex-insight-stat ${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </div>
+  `;
+  const row = (label, value, tone = "") => `
+    <div class="dex-analysis-row ${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </div>
+  `;
+  const priceUnit = token ? "XRP" : "USD";
+  const priceText = (value, decimals = 6) => Number.isFinite(value)
+    ? `${decimalString(value, value < 0.01 ? 8 : decimals)} ${priceUnit}`
+    : "-";
+  const voteTone = bullishVotes > bearishVotes ? "safe" : bearishVotes > bullishVotes ? "danger" : "";
+  const moveTone = Number.isFinite(change) && change < 0 ? "danger" : Number.isFinite(change) && change > 0 ? "safe" : "";
+  const dataTone = dataQuality === "Indexed XRPL history" ? "safe"
+    : dataQuality === "No chart history" || dataQuality === "Spot only" ? "danger"
+    : "";
+
+  refs.dexInsightPanel.innerHTML = `
+    <div class="dex-insight-header">
+      <div>
+        <h4>Technical Market Intelligence</h4>
+        <p class="muted">${escapeHtml(token ? `${token.symbol || token.currency} / XRP` : "XRP / USD")} analysis from indexed candles, live book depth, and the trade ticket.</p>
+      </div>
+      <span class="mode-pill">${escapeHtml(risk.level)}</span>
+    </div>
+    <div class="dex-insight-grid">
+      ${stat("Last / Mid", priceText(current))}
+      ${stat("Chart Move", Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "-", moveTone)}
+      ${stat("Data Source", escapeHtml(source || dataQuality), dataTone)}
+      ${stat("Directional Bias", `${escapeHtml(bias)} (${bullishVotes}/${bearishVotes})`, voteTone)}
+      ${stat("ATR / Volatility", Number.isFinite(atrPct) ? `${atrPct.toFixed(2)}% ATR · ${Number.isFinite(volatility) ? `${volatility.toFixed(2)}% range` : "range n/a"}` : Number.isFinite(volatility) ? `${volatility.toFixed(2)}% range` : "-")}
+      ${stat("Liquidity", spreadText, stats?.spreadPct > 5 ? "danger" : "safe")}
+      ${stat("Trend", trend)}
+      ${stat("Momentum", momentum)}
+      ${stat("MACD", macdPosture)}
+      ${stat("VWAP", vwapPosture)}
+      ${stat("Bollinger", bbPosture)}
+      ${stat("Stochastic", stochPosture)}
+      ${stat("Support", priceText(support))}
+      ${stat("Resistance", priceText(resistance))}
+      ${stat("Volume Shift", Number.isFinite(volumeShift) ? `${volumeShift >= 0 ? "+" : ""}${volumeShift.toFixed(1)}% vs prior 20` : "Volume pending", Number.isFinite(volumeShift) && volumeShift > 25 ? "safe" : Number.isFinite(volumeShift) && volumeShift < -25 ? "danger" : "")}
+      ${stat("MA Slope", Number.isFinite(ma20Slope) ? `${ma20Slope >= 0 ? "+" : ""}${ma20Slope.toFixed(2)}%` : "Pending")}
+      ${stat("Risk / Reward", Number.isFinite(rrRatio) ? `${rrRatio.toFixed(2)}R` : "Plan pending", Number.isFinite(rrRatio) && rrRatio >= 2 ? "safe" : Number.isFinite(rrRatio) && rrRatio < 1 ? "danger" : "")}
+    </div>
+    <div class="dex-analysis-list">
+      ${row("Chart coverage", `${escapeHtml(dataQuality)} · ${candles.length} candle${candles.length === 1 ? "" : "s"}`, dataTone)}
+      ${row("Execution read", stats ? `Bid depth ${formatCompactNumber(stats.bidDepth)} · Ask depth ${formatCompactNumber(stats.askDepth)} · Mid ${decimalString(stats.midPrice, 6)} XRP` : "Load the order book for execution quality.")}
+      ${row("Mean reversion level", Number.isFinite(vwap) ? `VWAP ${priceText(vwap)}` : "VWAP needs volume or more candles.")}
+      ${row("Range map", Number.isFinite(support) && Number.isFinite(resistance) ? `${priceText(support)} support → ${priceText(resistance)} resistance` : "Range pending.")}
+    </div>
+    <div class="dex-signal-list">
+      ${(risk.reasons || []).slice(0, 3).map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}
+      ${flags.length ? flags.map((flag) => `<span class="danger">${escapeHtml(flag)}</span>`).join("") : `<span class="safe">No immediate red flags from loaded data.</span>`}
+    </div>
+  `;
+}
+
 function renderDex() {
   populateDexAssetSelect();
+  renderDexLookupResults();
   renderDexAccessPanel();
   renderDexStatsPanel();
   renderDexOrderBookPanel();
   renderDexRiskRewardPanel();
   drawDexAnalysisChart();
+  renderDexInsightPanel();
   renderDexExecutionPlan();
   renderDexSafetyPanel();
   renderDexTxPreview(state.dex.latestTx ? dexPreviewFromTx(state.dex.latestTx) : null);
@@ -5764,6 +6608,7 @@ async function loadDexOrderBook(force = false) {
   renderDexStatsPanel();
   renderDexOrderBookPanel();
   drawDexAnalysisChart();
+  renderDexInsightPanel();
 }
 
 function onDexAssetChange() {
@@ -5774,6 +6619,9 @@ function onDexAssetChange() {
   state.dex.latestTx = null;
   state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
   renderDexTxPreview(null);
+  renderDexStatsPanel();
+  renderDexOrderBookPanel();
+  renderDexInsightPanel();
   void loadDexChart(true);
   if (token) void loadDexOrderBook(true);
 }
@@ -5783,6 +6631,7 @@ function onDexInputChange() {
   state.dex.latestTx = null;
   renderDexRiskRewardPanel();
   drawDexAnalysisChart();
+  renderDexInsightPanel();
   renderDexExecutionPlan();
   renderDexSafetyPanel();
   renderDexTxPreview(null);
@@ -5805,6 +6654,7 @@ function onDexAnalyze() {
   renderDexTxPreview(dexPreviewFromTx(tx));
   renderDexRiskRewardPanel();
   drawDexAnalysisChart();
+  renderDexInsightPanel();
   renderDexExecutionPlan();
   renderDexSafetyPanel();
   setDexTicketStatus("Transaction preview ready. Review all fields before signing.");
@@ -6796,7 +7646,20 @@ function bindClick(ref, handler) {
   ref?.addEventListener("click", handler);
 }
 
+function initSafetyGuideAccordion() {
+  const details = Array.from(document.querySelectorAll("details[name]"));
+  details.forEach((item) => {
+    item.addEventListener("toggle", () => {
+      if (!item.open) return;
+      details.forEach((other) => {
+        if (other !== item && other.name === item.name) other.open = false;
+      });
+    });
+  });
+}
+
 function initEventHandlers() {
+  initSafetyGuideAccordion();
   bindClick(refs.lookupButton, onLookup);
   refs.networkSelect?.addEventListener("change", onNetworkChange);
   bindClick(refs.disconnectButton, onDisconnect);
@@ -6820,6 +7683,19 @@ function initEventHandlers() {
     el?.addEventListener("change", onDexInputChange);
   });
   bindClick(refs.dexAnalyzeButton, onDexAnalyze);
+  bindClick(refs.dexLookupButton, () => { void onDexLookup(); });
+  refs.dexLookupInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void onDexLookup();
+  });
+  refs.dexLookupInput?.addEventListener("input", () => {
+    state.dex.lookupStatus = "";
+    if (!refs.dexLookupInput.value.trim()) {
+      state.dex.lookupResults = [];
+      renderDexLookupResults();
+    }
+  });
   bindClick(refs.dexRefreshBookButton, () => { void loadDexOrderBook(true); });
   bindClick(refs.dexSignOfferButton, () => { void onDexSignOffer(); });
   bindClick(refs.toggleRawJsonButton, toggleRawJson);

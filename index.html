@@ -229,58 +229,91 @@
             <section id="commandSafetyGuide" class="card-grid command-safety-grid" aria-label="Web3 safety best practices">
               <article class="glass-card safety-guide-card wide">
                 <div class="command-safety-head">
-                  <img class="card-visual" src="./ikeledger/assets/images/ikesecurity.png" alt="Wallet security" loading="lazy" />
+                  <img class="card-visual" src="./ikeledger/assets/images/ikesecurity.png" alt="Web3 safety basics" loading="lazy" />
                   <div>
                     <div class="section-top compact">
-                      <h3>Personal Security Field Guide</h3>
-                      <span class="mode-pill">Always on</span>
+                      <h3>Web3 Safety Basics</h3>
+                      <span class="mode-pill">Learning guide</span>
                     </div>
-                    <p class="muted">Compact Web3 safety at a glance. Open any topic for the deeper checklist without crowding the Command Center.</p>
+                    <p class="muted">General do / don't habits for reducing common wallet, project, and market manipulation risks. Open a topic for the deeper checklist.</p>
                   </div>
                 </div>
 
                 <div class="safety-topic-strip" aria-label="Safety topics">
-                  <span>Seed phrases</span>
-                  <span>Signing</span>
+                  <span>Wallet basics</span>
+                  <span>Signing checks</span>
                   <span>Project red flags</span>
-                  <span>Markets</span>
-                  <span>Do / Don't</span>
+                  <span>Market discipline</span>
+                  <span>Scam patterns</span>
+                </div>
+
+                <div class="safety-do-dont-panel" aria-label="Web3 do and don't basics">
+                  <div class="safety-do-card">
+                    <strong>Do</strong>
+                    <ul>
+                      <li>Verify the website, app, network, address, issuer, amount, and fee before signing.</li>
+                      <li>Treat any seed phrase or private-key request as a stop sign and leave the flow.</li>
+                      <li>Use official links, bookmarks, and public support channels instead of links sent by strangers.</li>
+                      <li>Use small test transactions when dealing with a new wallet, bridge, exchange, or token.</li>
+                      <li>Keep long-term holdings away from daily trading wallets and risky experiments.</li>
+                    </ul>
+                  </div>
+                  <div class="safety-dont-card">
+                    <strong>Don't</strong>
+                    <ul>
+                      <li>Share seed phrases, paste private keys, or enter recovery words into any website.</li>
+                      <li>Trust a project, admin, support agent, or "helper" who asks for a seed phrase or private key.</li>
+                      <li>Connect a wallet just to "verify eligibility" unless the action and transaction screen are clear.</li>
+                      <li>Approve surprise requests, blind signatures, fake airdrops, or rushed "limited-time" links.</li>
+                      <li>Buy because of pressure, hype, screenshots, influencers, or promises of guaranteed returns.</li>
+                    </ul>
+                  </div>
                 </div>
 
                 <div class="safety-accordion-grid">
-                  <details open>
-                    <summary><img src="./ikeledger/assets/images/ikewallet.png" alt="" /> Wallet and seed phrase rules</summary>
+                  <details name="command-safety-topic" open>
+                    <summary><img src="./ikeledger/assets/images/ikewallet.png" alt="" /> Wallet and seed phrase basics</summary>
                     <ul class="safety-bullet-list">
-                      <li>Write seed phrases offline and store them privately. Never photograph, screenshot, paste, email, or DM them.</li>
-                      <li>Never enter a seed phrase into a website. Xaman approvals should happen inside Xaman, not inside a browser form.</li>
-                      <li>Separate daily-use wallets from long-term holdings and test recovery with small amounts before relying on it.</li>
+                      <li>A seed phrase or private key is the wallet. Anyone who gets it can move the funds.</li>
+                      <li>Backups should stay offline. Avoid screenshots, cloud notes, email drafts, shared drives, and chat messages.</li>
+                      <li>Use separate wallets for savings, trading, testing, and airdrops so one bad approval does not expose everything.</li>
                     </ul>
                   </details>
 
-                  <details>
+                  <details name="command-safety-topic">
                     <summary><img src="./ikeledger/assets/images/ikesecurity.png" alt="" /> Signing checklist</summary>
                     <ul class="safety-bullet-list">
-                      <li>Review network, destination, amount, asset issuer, destination tag, memo, and fee before approving.</li>
-                      <li>Reject blind signatures, surprise permission requests, rushed approvals, and transactions you did not start.</li>
-                      <li>Refresh account state after signing so you can confirm the ledger outcome.</li>
+                      <li>Pause before every approval. Confirm the request matches the action you intended to take.</li>
+                      <li>Check network, account, destination, amount, asset issuer, destination tag, memo, and fee.</li>
+                      <li>If the app text and wallet approval screen do not match, reject it and restart from a trusted link.</li>
                     </ul>
                   </details>
 
-                  <details>
+                  <details name="command-safety-topic">
                     <summary><img src="./ikeledger/assets/images/NLF.png" alt="" /> Project red flags</summary>
                     <ul class="safety-bullet-list">
-                      <li>Guaranteed returns, urgent countdowns, copied roadmaps, anonymous teams, or pressure to buy immediately.</li>
-                      <li>Locked withdrawals, unclear token supply, hidden admin controls, vague issuer details, or no verifiable history.</li>
-                      <li>Support DMs, fake airdrops, wallet-drain links, and "verify your wallet" forms.</li>
+                      <li>Guaranteed returns, urgent countdowns, copied roadmaps, vague teams, or pressure to buy immediately.</li>
+                      <li>Any project, founder, admin, or support account asking for a seed phrase or private key is a red flag.</li>
+                      <li>Unclear issuer details, hidden admin controls, locked withdrawals, fake partnerships, or no public history.</li>
+                      <li>Fake support DMs, airdrop links, "wallet verification" forms, and demands to connect before showing details.</li>
                     </ul>
                   </details>
 
-                  <details>
+                  <details name="command-safety-topic">
                     <summary><img src="./ikeledger/assets/images/ikeswap.png" alt="" /> Market discipline</summary>
                     <ul class="safety-bullet-list">
-                      <li>Check liquidity, volume, issuer reputation, spreads, and exit paths before trading.</li>
-                      <li>Use small test transactions with new issuers, bridges, exchanges, or unfamiliar assets.</li>
-                      <li>Avoid chasing pumps, influencer signals, and charts without fundamentals.</li>
+                      <li>Before entering, check liquidity, volume, holder concentration, spread, issuer reputation, and exit path.</li>
+                      <li>Define invalidation, position size, and risk before buying. A chart is not a plan by itself.</li>
+                      <li>Watch for pump groups, wash trading, thin books, sudden liquidity removal, and coordinated hype cycles.</li>
+                    </ul>
+                  </details>
+
+                  <details name="command-safety-topic">
+                    <summary><img src="./ikeledger/assets/images/ikenotifications.png" alt="" /> Manipulation patterns</summary>
+                    <ul class="safety-bullet-list">
+                      <li>Rushed action is a tactic. Countdown timers, "last chance" posts, and private alpha rooms often bypass judgment.</li>
+                      <li>Social proof can be staged. Screenshots, fake volume, bot comments, and copied community activity are easy to manufacture.</li>
+                      <li>Unsolicited help is risky. Real support should not need a seed phrase, private key, screen share, or wallet-drain approval.</li>
                     </ul>
                   </details>
                 </div>
@@ -475,6 +508,15 @@
                       <span class="mode-pill">OfferCreate</span>
                     </div>
                     <div class="dex-ticket-grid">
+                      <label class="dex-lookup-field">
+                        Token Lookup
+                        <div class="dex-lookup-row">
+                          <input id="dexLookupInput" type="search" placeholder="XRP, RLUSD, USDC, currency.issuer, or currency issuer" autocomplete="off" spellcheck="false" />
+                          <button id="dexLookupButton" type="button" class="ghost">Lookup</button>
+                        </div>
+                        <span class="field-hint">Use XRP for native charting, or currency + issuer for any XRPL issued asset.</span>
+                      </label>
+                      <div id="dexLookupResults" class="dex-lookup-results" aria-live="polite"></div>
                       <label>
                         Asset
                         <select id="dexAssetSelect">
@@ -563,6 +605,7 @@
                   </div>
                   <div id="dexRiskRewardPanel" class="dex-risk-panel"></div>
                 </div>
+                <div id="dexInsightPanel" class="dex-insight-panel"></div>
                 <div id="txPreview" class="card-content dex-tx-preview"></div>
               </article>
 
@@ -595,6 +638,96 @@
                 <div id="ammPagePanel" class="card-content scroll"></div>
                 <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
               </article>
+              <details class="glass-card wide amm-need-card">
+                <summary class="amm-need-summary" aria-label="Open AMM and liquidity provider need to know guide">
+                  <img class="card-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM liquidity education" loading="lazy" />
+                  <span class="amm-need-summary-copy">
+                    <span class="section-top compact amm-need-title-row">
+                      <span class="amm-summary-title">AMM Need To Know</span>
+                      <span class="mode-pill">LP field guide</span>
+                    </span>
+                    <span class="muted amm-need-copyline">A pool can look active and still be risky. Check depth, fees, issuer behavior, concentration, and your exit plan before adding liquidity.</span>
+                  </span>
+                  <span class="amm-drop-indicator" aria-hidden="true">+</span>
+                </summary>
+
+                <div class="amm-need-body">
+
+                <div class="amm-do-dont-grid">
+                  <div class="amm-do-card">
+                    <strong>Do</strong>
+                    <ul>
+                      <li>Compare TVL, 24h AMM volume, spread, trading fee, LP holders, trust lines, and issuer history before entering.</li>
+                      <li>Size positions so a bad pool, issuer freeze, or sharp price move cannot damage your whole wallet.</li>
+                      <li>Use a small test deposit first, then verify your LP token balance and withdrawal path.</li>
+                      <li>Monitor pool fee votes, sudden TVL changes, whale deposits, whale withdrawals, and price divergence from the order book.</li>
+                      <li>Write down the reason you entered and the condition that makes you exit before you deposit.</li>
+                    </ul>
+                  </div>
+                  <div class="amm-dont-card">
+                    <strong>Don't</strong>
+                    <ul>
+                      <li>Do not assume high APY, high fee income, or a trending token means the pool is safe.</li>
+                      <li>Do not provide liquidity to an issued asset without checking issuer reputation, freeze flags, and trust line quality.</li>
+                      <li>Do not ignore impermanent loss; fee income can be smaller than the divergence loss.</li>
+                      <li>Do not chase a pool after a sudden pump, low-liquidity spike, or coordinated hype wave.</li>
+                      <li>Do not connect or sign from links sent by promoters, fake support, or groups claiming they can boost LP rewards.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="amm-signal-grid" aria-label="AMM signals to inspect">
+                  <div>
+                    <span>Depth</span>
+                    <strong>TVL + spread</strong>
+                    <p>Thin pools move hard. Check if a normal trade would move price against you.</p>
+                  </div>
+                  <div>
+                    <span>Flow</span>
+                    <strong>Volume + LP churn</strong>
+                    <p>Volume is useful only when it is organic. Watch deposits and withdrawals around pumps.</p>
+                  </div>
+                  <div>
+                    <span>Asset risk</span>
+                    <strong>Issuer + trust lines</strong>
+                    <p>Issued assets carry issuer and freeze risk. Holder quality matters as much as holder count.</p>
+                  </div>
+                  <div>
+                    <span>Exit</span>
+                    <strong>Redeem path</strong>
+                    <p>Know how you will withdraw, swap, or rebalance before volatility forces a fast decision.</p>
+                  </div>
+                </div>
+
+                <div class="amm-accordion-grid">
+                  <details name="amm-need-topic" open>
+                    <summary>Before Adding Liquidity</summary>
+                    <ul>
+                      <li>Confirm the token issuer, currency code, and AMM account match the pool you intended to use.</li>
+                      <li>Check whether the pool has meaningful depth and several independent LP holders.</li>
+                      <li>Estimate impermanent loss across realistic price moves, not only best-case fee income.</li>
+                    </ul>
+                  </details>
+                  <details name="amm-need-topic">
+                    <summary>While In A Pool</summary>
+                    <ul>
+                      <li>Watch fee votes, LP holder changes, liquidity concentration, and abnormal volume bursts.</li>
+                      <li>Compare AMM price to order-book price so you can spot stale or manipulated pool pricing.</li>
+                      <li>Review the position after large market moves instead of waiting for the portfolio to feel wrong.</li>
+                    </ul>
+                  </details>
+                  <details name="amm-need-topic">
+                    <summary>Red Flags</summary>
+                    <ul>
+                      <li>Promoters focus only on yield while avoiding issuer, liquidity, or exit questions.</li>
+                      <li>Liquidity appears right before a hype campaign and disappears after buyers arrive.</li>
+                      <li>Support accounts ask you to connect to a separate site, share keys, or sign an unclear transaction.</li>
+                    </ul>
+                  </details>
+                </div>
+                </div>
+              </details>
+
               <article class="glass-card wide amm-market-card">
                 <div class="section-top">
                   <div>
@@ -605,7 +738,8 @@
                 </div>
                 <div id="topAmmPoolsPanel" class="card-content"></div>
               </article>
-              <article class="glass-card">
+
+              <article class="glass-card amm-risk-card">
                 <h3>AMM Risk Notice</h3>
                 <div class="card-content">
                   <p><strong>Impermanent loss:</strong> Your position value may diverge from holding assets separately.</p>

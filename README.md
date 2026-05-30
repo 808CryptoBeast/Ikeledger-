@@ -10,6 +10,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 
 ### Command Center and sign-in
 - Command Center is the user landing page for XRPL network, XRP market, AMM, and liquidity overview metrics
+- Command Center includes a general Web3 Safety Basics guide covering do / don't habits, signing checks, project red flags, market discipline, and manipulation patterns
 - XRP Market Overview includes live source chips, last-updated time, and a cached fallback so brief API misses do not blank the panel
 - Issued asset and AMM / LP market tables include load-more pagination, watchlist buttons, and risk scoring
 - Account Intelligence monitors connected accounts for wallet health, reserve pressure, security posture, asset exposure, AMM/NFT signals, whale flow, and DEX activity
@@ -34,8 +35,9 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - AMM / LP position viewer
 - Account Intelligence page with watched accounts, live XRPL stream filters, account health score, risk alerts, and plain-language event insight
 - Optional market proxy/cache server for XRPL.to, CoinGecko, and token image requests
-- DEX access panel with live order book loading, chart controls, risk/reward analysis, OfferCreate previews, and Xumm/Xaman signing requests
+- DEX access panel with XRP/native charting, issued-token lookup, live order book loading, TradingView-style indicators, market intelligence, risk/reward analysis, OfferCreate previews, and Xumm/Xaman signing requests
 - Market refresh separates live XRP/network metrics from cached chart history, and token live-price probing is throttled to the visible set plus watchlist
+- DEX charts try XRPL.to indexed OHLC first, then XRPL.to trade history aggregation, Sologenic OHLC, CoinGecko conversion, and finally XRPL AMM/order-book spot fallback
 - Transaction consent modal before any signing flow
 
 ### Mobile experience
