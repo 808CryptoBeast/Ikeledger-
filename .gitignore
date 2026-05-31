@@ -1,0 +1,7 @@
+# Local browser/mobile smoke-test artifacts
+tmp-*/
+tmp-*.png
+tmp-*.json
+
+# Temporary Git/IDE diagnostic files
+git-error-*

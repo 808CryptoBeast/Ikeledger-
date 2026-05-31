@@ -11,7 +11,7 @@
     <meta property="og:description" content="XRPL account intelligence - wallet health, security, assets, AMM, NFTs, and live activity." />
     <meta name="theme-color" content="#f5c76b" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./ikeledger/css/ikeledger.css" />
+    <link rel="stylesheet" href="./ikeledger/css/ikeledger.css?v=mobile-xaman-polish" />
   </head>
   <body>
     <div class="cosmic-bg" aria-hidden="true"></div>
@@ -33,8 +33,8 @@
           <span>Network</span>
           <select id="networkSelect" aria-label="Select XRPL network"></select>
         </label>
-        <button id="profileButton" type="button" class="ghost icon-btn icon-only" aria-label="Open profile">
-          <img src="./ikeledger/assets/images/ikeprofile.png" alt="Profile" />
+        <button id="profileButton" type="button" class="ghost icon-btn icon-only" aria-label="Open portfolio">
+          <img src="./ikeledger/assets/images/ikeprofile.png" alt="Portfolio" />
         </button>
       </div>
     </header>
@@ -64,7 +64,7 @@
             <div class="nav-section-label">Account</div>
             <button class="sidebar-btn" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/manapoints.png" alt="" /></span>Credentials & Mana</button>
             <button class="sidebar-btn" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/NLF.png" alt="" /></span>Security Center</button>
-            <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeprofile.png" alt="" /></span>Profile</button>
+            <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeprofile.png" alt="" /></span>Portfolio</button>
             <button class="sidebar-btn" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/settings.png" alt="" /></span>Settings</button>
           </nav>
           <div class="sidebar-footer">
@@ -862,11 +862,14 @@
           </section>
 
           <section class="page-section" data-page="profile">
-            <article class="glass-card profile-card">
+            <article class="glass-card profile-card profile-settings-card">
               <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikeprofile.png" alt="IkeLedger profile" loading="lazy" />
               <div class="section-top">
-                <h2>Profile</h2>
-                <button id="saveProfileButton" type="button">Save Profile</button>
+                <div>
+                  <h2>Profile Settings</h2>
+                  <p class="muted">Identity, photo, and local avatar styling for your IkeLedger profile.</p>
+                </div>
+                <button id="saveProfileButton" type="button">Save Settings</button>
               </div>
               <div class="profile-layout">
                 <div class="profile-summary">
@@ -946,9 +949,12 @@
               </div>
             </article>
 
-            <article class="glass-card" id="profileWalletCard">
+            <article class="glass-card portfolio-primary-card" id="profileWalletCard">
               <div class="section-top">
-                <h3>Linked XRPL Wallet</h3>
+                <div>
+                  <h2>Portfolio</h2>
+                  <p class="muted">Wallet-backed XRPL balances, exposure, activity, and account readiness.</p>
+                </div>
                 <span id="profileWalletNetworkBadge" class="mode-pill"></span>
               </div>
               <div id="profileWalletPanel" class="card-content"></div>
@@ -1164,7 +1170,7 @@
       <button class="bottom-link" data-page="tracker" type="button" aria-label="Account Intelligence"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeledger2.png" alt="" /><span class="bottom-link-label">Intel</span></button>
       <button class="bottom-link" data-page="dex" type="button" aria-label="DEX"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikedex.png" alt="" /><span class="bottom-link-label">DEX</span></button>
       <button class="bottom-link" data-page="nfts" type="button" aria-label="NFTs"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikenft.png" alt="" /><span class="bottom-link-label">NFTs</span></button>
-      <button class="bottom-link" data-page="profile" type="button" aria-label="Profile"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeprofile.png" alt="" /><span class="bottom-link-label">Profile</span></button>
+      <button class="bottom-link" data-page="profile" type="button" aria-label="Portfolio"><img class="bottom-nav-icon" src="./ikeledger/assets/images/ikeprofile.png" alt="" /><span class="bottom-link-label">Portfolio</span></button>
     </nav>
 
     <aside id="settingsDrawer" class="settings-drawer hidden" aria-label="User settings">

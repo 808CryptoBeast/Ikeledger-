@@ -20,7 +20,7 @@ import {
 } from "./ikeledger-wallet.js";
 import { getManaSummary } from "./ikeledger-rewards.js";
 import { buildPaymentTx, xrpToDrops } from "./ikeledger-xaman.js";
-import { initXumm, signInWithXumm, createTxFlow, resetXumm, clearXummSession } from "./ikeledger-xumm.js";
+import { initXumm, signInWithXumm, waitForXummAccount, createTxFlow, resetXumm, clearXummSession } from "./ikeledger-xumm.js";
 import {
   addXrplStreamHandler,
   ensureXrplConnection,
@@ -62,6 +62,8 @@ const TOP_AMM_POOLS_CACHE_KEY = "ike_top_amm_pools_v3";
 const TOP_ISSUED_ASSETS_CACHE_MS = 6 * 60 * 60 * 1000;
 const TOP_AMM_POOLS_CACHE_MS = 6 * 60 * 60 * 1000;
 const TOP_AMM_POOLS_BACKOFF_MS = 5 * 60 * 1000;
+const XUMM_MOBILE_PENDING_KEY = "ike_xumm_mobile_pending_v1";
+const XUMM_MOBILE_PENDING_TTL_MS = 5 * 60 * 1000;
 const DEX_BOOK_LIMIT = 20;
 const OFFER_CREATE_FLAGS = {
   passive: 0x00010000,
@@ -74,6 +76,7 @@ let heroSendXamanUrl = "";
 const state = {
   adminMode: false,
   appUser: null,
+  xummResumeInFlight: false,
   latestPreview: null,
   rawJsonOpen: false,
   latestTxItems: [],
@@ -513,6 +516,15 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function medianNumber(values = []) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return Number.NaN;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 function formatCompactNumber(value, decimals = 1) {
   const n = toFiniteNumber(value, Number.NaN);
   if (!Number.isFinite(n)) return "n/a";
@@ -563,6 +575,18 @@ function formatAge(ms) {
   }
   const remMos = mos - yrs * 12;
   return remMos > 0 ? `${yrs}y ${remMos}mo` : `${yrs}y`;
+}
+
+function formatLedgerDate(value) {
+  if (!value) return "recent";
+  if (typeof value === "string" && Number.isNaN(Number(value))) {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? value : new Date(parsed).toLocaleDateString();
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "recent";
+  const unixMs = n > 1_000_000_000_000 ? n : (n + 946_684_800) * 1000;
+  return new Date(unixMs).toLocaleDateString();
 }
 
 function formatXrpAmount(value) {
@@ -734,12 +758,101 @@ function xummSignInGuidance() {
     : "Desktop sign in shows the official Xumm QR flow. Scan it with Xumm/Xaman on your phone.";
 }
 
+function rememberMobileXummPending() {
+  if (!isLikelyMobileDevice()) return;
+  try {
+    sessionStorage.setItem(XUMM_MOBILE_PENDING_KEY, JSON.stringify({
+      startedAt: Date.now(),
+      network: getWalletState().network || DEFAULT_NETWORK
+    }));
+  } catch {
+    // Optional resume helper only.
+  }
+}
+
+function clearMobileXummPending() {
+  try {
+    sessionStorage.removeItem(XUMM_MOBILE_PENDING_KEY);
+  } catch {
+    // Optional resume helper only.
+  }
+}
+
+function hasFreshMobileXummPending() {
+  try {
+    const raw = sessionStorage.getItem(XUMM_MOBILE_PENDING_KEY);
+    if (!raw) return false;
+    const pending = JSON.parse(raw);
+    if (!pending?.startedAt || Date.now() - pending.startedAt > XUMM_MOBILE_PENDING_TTL_MS) {
+      clearMobileXummPending();
+      return false;
+    }
+    return true;
+  } catch {
+    clearMobileXummPending();
+    return false;
+  }
+}
+
+function completeXummAppSession(account) {
+  const existingUser = state.appUser;
+  saveAppUserSession({
+    id: existingUser?.id,
+    method: existingUser?.method || "xumm",
+    email: existingUser?.email || "",
+    username: existingUser?.username || `Xumm ${formatAddress(account)}`,
+    verified: existingUser ? existingUser.verified : true,
+    walletLinked: true,
+    walletAddress: account,
+    createdAt: existingUser?.createdAt
+  });
+  clearMobileXummPending();
+  closeAuthModal();
+  renderAll();
+  setActivePage("profile");
+  setCommandAuthStatus("Signed in with Xumm. Profile and wallet refreshed.");
+  setFeedback("Signed in with Xumm. Your portfolio and wallet are loaded.");
+}
+
+async function resumeMobileXummReturn() {
+  if (state.xummResumeInFlight) return;
+  if (!hasFreshMobileXummPending() || hasSigningWallet()) {
+    if (hasSigningWallet()) clearMobileXummPending();
+    return;
+  }
+
+  state.xummResumeInFlight = true;
+  setFeedback("Checking returned Xumm/Xaman sign-in...");
+  setCommandAuthStatus("Checking returned Xumm/Xaman session...");
+
+  try {
+    const xumm = await initXumm(getXamanApiKey());
+    const account = await waitForXummAccount(xumm, 8000);
+    if (!account) return;
+    setCommandAuthStatus("Xumm approved. Loading your XRPL account...");
+    const verified = await verifyXummAccount(account);
+    if (verified) {
+      completeXummAppSession(account);
+    }
+  } catch (error) {
+    if (isExplicitXummRejection(error)) {
+      clearMobileXummPending();
+      setFeedback(friendlyXummError(error), true);
+    }
+  } finally {
+    state.xummResumeInFlight = false;
+  }
+}
+
 function pageAccessMessage(page) {
   if (SIGNING_WALLET_PAGES.has(page)) {
     return "DEX access needs a Xumm wallet connection or an XRPL account created in IkeLedger.";
   }
   if (XRPL_ACCOUNT_PAGES.has(page)) {
     return "Connect Xumm, create a wallet, or load an XRPL address before opening that page.";
+  }
+  if (page === "profile") {
+    return "Sign in, connect Xumm, or create an XRPL account before opening Portfolio.";
   }
   if (PROFILE_PAGES.has(page)) {
     return "Sign in to your IkeLedger profile first.";
@@ -750,7 +863,10 @@ function pageAccessMessage(page) {
 function canOpenPage(page) {
   if (SIGNING_WALLET_PAGES.has(page)) return hasSigningWallet();
   if (XRPL_ACCOUNT_PAGES.has(page)) return hasXrplAccount();
-  if (PROFILE_PAGES.has(page)) return Boolean(state.appUser);
+  if (PROFILE_PAGES.has(page)) {
+    if (page === "profile" && hasXrplAccount()) return true;
+    return Boolean(state.appUser);
+  }
   return true;
 }
 
@@ -974,6 +1090,7 @@ const _domainTail   = new Map(); // hostname → tail of sequential queue (preve
 const _urlSkipUntil = new Map(); // url → timestamp: skip this exact URL until then (after 429)
 const _cgIdCache    = new Map(); // symbol_lower → coingecko_id | null
 const MJ_TTL = 120_000;          // 2-minute response cache
+const MARKET_FETCH_TIMEOUT_MS = 12_000;
 
 // Serialize requests to each host to prevent concurrent burst firing
 function _queuedFetch(url, fn) {
@@ -989,35 +1106,56 @@ async function fetchMarketJson(url) {
   const hit = _mjCache.get(url);
   if (hit && Date.now() - hit.ts < MJ_TTL) return hit.data;
 
-  // If this exact URL was 429'd recently, skip it immediately so fallbacks run now
+  if (_mjInFlight.has(url)) return _mjInFlight.get(url);
+
+  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
   const skipUntil = _urlSkipUntil.get(url) || 0;
-  if (Date.now() < skipUntil) {
+  const requestUrls = [];
+  if (Date.now() >= skipUntil) requestUrls.push(url);
+  if (proxyBase) {
+    requestUrls.push(`${proxyBase}/market?url=${encodeURIComponent(url)}`);
+  }
+  if (!requestUrls.length) {
     const err = new Error("Market API rate limited (429)");
     err.status = 429;
     throw err;
   }
 
-  if (_mjInFlight.has(url)) return _mjInFlight.get(url);
-
-  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim().replace(/\/$/, "");
-  const requestUrl = proxyBase ? `${proxyBase}/market?url=${encodeURIComponent(url)}` : url;
-
   const doFetch = async () => {
-    const response = await fetch(requestUrl, { headers: { accept: "application/json" } });
-    if (response.status === 429) {
-      _urlSkipUntil.set(url, Date.now() + 30_000); // skip this URL for 30s — no blocking wait
-      const err = new Error("Market API rate limited (429)");
-      err.status = 429;
-      throw err;
+    let lastError = null;
+    for (const requestUrl of requestUrls) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), MARKET_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch(requestUrl, {
+          signal: controller.signal,
+          headers: { accept: "application/json" }
+        });
+        if (response.status === 429) {
+          _urlSkipUntil.set(url, Date.now() + 30_000); // skip this URL for 30s — no blocking wait
+          const err = new Error("Market API rate limited (429)");
+          err.status = 429;
+          lastError = err;
+          continue;
+        }
+        if (!response.ok) {
+          const err = new Error(`Market API failed (${response.status})`);
+          err.status = response.status;
+          lastError = err;
+          continue;
+        }
+        const data = await response.json();
+        _mjCache.set(url, { data, ts: Date.now() });
+        return data;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error("Market API request failed");
+        if (err.name === "AbortError") err.status = 504;
+        lastError = err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
-    if (!response.ok) {
-      const err = new Error(`Market API failed (${response.status})`);
-      err.status = response.status;
-      throw err;
-    }
-    const data = await response.json();
-    _mjCache.set(url, { data, ts: Date.now() });
-    return data;
+    throw lastError || new Error("Market API unavailable");
   };
 
   const promise = _queuedFetch(url, doFetch).finally(() => { _mjInFlight.delete(url); });
@@ -2519,6 +2657,17 @@ function renderProfileWalletCard(walletState) {
 
   const account = snapshot?.account;
   const isVerified = Boolean(snapshot);
+  const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider") || "read-only";
+  const providerLabel = providerKey === "xaman" ? "Xaman signer"
+    : providerKey === "created" ? "IkeLedger-created wallet"
+      : "Read-only account";
+  const signingLabel = providerKey === "xaman" ? "Transactions sign in Xaman"
+    : providerKey === "created" ? "Created wallet loaded - connect in Xaman to sign"
+      : "Read-only exploration";
+  const holdings = snapshot?.tokenHoldings || [];
+  const nfts = snapshot?.nftItems || [];
+  const amm = snapshot?.amm || {};
+  const txItems = snapshot?.txItems || [];
 
   // Reserve breakdown — live from XRPL or fallback to current spec values
   const ownerCount = account?.ownerCount ?? 0;
@@ -2529,18 +2678,64 @@ function renderProfileWalletCard(walletState) {
 
   const statusColor = !isVerified ? "var(--warn)" : "var(--emerald)";
   const statusLabel = !isVerified ? "Address loaded — not yet verified on-chain" : account?.accountStatus || "Active";
+  const assetPreviewItems = [
+    {
+      label: "XRP",
+      detail: "Native asset",
+      value: `${safeNumber(account?.balanceXrp || 0, 4)} XRP`,
+      tone: "native"
+    },
+    ...holdings.slice(0, 5).map((token) => ({
+      label: decodeCurrencyCode(token.currency),
+      detail: `Issuer ${formatAddress(token.counterparty)}`,
+      value: `${safeNumber(token.balance, 4)} ${decodeCurrencyCode(token.currency)}`,
+      tone: "issued"
+    }))
+  ];
+  const recentActivityHtml = txItems.length
+    ? txItems.slice(0, 4).map((tx) => `
+        <div class="portfolio-activity-item">
+          <strong>${escapeHtml(tx.label || tx.type || "Ledger event")}</strong>
+          <span>${escapeHtml(tx.amount || "-")} ${escapeHtml(tx.asset || "")} - ${escapeHtml(formatLedgerDate(tx.date))}</span>
+        </div>
+      `).join("")
+    : `<p class="muted">No recent ledger activity loaded yet.</p>`;
+  const assetPreviewHtml = assetPreviewItems.length
+    ? assetPreviewItems.map((asset) => `
+        <div class="portfolio-asset-pill ${asset.tone}">
+          <strong>${escapeHtml(asset.label)}</strong>
+          <span>${escapeHtml(asset.value)}</span>
+          <em>${escapeHtml(asset.detail)}</em>
+        </div>
+      `).join("")
+    : `<p class="muted">No assets loaded yet.</p>`;
 
   refs.profileWalletPanel.innerHTML = `
-    <div class="profile-wallet-address-row">
+    <div class="portfolio-connection-hero">
+      <div>
+        <span class="mode-pill">${escapeHtml(providerLabel)}</span>
+        <h3>${isVerified ? "Wallet Portfolio Loaded" : "Wallet Address Loaded"}</h3>
+        <p class="muted">${escapeHtml(signingLabel)}. This view is focused on balances, exposure, owned objects, and transaction readiness.</p>
+      </div>
+      <div class="portfolio-connection-actions">
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="wallet">Wallet Status</button>
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="tokens">Tokens</button>
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="nfts">NFTs</button>
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="amm">AMM / LP</button>
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="dex">DEX</button>
+      </div>
+    </div>
+
+    <div class="profile-wallet-address-row portfolio-address-row">
       <span class="profile-wallet-addr-label">Classic Address</span>
-      <code class="profile-wallet-addr">${publicAddress}</code>
-      <button type="button" class="ghost keygen-copy-btn profile-wallet-copy" data-copy="${publicAddress}">Copy</button>
+      <code class="profile-wallet-addr">${escapeHtml(publicAddress)}</code>
+      <button type="button" class="ghost keygen-copy-btn profile-wallet-copy" data-copy="${escapeHtml(publicAddress)}">Copy</button>
     </div>
 
     <div class="profile-wallet-status-row">
       <span class="profile-wallet-status-dot" style="background:${statusColor}"></span>
       <span style="color:${statusColor}; font-size:0.82rem; font-weight:600;">${statusLabel}</span>
-      <span class="muted" style="font-size:0.78rem;">· ${mode || "Read-only Mode"}</span>
+      <span class="muted" style="font-size:0.78rem;">- ${escapeHtml(mode || "Read-only Mode")}</span>
     </div>
 
     ${isVerified ? `
@@ -2575,6 +2770,33 @@ function renderProfileWalletCard(walletState) {
         <span class="profile-wallet-kpi-value violet">${account?.nftCount ?? 0}</span>
         <span class="profile-wallet-kpi-unit">items</span>
       </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">Issued Assets</span>
+        <span class="profile-wallet-kpi-value cyan">${holdings.length}</span>
+        <span class="profile-wallet-kpi-unit">balances</span>
+      </div>
+      <div class="profile-wallet-kpi">
+        <span class="profile-wallet-kpi-label">AMM / LP</span>
+        <span class="profile-wallet-kpi-value turquoise">${amm.objectCount ?? 0}</span>
+        <span class="profile-wallet-kpi-unit">positions</span>
+      </div>
+    </div>
+
+    <div class="portfolio-preview-grid">
+      <div class="portfolio-preview-panel">
+        <div class="section-top compact">
+          <h4>Asset Exposure</h4>
+          <span class="mode-pill">${holdings.length + 1} shown</span>
+        </div>
+        <div class="portfolio-asset-strip">${assetPreviewHtml}</div>
+      </div>
+      <div class="portfolio-preview-panel">
+        <div class="section-top compact">
+          <h4>Recent Activity</h4>
+          <span class="mode-pill">${txItems.length} loaded</span>
+        </div>
+        <div class="portfolio-activity-list">${recentActivityHtml}</div>
+      </div>
     </div>
 
     <div class="profile-wallet-detail-grid">
@@ -2606,7 +2828,11 @@ function renderProfileWalletCard(walletState) {
     ` : `
     <div class="profile-wallet-unverified">
       <p class="muted">Account not yet verified on-chain. Press <strong>Refresh Account</strong> on the dashboard to query the XRPL.</p>
-      ${netConfig.isMainnet ? `<p class="keygen-danger-note">⚠ You are on Mainnet — real assets may be involved.</p>` : ""}
+      <div class="button-row">
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="dashboard">Refresh Account</button>
+        <button type="button" class="ghost profile-wallet-nav-btn" data-nav="create-wallet">Create Wallet</button>
+      </div>
+      ${netConfig.isMainnet ? `<p class="keygen-danger-note">Mainnet selected - real assets may be involved.</p>` : ""}
     </div>
     `}
   `;
@@ -2618,6 +2844,10 @@ function renderProfileWalletCard(walletState) {
     navigator.clipboard.writeText(addr)
       .then(() => { copyBtn.textContent = "Copied!"; setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000); })
       .catch(() => { copyBtn.textContent = "Copy failed"; });
+  });
+
+  refs.profileWalletPanel.querySelectorAll(".profile-wallet-nav-btn[data-nav]").forEach((btn) => {
+    btn.addEventListener("click", () => setActivePage(btn.dataset.nav || "dashboard"));
   });
 }
 
@@ -2904,7 +3134,7 @@ function scoreAmmPoolRisk(pool = {}) {
 
 function scoreAmmPoolHealth(pool = {}) {
   const reasons = [];
-  let score = 48;
+  let score = 50;
   const tvl = toFiniteNumber(pool.tvl, Number.NaN);
   const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
   const lpHolders = toFiniteNumber(pool.lpHolders, Number.NaN);
@@ -2913,10 +3143,11 @@ function scoreAmmPoolHealth(pool = {}) {
   const burned = toFiniteNumber(pool.lpBurnedPercent, Number.NaN);
 
   if (Number.isFinite(tvl)) {
-    if (tvl >= 5_000_000) { score += 18; reasons.push("Deep TVL"); }
-    else if (tvl >= 1_000_000) { score += 14; reasons.push("Solid TVL"); }
-    else if (tvl >= 250_000) { score += 9; reasons.push("Moderate TVL"); }
-    else if (tvl < 50_000) { score -= 18; reasons.push("Thin TVL"); }
+    if (tvl >= 1_000_000) { score += 18; reasons.push("Deep TVL"); }
+    else if (tvl >= 200_000) { score += 14; reasons.push("Solid TVL"); }
+    else if (tvl >= 75_000) { score += 9; reasons.push("Moderate TVL"); }
+    else if (tvl >= 25_000) { score += 3; reasons.push("Developing TVL"); }
+    else { score -= 10; reasons.push("Thin TVL"); }
   } else {
     score -= 8;
     reasons.push("Missing TVL");
@@ -2924,31 +3155,44 @@ function scoreAmmPoolHealth(pool = {}) {
 
   if (Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0) {
     const turnover = volume / tvl;
-    if (turnover >= 0.03 && turnover <= 1.2) { score += 12; reasons.push("Healthy turnover"); }
-    else if (turnover > 1.2) { score -= 6; reasons.push("High churn"); }
-    else if (turnover < 0.01) { score -= 8; reasons.push("Low pool flow"); }
-  } else if (Number.isFinite(volume) && volume > 10_000) {
-    score += 4;
+    if (turnover >= 0.005 && turnover <= 0.35) { score += 12; reasons.push("Healthy turnover"); }
+    else if (turnover >= 0.001 && turnover < 0.005) { score += 4; reasons.push("Light turnover"); }
+    else if (turnover > 0.35 && turnover <= 1) { score -= 4; reasons.push("High churn"); }
+    else if (turnover > 1) { score -= 10; reasons.push("Extreme churn"); }
+    else { score -= 6; reasons.push("Low pool flow"); }
+  } else if (Number.isFinite(volume) && volume > 1000) {
+    score += 3;
     reasons.push("Active volume");
   }
 
   if (Number.isFinite(lpHolders)) {
-    if (lpHolders >= 250) { score += 12; reasons.push("Distributed LP base"); }
-    else if (lpHolders >= 50) { score += 6; reasons.push("Some LP diversity"); }
-    else { score -= 12; reasons.push("Few LP holders"); }
+    if (lpHolders >= 400) { score += 12; reasons.push("Distributed LP base"); }
+    else if (lpHolders >= 100) { score += 8; reasons.push("Good LP diversity"); }
+    else if (lpHolders >= 25) { score += 3; reasons.push("Some LP diversity"); }
+    else if (lpHolders < 10) { score -= 10; reasons.push("Very few LP holders"); }
+    else { score -= 3; reasons.push("Few LP holders"); }
   }
 
-  if (Number.isFinite(holders) && holders >= 1000) score += 5;
-  if (Number.isFinite(trustlines) && trustlines >= 1000) score += 5;
+  if (Number.isFinite(holders)) {
+    if (holders >= 5000) score += 5;
+    else if (holders >= 1000) score += 3;
+  }
+  if (Number.isFinite(trustlines)) {
+    if (trustlines >= 5000) score += 5;
+    else if (trustlines >= 1000) score += 3;
+  }
   if (pool.verified) { score += 8; reasons.push("Verified asset"); }
-  else { score -= 6; reasons.push("Unverified asset"); }
+  else { score -= 3; reasons.push("Unverified asset"); }
   if (pool.lowLiquidity) { score -= 12; reasons.push("Low liquidity flag"); }
-  if (Number.isFinite(burned) && burned > 40) { score -= 6; reasons.push("Large LP burn"); }
+  if (Number.isFinite(burned)) {
+    if (burned > 80) { score -= 5; reasons.push("Very high LP burn"); }
+    else if (burned > 40) { score -= 2; reasons.push("Large LP burn"); }
+  }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
-  const level = score >= 76 ? "Strong"
-    : score >= 58 ? "Watch"
-      : score >= 40 ? "Thin"
+  const level = score >= 82 ? "Strong"
+    : score >= 62 ? "Watch"
+      : score >= 45 ? "Thin"
         : "Fragile";
   return { level, score, reasons };
 }
@@ -2989,6 +3233,45 @@ function issuerRiskBadgeMarkup(risk = {}) {
   return `
     <span class="market-token-badge ${cls}"${title}>${escapeHtml(risk.level || "Issuer Watch")}</span>
     ${risk.reasons?.length ? `<span class="market-risk-reasons">${escapeHtml(risk.reasons.slice(0, 2).join(" • "))}</span>` : ""}
+  `;
+}
+
+function ammTableLegendMarkup() {
+  const items = [
+    ["#", "Rank by the loaded market feed. Lower numbers usually mean larger TVL in this view."],
+    ["Pool Pair", "The issued asset paired against XRP. Always verify the issuer before trusting the ticker."],
+    ["AMM Account", "The XRPL account that represents the automated market maker pool."],
+    ["TVL", "Estimated total value locked in the pool. Higher depth can reduce slippage, but does not remove issuer risk."],
+    ["24h AMM Volume", "Approximate pool flow over the last day, shown in XRP from the market feed."],
+    ["Turnover", "24h AMM volume divided by TVL. Very high turnover can mean active trading or unstable churn."],
+    ["Fee", "The pool trading fee LPs may earn from swaps. High fees can also signal risk or thin markets."],
+    ["LP Holders", "How many accounts hold LP tokens. Few LPs means more concentration risk."],
+    ["LP Burned", "Percent of LP tokens reported burned. Large values can change governance and exit assumptions."],
+    ["Holders", "Estimated token holder count for the issued asset."],
+    ["Trust Lines", "How many XRPL trust lines exist for that issued asset."],
+    ["Status", "Whether the market feed marks the asset as verified, tracked, or low liquidity."],
+    ["Health", "IkeLedger pool score based on TVL, turnover, LP distribution, holders, trust lines, and liquidity flags."],
+    ["Issuer", "Issuer quality signal. Unverified issuers deserve extra review before trading or providing liquidity."],
+    ["Risk", "Plain-language pool risk based on liquidity, issuer status, LP concentration, and volume quality."],
+    ["Watch", "Adds the pool to your local watchlist for faster review."],
+    ["Links", "External token and pool pages for deeper verification."]
+  ];
+
+  return `
+    <details class="amm-table-legend">
+      <summary>
+        <span>Column Legend</span>
+        <em>What every AMM / LP metric means</em>
+      </summary>
+      <div class="amm-table-legend-grid">
+        ${items.map(([label, detail]) => `
+          <div>
+            <strong>${escapeHtml(label)}</strong>
+            <p>${escapeHtml(detail)}</p>
+          </div>
+        `).join("")}
+      </div>
+    </details>
   `;
 }
 
@@ -3928,23 +4211,46 @@ function renderTopAmmPools() {
   const totalAmmVolume = items.reduce((sum, pool) => sum + (Number.isFinite(pool.volume24hAmm) ? pool.volume24hAmm : 0), 0);
   const totalLpHolders = items.reduce((sum, pool) => sum + (Number.isFinite(pool.lpHolders) ? pool.lpHolders : 0), 0);
   const updatedLabel = fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "cached";
+  const healthStats = items.reduce((acc, pool) => {
+    const health = scoreAmmPoolHealth(pool);
+    acc[health.level] = (acc[health.level] || 0) + 1;
+    const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+    const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+    const lpHolders = toFiniteNumber(pool.lpHolders, Number.NaN);
+    const burned = toFiniteNumber(pool.lpBurnedPercent, Number.NaN);
+    const turnover = Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0 ? volume / tvl : Number.NaN;
+    if (Number.isFinite(turnover)) acc.turnovers.push(turnover);
+    if (Number.isFinite(turnover) && turnover > 0.35) acc.highChurn += 1;
+    if (Number.isFinite(lpHolders) && lpHolders < 25) acc.concentrated += 1;
+    if (Number.isFinite(burned) && burned > 40) acc.lpBurnWatch += 1;
+    return acc;
+  }, { Strong: 0, Watch: 0, Thin: 0, Fragile: 0, turnovers: [], highChurn: 0, concentrated: 0, lpBurnWatch: 0 });
+  const medianTurnover = medianNumber(healthStats.turnovers) * 100;
 
   const visibleItems = filteredItems.slice(0, state.topAmmVisibleCount);
   const rows = visibleItems.map((pool) => {
+    const displayRank = items.indexOf(pool) >= 0 ? items.indexOf(pool) + 1 : pool.rank;
     const sourceUrl = pool.slug ? `https://xrpl.to/token/${encodeURIComponent(pool.slug)}` : "";
     const ammUrl = pool.ammAccount ? `https://xrpscan.com/account/${encodeURIComponent(pool.ammAccount)}` : "";
     const poolRisk = scoreAmmPoolRisk(pool);
     const health = scoreAmmPoolHealth(pool);
     const issuerRisk = scoreAmmIssuerRisk(pool);
     const watched = state.ammWatchlist.has(pool.id);
+    const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+    const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+    const turnover = Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0 ? (volume / tvl) * 100 : Number.NaN;
+    const turnoverClass = Number.isFinite(turnover) && turnover > 35 ? "hot"
+      : Number.isFinite(turnover) && turnover >= 0.5 ? "healthy"
+        : "quiet";
+    const rowHealth = String(health.level || "Watch").toLowerCase();
     const status = pool.lowLiquidity
       ? '<span class="market-token-badge warning">Low Liquidity</span>'
       : pool.verified
         ? '<span class="market-token-badge verified">Verified</span>'
         : '<span class="market-token-badge">Tracked</span>';
     return `
-      <tr>
-        <td class="rank-cell">${pool.rank}</td>
+      <tr data-health="${escapeHtml(rowHealth)}">
+        <td class="rank-cell">${displayRank}</td>
         <td>
           <div class="market-token-identity">
             ${tokenLogoMarkup(pool, pool.symbol)}
@@ -3960,6 +4266,10 @@ function renderTopAmmPools() {
         </td>
         <td>${formatUsd(pool.tvl)}</td>
         <td>${formatCompactNumber(pool.volume24hAmm, 1)} XRP</td>
+        <td class="amm-flow-cell ${turnoverClass}">
+          <strong>${Number.isFinite(turnover) ? `${turnover.toFixed(turnover >= 10 ? 1 : 2)}%` : "n/a"}</strong>
+          <span>${turnoverClass === "hot" ? "High churn" : turnoverClass === "healthy" ? "Active" : "Quiet"}</span>
+        </td>
         <td>${formatAmmFee(pool.tradingFee)}</td>
         <td>${formatCompactNumber(pool.lpHolders, 1)}</td>
         <td>${formatUnsignedPercent(pool.lpBurnedPercent)}</td>
@@ -3988,10 +4298,19 @@ function renderTopAmmPools() {
       <div><span>LP Holders</span><strong>${formatCompactNumber(totalLpHolders, 1)}</strong></div>
       <div><span>Updated</span><strong>${updatedLabel}</strong></div>
     </div>
+    <div class="amm-metrics-ribbon" aria-label="AMM pool intelligence metrics">
+      <div><span>Strong Pools</span><strong>${healthStats.Strong}</strong><em>score 82+</em></div>
+      <div><span>Watch / Thin</span><strong>${healthStats.Watch + healthStats.Thin}</strong><em>needs review</em></div>
+      <div><span>Fragile Pools</span><strong>${healthStats.Fragile}</strong><em>avoid rushing</em></div>
+      <div><span>Median Turnover</span><strong>${Number.isFinite(medianTurnover) ? `${medianTurnover.toFixed(medianTurnover >= 10 ? 1 : 2)}%` : "n/a"}</strong><em>volume / TVL</em></div>
+      <div><span>High Churn</span><strong>${healthStats.highChurn}</strong><em>flow over 35%</em></div>
+      <div><span>LP Watch</span><strong>${healthStats.concentrated + healthStats.lpBurnWatch}</strong><em>few LPs / burn flags</em></div>
+    </div>
     <label class="market-token-filter">
       <span>Filter pools</span>
       <input id="topAmmPoolFilter" type="search" placeholder="Search pair, issuer, or AMM account..." value="${escapeHtml(state.topAmmFilter)}" autocomplete="off" />
     </label>
+    ${ammTableLegendMarkup()}
     ${error ? `<p class="market-token-note">${escapeHtml(error)} Showing cached data where available.</p>` : ""}
     <div class="issued-token-table-wrap amm-pool-table-wrap" role="region" aria-label="XRPL AMM and LP pools" tabindex="0">
       <table class="issued-token-table amm-pool-table">
@@ -4002,6 +4321,7 @@ function renderTopAmmPools() {
             <th>AMM Account</th>
             <th>TVL</th>
             <th>24h AMM Volume</th>
+            <th>Turnover</th>
             <th>Fee</th>
             <th>LP Holders</th>
             <th>LP Burned</th>
@@ -4015,7 +4335,7 @@ function renderTopAmmPools() {
             <th>Links</th>
           </tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="16" class="empty-table-cell">No AMM pools match this filter.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="17" class="empty-table-cell">No AMM pools match this filter.</td></tr>`}</tbody>
       </table>
     </div>
     <div class="market-load-row">
@@ -4098,9 +4418,9 @@ async function loadTopAmmPools(forceRefresh = false) {
     const items = tokens
       .filter((token) => token.AMM || Number.parseFloat(token.tvl || "0") > 0)
       .slice(0, MARKET_RESULT_LIMIT)
-      .map(t => {
+      .map((t, index) => {
         const icon = iconMap.get(`${t.currency}_${t.issuer}`);
-        return normalizeAmmPoolMarketToken(icon ? { ...t, xrplmetaIcon: icon } : t);
+        return normalizeAmmPoolMarketToken(icon ? { ...t, xrplmetaIcon: icon } : t, index);
       });
     state.topAmmPools = {
       fetchedAt: Date.now(),
@@ -7309,6 +7629,7 @@ async function connectWithXumm() {
 
   try {
     if (refs.commandXummSignInButton) refs.commandXummSignInButton.textContent = mobile ? "Opening Xumm..." : "Waiting for Xumm...";
+    rememberMobileXummPending();
     const xumm = await initXumm(getXamanApiKey());
     setCommandAuthStatus(mobile
       ? "Waiting for approval. If Xumm opened, complete the request there and come back here."
@@ -7317,23 +7638,9 @@ async function connectWithXumm() {
     setCommandAuthStatus("Xumm approved. Loading your XRPL account...");
     const verified = await verifyXummAccount(account);
     if (verified) {
-      const existingUser = state.appUser;
-      saveAppUserSession({
-        id: existingUser?.id,
-        method: existingUser?.method || "xumm",
-        email: existingUser?.email || "",
-        username: existingUser?.username || `Xumm ${formatAddress(account)}`,
-        verified: existingUser ? existingUser.verified : true,
-        walletLinked: true,
-        walletAddress: account,
-        createdAt: existingUser?.createdAt
-      });
-      closeAuthModal();
-      renderAll();
-      setActivePage("profile");
-      setCommandAuthStatus("Signed in with Xumm. Profile and wallet refreshed.");
-      setFeedback("Signed in with Xumm. Your profile and wallet are loaded.");
+      completeXummAppSession(account);
     } else {
+      clearMobileXummPending();
       clearXummSession();
       sessionStorage.removeItem("ike_wallet_provider");
       setWalletProvider("");
@@ -7341,6 +7648,7 @@ async function connectWithXumm() {
     }
   } catch (err) {
     if (isExplicitXummRejection(err)) {
+      clearMobileXummPending();
       clearXummSession();
       sessionStorage.removeItem("ike_wallet_provider");
       setWalletProvider("");
@@ -7756,8 +8064,8 @@ function onKeygenLoadAddress() {
     });
   }
   logSecurityEvent("keygen_address_loaded", RISK_LEVELS.SAFE, { context: "keygen", addressHint: formatAddress(address) });
-  setActivePage("dashboard");
-  setFeedback("New wallet address loaded. Save your private key before funding or signing.");
+  setActivePage("profile");
+  setFeedback("New wallet address loaded. Portfolio is ready. Save your private key before funding or signing.");
   clearCreateWalletKeys();
 }
 
@@ -7994,6 +8302,17 @@ function initEventHandlers() {
       }
     }
   });
+  window.addEventListener("focus", () => {
+    if (hasFreshMobileXummPending()) void resumeMobileXummReturn();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && hasFreshMobileXummPending()) void resumeMobileXummReturn();
+  });
+  let authCopyResizeTimer = 0;
+  window.addEventListener("resize", () => {
+    window.clearTimeout(authCopyResizeTimer);
+    authCopyResizeTimer = window.setTimeout(renderCommandCenterAuth, 120);
+  });
   refs.authModal?.addEventListener("click", (event) => {
     if (event.target === refs.authModal) closeAuthModal();
   });
@@ -8227,6 +8546,7 @@ function boot() {
     void renderMarketOverview(true, { forceChart: false });
   }, 15000);
   renderAll();
+  void resumeMobileXummReturn();
 }
 
 boot();
