@@ -46,6 +46,9 @@ export const STORAGE_KEYS = {
   avatarBorderColor: "ikeledger.avatarBorderColor",
   avatarBorderShape: "ikeledger.avatarBorderShape",
   avatarBorderWidth: "ikeledger.avatarBorderWidth",
+  portfolioMood: "ikeledger.portfolioMood",
+  portfolioDensity: "ikeledger.portfolioDensity",
+  portfolioGlow: "ikeledger.portfolioGlow",
   tokenWatchlist: "ikeledger.tokenWatchlist",
   ammWatchlist: "ikeledger.ammWatchlist",
   marketProxyBaseUrl: "ikeledger.marketProxyBaseUrl"

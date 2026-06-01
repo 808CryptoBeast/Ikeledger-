@@ -862,12 +862,12 @@
           </section>
 
           <section class="page-section" data-page="profile">
-            <article class="glass-card profile-card profile-settings-card">
+            <article class="glass-card profile-card profile-settings-card portfolio-studio-card">
               <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikeprofile.png" alt="IkeLedger profile" loading="lazy" />
               <div class="section-top">
                 <div>
-                  <h2>Profile Settings</h2>
-                  <p class="muted">Identity, photo, and local avatar styling for your IkeLedger profile.</p>
+                  <h2>Portfolio Studio</h2>
+                  <p class="muted">Customize the public-facing portfolio card, identity, photo, and avatar glow.</p>
                 </div>
                 <button id="saveProfileButton" type="button">Save Settings</button>
               </div>
@@ -944,6 +944,33 @@
                         </select>
                       </label>
                     </div>
+                  </div>
+
+                  <div class="portfolio-page-customizer">
+                    <h4 class="customizer-heading">Portfolio Page Style</h4>
+                    <div class="customizer-grid">
+                      <label class="customizer-label">
+                        Page Mood
+                        <select id="portfolioMoodInput">
+                          <option value="aqua">Aqua Ledger</option>
+                          <option value="gold">Mana Gold</option>
+                          <option value="violet">Violet Pulse</option>
+                          <option value="ember">Ember Signal</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Layout
+                        <select id="portfolioDensityInput">
+                          <option value="showcase">Showcase</option>
+                          <option value="compact">Compact</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Page Glow
+                        <input type="range" id="portfolioGlowInput" min="0" max="100" value="65" class="style-range" />
+                      </label>
+                    </div>
+                    <p class="muted portfolio-style-note">These settings stay local in this browser, giving each portfolio its own creative look.</p>
                   </div>
                 </div>
               </div>

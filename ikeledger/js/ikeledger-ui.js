@@ -368,6 +368,9 @@ const refs = {
   avatarBorderColorInput: document.getElementById("avatarBorderColorInput"),
   avatarBorderWidthInput: document.getElementById("avatarBorderWidthInput"),
   avatarBorderShapeInput: document.getElementById("avatarBorderShapeInput"),
+  portfolioMoodInput: document.getElementById("portfolioMoodInput"),
+  portfolioDensityInput: document.getElementById("portfolioDensityInput"),
+  portfolioGlowInput: document.getElementById("portfolioGlowInput"),
   avatarGlowSwatch: document.getElementById("avatarGlowSwatch"),
   avatarBorderSwatch: document.getElementById("avatarBorderSwatch"),
   fundWalletPanel: document.getElementById("fundWalletPanel"),
@@ -721,12 +724,17 @@ function decodeCurrencyCode(currency = "") {
         .map((code) => String.fromCharCode(code))
         .join("")
         .trim();
-      return chars || value.slice(0, 8);
+      const printable = chars.replace(/[^\x20-\x7E]/g, "").trim();
+      if (printable && printable.length === chars.length && /[A-Za-z0-9$]/.test(printable)) {
+        return printable;
+      }
+      return `HEX ${value.slice(0, 8)}`;
     } catch {
-      return value.slice(0, 8);
+      return `HEX ${value.slice(0, 8)}`;
     }
   }
-  return value || "Unknown";
+  const printable = value.replace(/[^\x20-\x7E]/g, "").trim();
+  return printable || "Unknown";
 }
 
 function shouldUseSupabaseSync() {
@@ -2487,6 +2495,40 @@ function saveAvatarStyle() {
   applyAvatarStyle();
 }
 
+function getPortfolioStyle() {
+  return {
+    mood: localStorage.getItem(STORAGE_KEYS.portfolioMood) || "aqua",
+    density: localStorage.getItem(STORAGE_KEYS.portfolioDensity) || "showcase",
+    glow: Number.parseInt(localStorage.getItem(STORAGE_KEYS.portfolioGlow) || "65", 10)
+  };
+}
+
+function syncPortfolioStyleControls(style = getPortfolioStyle()) {
+  if (refs.portfolioMoodInput) refs.portfolioMoodInput.value = style.mood;
+  if (refs.portfolioDensityInput) refs.portfolioDensityInput.value = style.density;
+  if (refs.portfolioGlowInput) refs.portfolioGlowInput.value = String(style.glow);
+}
+
+function applyPortfolioStyle() {
+  const style = getPortfolioStyle();
+  const section = document.querySelector('.page-section[data-page="profile"]');
+  const glow = Math.max(0, Math.min(100, Number.isFinite(style.glow) ? style.glow : 65));
+  if (section) {
+    section.dataset.portfolioMood = style.mood;
+    section.dataset.portfolioDensity = style.density;
+    section.style.setProperty("--portfolio-glow-size", `${Math.round(12 + glow * 0.38)}px`);
+    section.style.setProperty("--portfolio-glow-alpha", (0.08 + glow * 0.0024).toFixed(3));
+  }
+  syncPortfolioStyleControls({ ...style, glow });
+}
+
+function savePortfolioStyle() {
+  localStorage.setItem(STORAGE_KEYS.portfolioMood, refs.portfolioMoodInput?.value || "aqua");
+  localStorage.setItem(STORAGE_KEYS.portfolioDensity, refs.portfolioDensityInput?.value || "showcase");
+  localStorage.setItem(STORAGE_KEYS.portfolioGlow, refs.portfolioGlowInput?.value || "65");
+  applyPortfolioStyle();
+}
+
 function getAvatarStatusClass(walletState) {
   if (!walletState.publicAddress) return "status-disconnected";
   if (!walletState.snapshot) return "status-loaded";
@@ -2624,6 +2666,7 @@ function renderProfile(walletState) {
   if (refs.profileStatus) refs.profileStatus.innerHTML = html;
   if (refs.profilePagePanel) refs.profilePagePanel.innerHTML = html;
   applyProfilePhoto();
+  applyPortfolioStyle();
   syncProfileEditor(walletState.profile || getProfileFields());
   renderProfileWalletCard(walletState);
 }
@@ -2668,6 +2711,11 @@ function renderProfileWalletCard(walletState) {
   const nfts = snapshot?.nftItems || [];
   const amm = snapshot?.amm || {};
   const txItems = snapshot?.txItems || [];
+  const profile = walletState.profile || getProfileFields();
+  const photo = localStorage.getItem(STORAGE_KEYS.profilePhoto);
+  const avatarMarkup = photo
+    ? `<span class="portfolio-profile-avatar has-photo"><img src="${escapeHtml(photo)}" alt="${escapeHtml(profile.displayName)} profile photo" /></span>`
+    : `<span class="portfolio-profile-avatar">${escapeHtml(profile.initials)}</span>`;
 
   // Reserve breakdown — live from XRPL or fallback to current spec values
   const ownerCount = account?.ownerCount ?? 0;
@@ -2711,11 +2759,20 @@ function renderProfileWalletCard(walletState) {
     : `<p class="muted">No assets loaded yet.</p>`;
 
   refs.profileWalletPanel.innerHTML = `
-    <div class="portfolio-connection-hero">
-      <div>
-        <span class="mode-pill">${escapeHtml(providerLabel)}</span>
-        <h3>${isVerified ? "Wallet Portfolio Loaded" : "Wallet Address Loaded"}</h3>
-        <p class="muted">${escapeHtml(signingLabel)}. This view is focused on balances, exposure, owned objects, and transaction readiness.</p>
+    <div class="portfolio-showcase-hero">
+      <div class="portfolio-profile-block">
+        ${avatarMarkup}
+        <div class="portfolio-hero-copy">
+          <span class="mode-pill">${escapeHtml(providerLabel)}</span>
+          <h3>${escapeHtml(profile.displayName)}</h3>
+          <div class="portfolio-hero-meta">
+            <span>${escapeHtml(profile.handle)}</span>
+            <span>${escapeHtml(profile.realm)}</span>
+            <span>${isVerified ? "Wallet Portfolio Loaded" : "Wallet Address Loaded"}</span>
+          </div>
+          <p>${escapeHtml(profile.bio)}</p>
+          <p class="muted">${escapeHtml(signingLabel)}. Balances, exposure, owned objects, and transaction readiness stay connected to this XRPL account.</p>
+        </div>
       </div>
       <div class="portfolio-connection-actions">
         <button type="button" class="ghost profile-wallet-nav-btn" data-nav="wallet">Wallet Status</button>
@@ -2854,6 +2911,7 @@ function renderProfileWalletCard(walletState) {
 function onSaveProfile() {
   const nextProfile = getProfileEditorValues();
   updateProfileState(nextProfile);
+  savePortfolioStyle();
   const walletState = getWalletState();
   renderProfile(walletState);
   setFeedback("Profile saved.");
@@ -8383,6 +8441,10 @@ function initEventHandlers() {
     el?.addEventListener("input", saveAvatarStyle);
     el?.addEventListener("change", saveAvatarStyle);
   });
+  [refs.portfolioMoodInput, refs.portfolioDensityInput, refs.portfolioGlowInput].forEach((el) => {
+    el?.addEventListener("input", savePortfolioStyle);
+    el?.addEventListener("change", savePortfolioStyle);
+  });
 
   // Keygen handlers
   refs.keygenChecks.forEach((cb) => cb.addEventListener("change", onKeygenCheckChange));
@@ -8535,6 +8597,7 @@ function boot() {
   renderReminders();
   applyProfilePhoto();
   applyAvatarStyle();
+  applyPortfolioStyle();
   initEventHandlers();
   if (window.innerWidth <= 1100) {
     closeSidebarPanel();

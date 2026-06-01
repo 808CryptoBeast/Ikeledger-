@@ -2342,6 +2342,371 @@ button.ghost:hover {
   padding: 1rem;
 }
 
+.page-section[data-page="profile"] {
+  --portfolio-accent: var(--turquoise);
+  --portfolio-accent-2: var(--xrp-blue);
+  --portfolio-accent-rgb: 66, 232, 213;
+  --portfolio-glow-size: 36px;
+  --portfolio-glow-alpha: 0.2;
+}
+
+.page-section[data-page="profile"].active {
+  grid-template-columns: minmax(0, 1.48fr) minmax(320px, 0.72fr);
+  align-items: start;
+}
+
+.page-section[data-page="profile"][data-portfolio-mood="gold"] {
+  --portfolio-accent: var(--mana-gold);
+  --portfolio-accent-2: var(--warning);
+  --portfolio-accent-rgb: 233, 199, 122;
+}
+
+.page-section[data-page="profile"][data-portfolio-mood="violet"] {
+  --portfolio-accent: var(--violet);
+  --portfolio-accent-2: var(--cyan);
+  --portfolio-accent-rgb: 155, 92, 255;
+}
+
+.page-section[data-page="profile"][data-portfolio-mood="ember"] {
+  --portfolio-accent: var(--warning);
+  --portfolio-accent-2: var(--danger);
+  --portfolio-accent-rgb: 255, 184, 84;
+}
+
+.page-section[data-page="profile"] .portfolio-primary-card {
+  grid-column: 1;
+  grid-row: 1;
+  order: 0;
+  padding: 1.05rem;
+  border-color: rgba(var(--portfolio-accent-rgb), 0.34);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.07), transparent 28%),
+    radial-gradient(circle at 14% 3%, rgba(var(--portfolio-accent-rgb), 0.2), transparent 35%),
+    radial-gradient(circle at 90% 0%, rgba(70, 188, 255, 0.18), transparent 34%),
+    rgba(5, 12, 30, 0.86);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.36),
+    0 0 var(--portfolio-glow-size) rgba(var(--portfolio-accent-rgb), var(--portfolio-glow-alpha)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.page-section[data-page="profile"] #fundWalletCard {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.page-section[data-page="profile"] .portfolio-studio-card {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  order: 1;
+  position: sticky;
+  top: 92px;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+  border-color: rgba(var(--portfolio-accent-rgb), 0.24);
+  background:
+    linear-gradient(155deg, rgba(var(--portfolio-accent-rgb), 0.1), transparent 32%),
+    rgba(5, 11, 28, 0.82);
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.28),
+    0 0 calc(var(--portfolio-glow-size) * 0.55) rgba(var(--portfolio-accent-rgb), calc(var(--portfolio-glow-alpha) * 0.65));
+}
+
+.portfolio-showcase-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: stretch;
+  margin-bottom: 0.85rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(var(--portfolio-accent-rgb), 0.24);
+  border-radius: 18px;
+  background:
+    linear-gradient(120deg, rgba(var(--portfolio-accent-rgb), 0.16), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent),
+    rgba(4, 10, 24, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.portfolio-profile-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  min-width: 0;
+  align-items: center;
+}
+
+.portfolio-profile-avatar {
+  width: clamp(74px, 10vw, 112px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid rgba(var(--portfolio-accent-rgb), 0.72);
+  border-radius: 24px;
+  color: var(--ink-0);
+  font-size: clamp(1.3rem, 3vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background:
+    radial-gradient(circle at 35% 22%, rgba(255, 255, 255, 0.18), transparent 24%),
+    linear-gradient(145deg, rgba(var(--portfolio-accent-rgb), 0.36), rgba(8, 16, 38, 0.88));
+  box-shadow:
+    0 0 calc(var(--portfolio-glow-size) * 0.75) rgba(var(--portfolio-accent-rgb), var(--portfolio-glow-alpha)),
+    inset 0 0 24px rgba(255, 255, 255, 0.07);
+}
+
+.portfolio-profile-avatar.has-photo {
+  background: rgba(4, 10, 24, 0.78);
+}
+
+.portfolio-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portfolio-hero-copy {
+  display: grid;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.portfolio-hero-copy h3 {
+  margin: 0;
+  color: var(--ink-0);
+  font-size: clamp(1.35rem, 3.2vw, 2.3rem);
+  line-height: 1.05;
+}
+
+.portfolio-hero-copy p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--ink-1);
+  line-height: 1.45;
+}
+
+.portfolio-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.portfolio-hero-meta span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid rgba(var(--portfolio-accent-rgb), 0.2);
+  border-radius: 999px;
+  background: rgba(8, 16, 36, 0.6);
+  color: var(--ink-2);
+  font-size: 0.72rem;
+}
+
+.page-section[data-page="profile"] .portfolio-connection-actions {
+  align-content: start;
+  align-items: start;
+  align-self: start;
+  justify-content: flex-end;
+  max-width: 245px;
+}
+
+.page-section[data-page="profile"] .portfolio-connection-actions .ghost {
+  border-color: rgba(var(--portfolio-accent-rgb), 0.24);
+  background: rgba(5, 12, 30, 0.64);
+}
+
+.page-section[data-page="profile"] .profile-wallet-address-row {
+  border-color: rgba(var(--portfolio-accent-rgb), 0.18);
+  background:
+    linear-gradient(90deg, rgba(var(--portfolio-accent-rgb), 0.08), transparent),
+    rgba(5, 12, 30, 0.54);
+}
+
+.page-section[data-page="profile"] .profile-wallet-status-row {
+  padding: 0.62rem 0.2rem;
+}
+
+.page-section[data-page="profile"] .profile-wallet-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.page-section[data-page="profile"] .profile-wallet-kpi {
+  min-height: 104px;
+  justify-content: center;
+  border-color: rgba(var(--portfolio-accent-rgb), 0.15);
+  background:
+    radial-gradient(circle at 85% 12%, rgba(var(--portfolio-accent-rgb), 0.12), transparent 42%),
+    rgba(8, 16, 36, 0.66);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.page-section[data-page="profile"] .profile-wallet-kpi:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--portfolio-accent-rgb), 0.34);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22), 0 0 18px rgba(var(--portfolio-accent-rgb), 0.1);
+}
+
+.page-section[data-page="profile"] .profile-wallet-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.page-section[data-page="profile"] .profile-wallet-detail-row {
+  display: grid;
+  gap: 0.16rem;
+  align-content: center;
+  min-height: 74px;
+  border: 1px solid rgba(var(--portfolio-accent-rgb), 0.14);
+  border-radius: var(--radius-md);
+  background: rgba(8, 16, 36, 0.58);
+}
+
+.page-section[data-page="profile"] .profile-wallet-detail-row:nth-child(even) {
+  background: rgba(8, 16, 36, 0.58);
+}
+
+.page-section[data-page="profile"] .profile-wallet-detail-label,
+.page-section[data-page="profile"] .profile-wallet-detail-value {
+  text-align: left;
+}
+
+.page-section[data-page="profile"] .portfolio-preview-grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(280px, 0.82fr);
+}
+
+.page-section[data-page="profile"] .portfolio-preview-panel {
+  border-color: rgba(var(--portfolio-accent-rgb), 0.16);
+  background:
+    linear-gradient(160deg, rgba(var(--portfolio-accent-rgb), 0.07), transparent 34%),
+    rgba(4, 10, 24, 0.58);
+}
+
+.page-section[data-page="profile"] .portfolio-asset-strip {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.page-section[data-page="profile"] .portfolio-asset-pill,
+.page-section[data-page="profile"] .portfolio-activity-item {
+  border-color: rgba(var(--portfolio-accent-rgb), 0.15);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.page-section[data-page="profile"] .portfolio-asset-pill:hover,
+.page-section[data-page="profile"] .portfolio-activity-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--portfolio-accent-rgb), 0.32);
+  background: rgba(10, 20, 45, 0.76);
+}
+
+.page-section[data-page="profile"] .portfolio-asset-pill span {
+  color: var(--portfolio-accent);
+}
+
+.portfolio-studio-card .section-visual {
+  max-height: 150px;
+  object-fit: cover;
+  object-position: center;
+  border-color: rgba(var(--portfolio-accent-rgb), 0.22);
+}
+
+.portfolio-studio-card .profile-layout {
+  grid-template-columns: 1fr;
+}
+
+.portfolio-studio-card .profile-summary {
+  grid-template-columns: minmax(130px, 0.48fr) minmax(0, 1fr);
+}
+
+.portfolio-studio-card .profile-photo-zone {
+  min-width: 0;
+}
+
+.portfolio-studio-card #profilePagePanel {
+  min-width: 0;
+  align-self: stretch;
+}
+
+.portfolio-studio-card .profile-editor {
+  border-color: rgba(var(--portfolio-accent-rgb), 0.17);
+  background: rgba(4, 10, 24, 0.5);
+}
+
+.avatar-customizer,
+.portfolio-page-customizer {
+  padding: 0.82rem;
+  border: 1px solid rgba(var(--portfolio-accent-rgb), 0.18);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(145deg, rgba(var(--portfolio-accent-rgb), 0.07), transparent 42%),
+    rgba(5, 12, 30, 0.58);
+}
+
+.portfolio-page-customizer {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.customizer-heading {
+  margin: 0 0 0.58rem;
+  color: var(--ink-0);
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.customizer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.customizer-label {
+  display: grid;
+  gap: 0.38rem;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.portfolio-style-note {
+  margin: 0.62rem 0 0;
+  font-size: 0.74rem;
+}
+
+.page-section[data-page="profile"][data-portfolio-density="compact"] .portfolio-showcase-hero {
+  grid-template-columns: 1fr;
+}
+
+.page-section[data-page="profile"][data-portfolio-density="compact"] .portfolio-profile-avatar {
+  width: 76px;
+  border-radius: 18px;
+}
+
+.page-section[data-page="profile"][data-portfolio-density="compact"] .portfolio-hero-copy h3 {
+  font-size: clamp(1.1rem, 2.2vw, 1.55rem);
+}
+
+.page-section[data-page="profile"][data-portfolio-density="compact"] .profile-wallet-kpi-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.page-section[data-page="profile"][data-portfolio-density="compact"] .profile-wallet-kpi {
+  min-height: 82px;
+  padding: 0.56rem 0.68rem;
+}
+
 /* ---------------------------------------------
    Sidebar Footer (wallet controls)
    --------------------------------------------- */
@@ -2950,6 +3315,27 @@ button.ghost:hover {
   .top-controls .inline-control {
     min-width: 115px;
   }
+
+  .page-section[data-page="profile"].active {
+    grid-template-columns: 1fr;
+  }
+
+  .page-section[data-page="profile"] .portfolio-primary-card,
+  .page-section[data-page="profile"] #fundWalletCard,
+  .page-section[data-page="profile"] .portfolio-studio-card {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .page-section[data-page="profile"] .portfolio-studio-card {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .portfolio-studio-card .profile-summary {
+    grid-template-columns: minmax(160px, 0.38fr) minmax(0, 1fr);
+  }
 }
 
 /* ---------------------------------------------
@@ -3066,14 +3452,48 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
+  .portfolio-showcase-hero,
   .portfolio-connection-hero,
   .portfolio-preview-grid {
     grid-template-columns: 1fr;
   }
 
+  .portfolio-profile-block {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .portfolio-profile-avatar {
+    width: 82px;
+    border-radius: 20px;
+  }
+
   .portfolio-connection-actions {
     justify-content: flex-start;
     max-width: none;
+  }
+
+  .page-section[data-page="profile"] .portfolio-connection-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+    width: 100%;
+  }
+
+  .page-section[data-page="profile"] .profile-wallet-kpi-grid,
+  .page-section[data-page="profile"][data-portfolio-density="compact"] .profile-wallet-kpi-grid,
+  .page-section[data-page="profile"] .profile-wallet-detail-grid,
+  .portfolio-studio-card .profile-summary,
+  .customizer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-section[data-page="profile"] .profile-wallet-kpi {
+    min-height: 86px;
+  }
+
+  .page-section[data-page="profile"] .profile-wallet-detail-row {
+    min-height: auto;
   }
 
   .portfolio-asset-strip {
@@ -3119,6 +3539,32 @@ button.ghost:hover {
 
   .bottom-link-label {
     font-size: 0.55rem;
+  }
+
+  .portfolio-showcase-hero {
+    padding: 0.72rem;
+    border-radius: 15px;
+  }
+
+  .portfolio-hero-copy h3 {
+    font-size: 1.26rem;
+  }
+
+  .portfolio-hero-meta span {
+    max-width: 100%;
+  }
+
+  .page-section[data-page="profile"] .portfolio-connection-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-wallet-address-row {
+    align-items: flex-start;
+  }
+
+  .profile-wallet-copy {
+    width: 100%;
+    justify-content: center;
   }
 
   button {
