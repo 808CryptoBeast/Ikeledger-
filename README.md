@@ -2,7 +2,7 @@
 
 > Where ancestral knowledge meets verifiable value.
 
-IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ancestral knowledge, cultural learning, digital identity, and verifiable value through credentials, Mana rewards, and proof-of-learning records.
+IkeLedger is an XRPL-powered wallet dashboard, portfolio studio, and identity layer connecting ancestral knowledge, cultural learning, digital identity, and verifiable value through account intelligence, credentials, Mana rewards, and proof-of-learning records.
 
 ---
 
@@ -19,6 +19,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 - Email/password profile sign-in through Supabase Auth with email verification
 - Email profiles are profile-only until an XRPL wallet is connected or created
 - Xumm/Xaman sign-in uses the official SDK flow and links the approved XRPL account automatically
+- Same-device mobile sign-in opens Xumm/Xaman through the official deep-link flow and resumes the session when the user returns
 - Xumm sessions use IkeLedger's public app key; users never enter an API key
 - Wallet-only pages and DEX transaction tools are gated until the user has a connected or created XRPL account
 
@@ -67,6 +68,11 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
   - Red = queried, zero balance (needs funding)
   - Dim gray = no wallet connected
 - Profile wallet card — full account details (address, balance KPIs, sequence, trust lines, NFT count, reserve breakdown)
+- Portfolio Studio — Myspace-style local customization for the portfolio page:
+  - profile photo, display name, handle, realm, and bio
+  - avatar glow color, glow intensity, border color, border width, and shape
+  - portfolio page mood, layout density, and page glow
+  - wallet-backed showcase card with profile identity, signing mode, XRPL address, KPIs, assets, recent activity, and account readiness
 - Fund Wallet card — copyable address, reserve amounts, 4-step activation guide
 
 ### Security
@@ -97,7 +103,7 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 | XRPL | Shared WebSocket service via `wss://` endpoints — read-only, no keys held |
 | Signing | Official Xumm SDK sign-in plus Xaman transaction payloads using IkeLedger's public app key (no user API key or private key ever touches this app) |
 | App auth | Supabase Auth for optional email/password profiles; Xumm/Xaman for wallet-backed profile sign-in |
-| Storage | `localStorage` for local session, public wallet address, profile, appearance |
+| Storage | `localStorage` for local session, public wallet address, profile, portfolio appearance, watchlists, and cached market data |
 | Sync (optional) | Supabase RPC — profiles, Mana, credentials, security logs |
 | Key generation | `crypto.subtle` (Web Crypto API) + pure-JS RIPEMD-160 |
 
@@ -105,10 +111,35 @@ IkeLedger is an XRPL-powered wallet dashboard and identity layer connecting ance
 
 ## Quick start
 
+IkeLedger is a static ES-module app. Serve it from the project root with any local static server:
+
+```powershell
+python -m http.server 5501
 ```
-Open index.html in a modern browser.
-No build, no install, no server required.
+
+Then open:
+
+```text
+http://127.0.0.1:5501/index.html
 ```
+
+VS Code Live Server works too. The app has no build step and no npm install requirement for the frontend.
+
+### Optional market proxy
+
+The app can call public APIs directly, but token/AMM pages are smoother with the local proxy because it caches market responses and fixes token image CORS/hotlinking issues:
+
+```powershell
+node ikeledger/server/market-proxy.mjs
+```
+
+Then set `Settings -> Market Proxy` to:
+
+```text
+http://127.0.0.1:8788
+```
+
+See [ikeledger/docs/market-proxy.md](ikeledger/docs/market-proxy.md) for allowed hosts and production notes.
 
 ---
 
@@ -133,7 +164,7 @@ ikeledger/
   server/
     market-proxy.mjs              — Optional local market/image cache proxy
   assets/images/                  — App icons and network imagery
-  docs/                           — Security, wallet-flow, credential model docs
+  docs/                           — Security, wallet-flow, market proxy, credential model docs
   supabase/                       — SQL migrations and deploy order
 ```
 
@@ -146,3 +177,19 @@ ikeledger/
 - Email/password profiles do not expose XRPL wallet data until the user links or creates a wallet.
 - Only local session state, appearance preferences, profile settings, and public wallet addresses are persisted in `localStorage`.
 - All signing is delegated to Xaman — no transaction is submitted without user approval in their own wallet app.
+- DEX offers and payment requests are previewed in IkeLedger first, then sent to Xaman for explicit review and approval.
+
+---
+
+## Current verification
+
+Recent local checks:
+
+```powershell
+node --check ikeledger/js/ikeledger-ui.js
+node --check ikeledger/js/ikeledger-config.js
+git diff --check
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5501/index.html
+```
+
+Expected result: JavaScript syntax passes, diff check has no whitespace errors, and the local app responds with `200 OK`.

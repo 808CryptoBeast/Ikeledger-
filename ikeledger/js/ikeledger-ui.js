@@ -360,6 +360,7 @@ const refs = {
   clearPhotoButton: document.getElementById("clearPhotoButton"),
   profileWalletPanel: document.getElementById("profileWalletPanel"),
   profileWalletNetworkBadge: document.getElementById("profileWalletNetworkBadge"),
+  portfolioStudioWalletPanel: document.getElementById("portfolioStudioWalletPanel"),
   heroAvatarGlowWrap: document.getElementById("heroAvatarGlowWrap"),
   heroAvatarStatusRing: document.getElementById("heroAvatarStatusRing"),
   heroAvatarStatusLabel: document.getElementById("heroAvatarStatusLabel"),
@@ -2668,7 +2669,41 @@ function renderProfile(walletState) {
   applyProfilePhoto();
   applyPortfolioStyle();
   syncProfileEditor(walletState.profile || getProfileFields());
+  renderPortfolioStudioWallet(walletState);
   renderProfileWalletCard(walletState);
+}
+
+function renderPortfolioStudioWallet(walletState) {
+  if (!refs.portfolioStudioWalletPanel) return;
+  const { publicAddress, snapshot, network } = walletState;
+  const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider") || "read-only";
+  const netConfig = NETWORKS[network] || NETWORKS["xrpl-testnet"];
+  const providerLabel = providerKey === "xaman" ? "Xaman linked"
+    : providerKey === "created" ? "Created wallet"
+      : publicAddress ? "Read-only wallet" : "No wallet";
+  const signerLabel = providerKey === "xaman" ? "Can request Xaman signatures"
+    : providerKey === "created" ? "Preview mode - connect in Xaman to sign"
+      : publicAddress ? "Read-only tracking" : "Connect Xaman or create a wallet";
+  const balance = snapshot?.account?.balanceXrp ?? "0";
+  const reserve = snapshot?.account?.ownerReserveXrp ?? "0";
+  const status = snapshot ? "On-chain data loaded" : publicAddress ? "Address linked" : "Waiting for wallet";
+  refs.portfolioStudioWalletPanel.innerHTML = `
+    <div class="studio-wallet-top">
+      <span class="mode-pill">${escapeHtml(providerLabel)}</span>
+      <strong>${escapeHtml(status)}</strong>
+      <span>${escapeHtml(signerLabel)}</span>
+    </div>
+    <div class="studio-wallet-address">
+      <span>${escapeHtml(netConfig.label)}</span>
+      <code>${publicAddress ? escapeHtml(formatAddress(publicAddress)) : "No XRPL account"}</code>
+    </div>
+    <div class="studio-wallet-mini-grid">
+      <div><span>Total XRP</span><strong>${escapeHtml(String(balance))}</strong></div>
+      <div><span>Reserved</span><strong>${escapeHtml(String(reserve))}</strong></div>
+      <div><span>Trust Lines</span><strong>${snapshot?.account?.trustLines ?? 0}</strong></div>
+      <div><span>NFTs</span><strong>${snapshot?.account?.nftCount ?? 0}</strong></div>
+    </div>
+  `;
 }
 
 function renderProfileWalletCard(walletState) {
@@ -2757,6 +2792,33 @@ function renderProfileWalletCard(walletState) {
         </div>
       `).join("")
     : `<p class="muted">No assets loaded yet.</p>`;
+  const mana = getManaSummary(publicAddress);
+  const learningProgress = Math.min(100, mana.completedLessons * 12);
+  const credentialCount = mana.badges?.length || 0;
+  const knowledgeStatus = mana.completedLessons >= 6 ? "Scholar path active" : mana.completedLessons > 0 ? "Learning path in progress" : "Profile ready";
+  const livingKnowledgeHtml = `
+    <div class="living-knowledge-panel">
+      <div class="section-top compact">
+        <div>
+          <h4>Living Knowledge Platform</h4>
+          <p class="muted">Learning, Mana, credentials, and ecosystem participation connected to this profile.</p>
+        </div>
+        <span class="mode-pill">${escapeHtml(knowledgeStatus)}</span>
+      </div>
+      <div class="knowledge-progress-track" aria-label="Living Knowledge progress">
+        <span style="width:${learningProgress}%"></span>
+      </div>
+      <div class="knowledge-stat-grid">
+        <div><span>Mana</span><strong>${mana.mana}</strong><em>non-monetary</em></div>
+        <div><span>Lessons</span><strong>${mana.completedLessons}</strong><em>completed</em></div>
+        <div><span>Credentials</span><strong>${credentialCount}</strong><em>badges</em></div>
+        <div><span>Scholar Path</span><strong>${learningProgress}%</strong><em>progress</em></div>
+      </div>
+      <div class="knowledge-badge-strip">
+        ${(mana.badges || []).map((badge) => `<span>${escapeHtml(badge)}</span>`).join("") || `<span>Connect a wallet to begin tracking learning credentials</span>`}
+      </div>
+    </div>
+  `;
 
   refs.profileWalletPanel.innerHTML = `
     <div class="portfolio-showcase-hero">
@@ -2771,7 +2833,7 @@ function renderProfileWalletCard(walletState) {
             <span>${isVerified ? "Wallet Portfolio Loaded" : "Wallet Address Loaded"}</span>
           </div>
           <p>${escapeHtml(profile.bio)}</p>
-          <p class="muted">${escapeHtml(signingLabel)}. Balances, exposure, owned objects, and transaction readiness stay connected to this XRPL account.</p>
+          <p class="muted">${escapeHtml(signingLabel)}. This profile tracks wallet health, XRPL exposure, credentials, Mana, and Living Knowledge Platform progress.</p>
         </div>
       </div>
       <div class="portfolio-connection-actions">
@@ -2794,6 +2856,8 @@ function renderProfileWalletCard(walletState) {
       <span style="color:${statusColor}; font-size:0.82rem; font-weight:600;">${statusLabel}</span>
       <span class="muted" style="font-size:0.78rem;">- ${escapeHtml(mode || "Read-only Mode")}</span>
     </div>
+
+    ${livingKnowledgeHtml}
 
     ${isVerified ? `
     <div class="profile-wallet-kpi-grid">

@@ -18,7 +18,7 @@ All features below are implemented and functional in the current codebase.
 | Account Intelligence | Complete | Watched accounts, live XRPL stream filters, health score, reserve/security/asset/AMM/NFT/market signals, and risk alerts |
 | Credentials & Mana | Complete | Earned credentials, Mana info, privacy controls |
 | Security Center | Complete | Safety checklist, session event log |
-| Profile | Complete | Photo upload, identity display, avatar customizer, wallet card, fund wallet |
+| Portfolio | Complete | Wallet-backed portfolio page with profile photo, identity display, avatar customizer, page mood/layout/glow controls, wallet KPIs, asset exposure, recent activity, and fund wallet |
 | Create Wallet | Complete | Ed25519 keygen, 6-step security gate, key display, activation guide |
 | Settings | Complete | Appearance, privacy controls, network info |
 
@@ -61,8 +61,15 @@ All features below are implemented and functional in the current codebase.
 - XRP price and XRPL network metrics refresh independently from chart history so brief API misses do not blank the market card
 - XRP chart points are cached per timeframe for five minutes unless the user changes timeframe
 - Top issued assets load up to 200 ranked items, then live XRPL price probing is limited to visible rows plus watched tokens
+- AMM / LP tables use cached XRPL.to data with backoff handling so rate limits do not wipe the page
 - Token logos prefer XRPScan/xrplmeta sources because several XRPL.to image URLs block third-party hotlinking
+- Optional local proxy (`node ikeledger/server/market-proxy.mjs`) can cache market data and proxy token images at `http://127.0.0.1:8788`
 - DEX chart candles use a layered fallback: XRPL.to OHLC by token `md5`, XRPL.to trade history aggregated into candles, Sologenic OHLC, CoinGecko converted against XRP/USD, then XRPL AMM/order-book spot
+
+**Portfolio Studio**
+- Profile identity, avatar style, portfolio mood, layout density, and page glow are stored locally per browser
+- The portfolio showcase combines the user's profile layer with the connected XRPL account, signing mode, balance KPIs, reserve status, assets, activity, and wallet navigation shortcuts
+- Mobile collapses the studio and portfolio into a single-column layout while keeping buttons and address fields readable
 
 **ikeledger-wallet.js** — Wallet state
 - `hydrateWalletState()` — restore from localStorage on boot
@@ -108,8 +115,27 @@ All features below are implemented and functional in the current codebase.
 ## Running locally
 
 ```
-Open index.html directly in Chrome, Firefox, or Safari.
-No build tool, no server, no npm install required.
+Serve the project root with a static server so ES modules load correctly:
+
+```bash
+python -m http.server 5501
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5501/index.html
+```
+
+VS Code Live Server works too. No build tool or frontend npm install is required.
+
+Optional market proxy:
+
+```bash
+node ikeledger/server/market-proxy.mjs
+```
+
+Then set `Settings -> Market Proxy` to `http://127.0.0.1:8788`.
 ```
 
 The only network calls made at runtime:
