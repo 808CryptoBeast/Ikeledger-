@@ -8316,6 +8316,12 @@ function initEventHandlers() {
   refs.authModal?.addEventListener("click", (event) => {
     if (event.target === refs.authModal) closeAuthModal();
   });
+  document.addEventListener("click", (event) => {
+    const authButton = event.target.closest?.("#commandOpenAuthButton, #dexAuthPromptButton");
+    if (!authButton) return;
+    event.preventDefault();
+    openAuthModal();
+  });
 
   bindClick(refs.openSettingsButton, openSettingsDrawer);
   bindClick(refs.openSidebarButton, openSidebarPanel);
