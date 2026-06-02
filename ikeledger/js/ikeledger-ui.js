@@ -70,12 +70,135 @@ const OFFER_CREATE_FLAGS = {
   ioc: 0x00020000,
   fok: 0x00040000
 };
+const PROFILE_BADGE_LIMIT = 5;
+const BADGE_IMAGE_BASE = "./ikeledger/assets/images/badges";
+const PROFILE_BADGE_IMAGES = {
+  "wallet-verified": "wallet-verified.png",
+  "wallet-loaded": "wallet-loaded.png",
+  "xaman-signer": "xaman-signer.png",
+  "created-wallet": "created-wallet.png",
+  "public-view": "public-view.png",
+  "privacy-safe": "privacy-safe.png",
+  "address-hidden": "address-higgne.png",
+  "learning-profile": "learning-profile.png",
+  "safety-aware": "safety-aware.png",
+  "profile-styled": "profile-badge.png"
+};
+
+const PORTFOLIO_PRESETS = {
+  "crypto-beast": {
+    mood: "aqua",
+    density: "showcase",
+    glow: "84",
+    font: "unbounded",
+    background: "glyph",
+    textColor: "#f3f8ff",
+    mutedColor: "#a8bddb",
+    cardColor: "#050914",
+    cardBorderColor: "#42e8d5",
+    cardBorderWidth: "2",
+    cardRadius: "22",
+    badgePlacement: "hero",
+    sectionOrder: "portfolio-first",
+    borderAnimation: "orbit",
+    avatarGlowColor: "#42e8d5",
+    avatarGlowIntensity: "86",
+    avatarBorderColor: "#d7c47c",
+    avatarBorderWidth: "3",
+    avatarBorderShape: "rounded"
+  },
+  dreamtime: {
+    mood: "violet",
+    density: "showcase",
+    glow: "72",
+    font: "cormorant",
+    background: "mana-rings",
+    textColor: "#fbf4ff",
+    mutedColor: "#d8c7f2",
+    cardColor: "#12091f",
+    cardBorderColor: "#9b5cff",
+    cardBorderWidth: "2",
+    cardRadius: "26",
+    badgePlacement: "bottom",
+    sectionOrder: "learning-first",
+    borderAnimation: "pulse",
+    avatarGlowColor: "#9b5cff",
+    avatarGlowIntensity: "75",
+    avatarBorderColor: "#e9c77a",
+    avatarBorderWidth: "3",
+    avatarBorderShape: "circle"
+  },
+  "solar-ledger": {
+    mood: "gold",
+    density: "showcase",
+    glow: "76",
+    font: "cinzel",
+    background: "eclipse",
+    textColor: "#fff8dc",
+    mutedColor: "#e9d99f",
+    cardColor: "#171103",
+    cardBorderColor: "#e9c77a",
+    cardBorderWidth: "2",
+    cardRadius: "18",
+    badgePlacement: "side",
+    sectionOrder: "wallet-first",
+    borderAnimation: "scan",
+    avatarGlowColor: "#e9c77a",
+    avatarGlowIntensity: "80",
+    avatarBorderColor: "#46bcff",
+    avatarBorderWidth: "3",
+    avatarBorderShape: "rounded"
+  },
+  "neon-matrix": {
+    mood: "aqua",
+    density: "compact",
+    glow: "92",
+    font: "orbitron",
+    background: "ledger-grid",
+    textColor: "#d9fff7",
+    mutedColor: "#85d8cc",
+    cardColor: "#020d0c",
+    cardBorderColor: "#39e6a3",
+    cardBorderWidth: "1",
+    cardRadius: "10",
+    badgePlacement: "hero",
+    sectionOrder: "wallet-first",
+    borderAnimation: "scan",
+    avatarGlowColor: "#39e6a3",
+    avatarGlowIntensity: "92",
+    avatarBorderColor: "#39e6a3",
+    avatarBorderWidth: "2",
+    avatarBorderShape: "square"
+  },
+  "mana-royal": {
+    mood: "gold",
+    density: "showcase",
+    glow: "88",
+    font: "playfair",
+    background: "aurora",
+    textColor: "#fff3c2",
+    mutedColor: "#d9c68c",
+    cardColor: "#101027",
+    cardBorderColor: "#e9c77a",
+    cardBorderWidth: "3",
+    cardRadius: "24",
+    badgePlacement: "side",
+    sectionOrder: "learning-first",
+    borderAnimation: "orbit",
+    avatarGlowColor: "#e9c77a",
+    avatarGlowIntensity: "90",
+    avatarBorderColor: "#9b5cff",
+    avatarBorderWidth: "3",
+    avatarBorderShape: "circle"
+  }
+};
 
 let heroSendXamanUrl = "";
 
 const state = {
   adminMode: false,
   appUser: null,
+  sharedProfile: null,
   xummResumeInFlight: false,
   latestPreview: null,
   rawJsonOpen: false,
@@ -324,6 +447,8 @@ const refs = {
   closeSignGateButton: document.getElementById("closeSignGateButton"),
   cancelSignButton: document.getElementById("cancelSignButton"),
   openSettingsButton: document.getElementById("openSettingsButton"),
+  openProfileSettingsPanelButton: document.getElementById("openProfileSettingsPanelButton"),
+  closeProfileSettingsButton: document.getElementById("closeProfileSettingsButton"),
   openSidebarButton: document.getElementById("openSidebarButton"),
   closeSidebarButton: document.getElementById("closeSidebarButton"),
   workspaceGrid: document.getElementById("workspaceGrid"),
@@ -354,12 +479,22 @@ const refs = {
   heroAvatarPill: document.getElementById("heroAvatarPill"),
   avatarPhotoInput: document.getElementById("avatarPhotoInput"),
   avatarCameraInput: document.getElementById("avatarCameraInput"),
+  profileBannerInput: document.getElementById("profileBannerInput"),
+  profileShareWalletInput: document.getElementById("profileShareWalletInput"),
+  profileShareUrlInput: document.getElementById("profileShareUrlInput"),
+  copyProfileShareUrlButton: document.getElementById("copyProfileShareUrlButton"),
+  openProfileShareUrlButton: document.getElementById("openProfileShareUrlButton"),
+  profileShareQr: document.getElementById("profileShareQr"),
+  profileBadgeManager: document.getElementById("profileBadgeManager"),
   profileUploadZone: document.getElementById("profileUploadZone"),
   uploadPhotoButton: document.getElementById("uploadPhotoButton"),
   cameraPhotoButton: document.getElementById("cameraPhotoButton"),
   clearPhotoButton: document.getElementById("clearPhotoButton"),
+  uploadBannerButton: document.getElementById("uploadBannerButton"),
+  clearBannerButton: document.getElementById("clearBannerButton"),
   profileWalletPanel: document.getElementById("profileWalletPanel"),
   profileWalletNetworkBadge: document.getElementById("profileWalletNetworkBadge"),
+  portfolioStudioCard: document.querySelector(".portfolio-studio-card"),
   portfolioStudioWalletPanel: document.getElementById("portfolioStudioWalletPanel"),
   heroAvatarGlowWrap: document.getElementById("heroAvatarGlowWrap"),
   heroAvatarStatusRing: document.getElementById("heroAvatarStatusRing"),
@@ -372,8 +507,25 @@ const refs = {
   portfolioMoodInput: document.getElementById("portfolioMoodInput"),
   portfolioDensityInput: document.getElementById("portfolioDensityInput"),
   portfolioGlowInput: document.getElementById("portfolioGlowInput"),
+  portfolioPresetInput: document.getElementById("portfolioPresetInput"),
+  portfolioFontInput: document.getElementById("portfolioFontInput"),
+  portfolioBackgroundInput: document.getElementById("portfolioBackgroundInput"),
+  portfolioTextColorInput: document.getElementById("portfolioTextColorInput"),
+  portfolioMutedColorInput: document.getElementById("portfolioMutedColorInput"),
+  portfolioCardColorInput: document.getElementById("portfolioCardColorInput"),
+  portfolioCardBorderColorInput: document.getElementById("portfolioCardBorderColorInput"),
+  portfolioCardBorderWidthInput: document.getElementById("portfolioCardBorderWidthInput"),
+  portfolioCardRadiusInput: document.getElementById("portfolioCardRadiusInput"),
+  portfolioBadgePlacementInput: document.getElementById("portfolioBadgePlacementInput"),
+  portfolioSectionOrderInput: document.getElementById("portfolioSectionOrderInput"),
+  portfolioBorderAnimationInput: document.getElementById("portfolioBorderAnimationInput"),
+  portfolioPublicPreviewInput: document.getElementById("portfolioPublicPreviewInput"),
   avatarGlowSwatch: document.getElementById("avatarGlowSwatch"),
   avatarBorderSwatch: document.getElementById("avatarBorderSwatch"),
+  portfolioTextColorSwatch: document.getElementById("portfolioTextColorSwatch"),
+  portfolioMutedColorSwatch: document.getElementById("portfolioMutedColorSwatch"),
+  portfolioCardColorSwatch: document.getElementById("portfolioCardColorSwatch"),
+  portfolioCardBorderSwatch: document.getElementById("portfolioCardBorderSwatch"),
   fundWalletPanel: document.getElementById("fundWalletPanel"),
   fundWalletCard: document.getElementById("fundWalletCard"),
   fundWalletStatusBadge: document.getElementById("fundWalletStatusBadge"),
@@ -873,6 +1025,7 @@ function canOpenPage(page) {
   if (SIGNING_WALLET_PAGES.has(page)) return hasSigningWallet();
   if (XRPL_ACCOUNT_PAGES.has(page)) return hasXrplAccount();
   if (PROFILE_PAGES.has(page)) {
+    if (page === "profile" && state.sharedProfile) return true;
     if (page === "profile" && hasXrplAccount()) return true;
     return Boolean(state.appUser);
   }
@@ -2288,6 +2441,7 @@ function renderCommandCenterAuth() {
   const walletState = getWalletState();
   const hasAccount = Boolean(walletState.publicAddress);
   const canSign = hasSigningWallet();
+  const canShowProfileSettings = hasXrplAccount();
 
   if (refs.commandSessionBadge) {
     refs.commandSessionBadge.textContent = isSignedIn
@@ -2303,10 +2457,22 @@ function renderCommandCenterAuth() {
     refs.commandXummSignInButton.textContent = xummSignInButtonLabel();
   }
 
+  if (refs.openProfileSettingsPanelButton) {
+    refs.openProfileSettingsPanelButton.classList.toggle("hidden", !canShowProfileSettings);
+    refs.openProfileSettingsPanelButton.setAttribute("aria-hidden", canShowProfileSettings ? "false" : "true");
+    refs.openProfileSettingsPanelButton.setAttribute("aria-disabled", canShowProfileSettings ? "false" : "true");
+    if (canShowProfileSettings) {
+      refs.openProfileSettingsPanelButton.removeAttribute("title");
+    } else {
+      refs.openProfileSettingsPanelButton.title = "Connect Xaman or load an XRPL account before editing the portfolio profile.";
+    }
+  }
+
   const sidebarButtons = refs.sidebarPanel ? Array.from(refs.sidebarPanel.querySelectorAll(".sidebar-btn")) : [];
   const gatedButtons = [...refs.topLinks, ...refs.bottomLinks, ...sidebarButtons];
   gatedButtons.forEach((button) => {
     const page = button.dataset.page;
+    if (!page) return;
     const locked = page ? !canOpenPage(page) : false;
     button.classList.toggle("is-locked", locked);
     button.setAttribute("aria-disabled", locked ? "true" : "false");
@@ -2421,7 +2587,7 @@ function buildProfileIdentityHTML(walletState) {
 }
 
 function applyProfilePhoto() {
-  const photo = localStorage.getItem(STORAGE_KEYS.profilePhoto);
+  const photo = state.sharedProfile ? "" : localStorage.getItem(STORAGE_KEYS.profilePhoto);
   const profile = getProfileFields();
   const avatarEls = [refs.heroAvatarPill, refs.profileAvatarPill].filter(Boolean);
   avatarEls.forEach((el) => {
@@ -2434,7 +2600,10 @@ function applyProfilePhoto() {
 }
 
 function hexToRgb(hex) {
-  const clean = hex.replace("#", "");
+  const clean = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-f]{6}$/i.test(clean)) {
+    return { r: 66, g: 232, b: 213 };
+  }
   return {
     r: parseInt(clean.slice(0, 2), 16),
     g: parseInt(clean.slice(2, 4), 16),
@@ -2448,6 +2617,7 @@ function applyAvatarStyle() {
   const borderColor  = localStorage.getItem(STORAGE_KEYS.avatarBorderColor)   || "#e9c77a";
   const borderShape  = localStorage.getItem(STORAGE_KEYS.avatarBorderShape)   || "circle";
   const borderWidth  = parseInt(localStorage.getItem(STORAGE_KEYS.avatarBorderWidth) ?? "2", 10);
+  const section = document.querySelector('.page-section[data-page="profile"]');
 
   // Glow box-shadow from color + intensity
   const { r, g, b } = hexToRgb(glowColor);
@@ -2462,6 +2632,13 @@ function applyAvatarStyle() {
   // Sync border-radius between ring and pill/image via CSS var on wrap
   const radii = { circle: "50%", rounded: "20px", square: "6px" };
   const radius = radii[borderShape] || "50%";
+
+  if (section) {
+    section.style.setProperty("--avatar-glow", glowShadow);
+    section.style.setProperty("--avatar-border-color", borderColor);
+    section.style.setProperty("--avatar-border-radius", radius);
+    section.style.setProperty("--avatar-border-width", `${borderWidth}px`);
+  }
 
   [refs.heroAvatarPill, refs.profileAvatarPill].filter(Boolean).forEach((pill) => {
     pill.style.setProperty("--avatar-glow", glowShadow);
@@ -2498,36 +2675,294 @@ function saveAvatarStyle() {
 
 function getPortfolioStyle() {
   return {
+    preset: localStorage.getItem(STORAGE_KEYS.portfolioPreset) || "custom",
     mood: localStorage.getItem(STORAGE_KEYS.portfolioMood) || "aqua",
     density: localStorage.getItem(STORAGE_KEYS.portfolioDensity) || "showcase",
-    glow: Number.parseInt(localStorage.getItem(STORAGE_KEYS.portfolioGlow) || "65", 10)
+    glow: Number.parseInt(localStorage.getItem(STORAGE_KEYS.portfolioGlow) || "65", 10),
+    font: localStorage.getItem(STORAGE_KEYS.portfolioFont) || "system",
+    background: localStorage.getItem(STORAGE_KEYS.portfolioBackground) || "cosmic",
+    textColor: localStorage.getItem(STORAGE_KEYS.portfolioTextColor) || "#eef5ff",
+    mutedColor: localStorage.getItem(STORAGE_KEYS.portfolioMutedColor) || "#aebfe0",
+    cardColor: localStorage.getItem(STORAGE_KEYS.portfolioCardColor) || "#050c1e",
+    cardBorderColor: localStorage.getItem(STORAGE_KEYS.portfolioCardBorderColor) || "#42e8d5",
+    cardBorderWidth: Number.parseInt(localStorage.getItem(STORAGE_KEYS.portfolioCardBorderWidth) || "1", 10),
+    cardRadius: Number.parseInt(localStorage.getItem(STORAGE_KEYS.portfolioCardRadius) || "18", 10),
+    badgePlacement: localStorage.getItem(STORAGE_KEYS.portfolioBadgePlacement) || "bottom",
+    sectionOrder: localStorage.getItem(STORAGE_KEYS.portfolioSectionOrder) || "wallet-first",
+    borderAnimation: localStorage.getItem(STORAGE_KEYS.portfolioBorderAnimation) || "none",
+    publicPreview: localStorage.getItem(STORAGE_KEYS.portfolioPublicPreview) === "true",
+    shareWallet: localStorage.getItem(STORAGE_KEYS.profileShareWallet) === "true"
   };
 }
 
 function syncPortfolioStyleControls(style = getPortfolioStyle()) {
+  if (refs.portfolioPresetInput) refs.portfolioPresetInput.value = style.preset;
   if (refs.portfolioMoodInput) refs.portfolioMoodInput.value = style.mood;
   if (refs.portfolioDensityInput) refs.portfolioDensityInput.value = style.density;
   if (refs.portfolioGlowInput) refs.portfolioGlowInput.value = String(style.glow);
+  if (refs.portfolioFontInput) refs.portfolioFontInput.value = style.font;
+  if (refs.portfolioBackgroundInput) refs.portfolioBackgroundInput.value = style.background;
+  if (refs.portfolioTextColorInput) refs.portfolioTextColorInput.value = style.textColor;
+  if (refs.portfolioMutedColorInput) refs.portfolioMutedColorInput.value = style.mutedColor;
+  if (refs.portfolioCardColorInput) refs.portfolioCardColorInput.value = style.cardColor;
+  if (refs.portfolioCardBorderColorInput) refs.portfolioCardBorderColorInput.value = style.cardBorderColor;
+  if (refs.portfolioCardBorderWidthInput) refs.portfolioCardBorderWidthInput.value = String(style.cardBorderWidth);
+  if (refs.portfolioCardRadiusInput) refs.portfolioCardRadiusInput.value = String(style.cardRadius);
+  if (refs.portfolioBadgePlacementInput) refs.portfolioBadgePlacementInput.value = style.badgePlacement;
+  if (refs.portfolioSectionOrderInput) refs.portfolioSectionOrderInput.value = style.sectionOrder;
+  if (refs.portfolioBorderAnimationInput) refs.portfolioBorderAnimationInput.value = style.borderAnimation;
+  if (refs.portfolioPublicPreviewInput) refs.portfolioPublicPreviewInput.checked = Boolean(style.publicPreview);
+  if (refs.profileShareWalletInput) refs.profileShareWalletInput.checked = Boolean(style.shareWallet);
+  if (refs.portfolioTextColorSwatch) refs.portfolioTextColorSwatch.style.background = style.textColor;
+  if (refs.portfolioMutedColorSwatch) refs.portfolioMutedColorSwatch.style.background = style.mutedColor;
+  if (refs.portfolioCardColorSwatch) refs.portfolioCardColorSwatch.style.background = style.cardColor;
+  if (refs.portfolioCardBorderSwatch) refs.portfolioCardBorderSwatch.style.background = style.cardBorderColor;
 }
 
 function applyPortfolioStyle() {
-  const style = getPortfolioStyle();
+  const localStyle = getPortfolioStyle();
+  const style = state.sharedProfile?.style
+    ? { ...localStyle, ...state.sharedProfile.style, publicPreview: true, shareWallet: Boolean(state.sharedProfile.walletAddress) }
+    : localStyle;
   const section = document.querySelector('.page-section[data-page="profile"]');
   const glow = Math.max(0, Math.min(100, Number.isFinite(style.glow) ? style.glow : 65));
+  const borderWidth = Math.max(1, Math.min(6, Number.isFinite(style.cardBorderWidth) ? style.cardBorderWidth : 1));
+  const cardRadius = Math.max(6, Math.min(28, Number.isFinite(style.cardRadius) ? style.cardRadius : 18));
+  const fontStacks = {
+    system: '"Segoe UI", "Trebuchet MS", system-ui, sans-serif',
+    cinzel: '"Cinzel", Georgia, serif',
+    cormorant: '"Cormorant Garamond", Georgia, serif',
+    playfair: '"Playfair Display", Georgia, serif',
+    syne: '"Syne", "Segoe UI", system-ui, sans-serif',
+    orbitron: '"Orbitron", "Cascadia Code", monospace',
+    unbounded: '"Unbounded", "Segoe UI", system-ui, sans-serif',
+    serif: 'Georgia, "Times New Roman", serif',
+    mono: '"Cascadia Code", "Courier New", monospace',
+    display: '"Trebuchet MS", "Segoe UI", system-ui, sans-serif'
+  };
+  const cardRgb = hexToRgb(style.cardColor);
   if (section) {
     section.dataset.portfolioMood = style.mood;
     section.dataset.portfolioDensity = style.density;
+    section.dataset.portfolioFont = style.font;
+    section.dataset.portfolioBackground = style.background;
+    section.dataset.badgePlacement = style.badgePlacement;
+    section.dataset.sectionOrder = style.sectionOrder;
+    section.dataset.borderAnimation = style.borderAnimation;
+    section.dataset.publicPreview = style.publicPreview ? "true" : "false";
     section.style.setProperty("--portfolio-glow-size", `${Math.round(12 + glow * 0.38)}px`);
     section.style.setProperty("--portfolio-glow-alpha", (0.08 + glow * 0.0024).toFixed(3));
+    section.style.setProperty("--portfolio-font-family", fontStacks[style.font] || fontStacks.system);
+    section.style.setProperty("--portfolio-text-color", style.textColor);
+    section.style.setProperty("--portfolio-muted-color", style.mutedColor);
+    section.style.setProperty("--portfolio-card-rgb", `${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}`);
+    section.style.setProperty("--portfolio-card-border-color", style.cardBorderColor);
+    section.style.setProperty("--portfolio-card-border-width", `${borderWidth}px`);
+    section.style.setProperty("--portfolio-card-radius", `${cardRadius}px`);
+    const banner = localStorage.getItem(STORAGE_KEYS.profileBanner);
+    section.classList.toggle("has-portfolio-banner", Boolean(banner));
+    if (banner) {
+      section.style.setProperty("--portfolio-banner-image", `url("${banner.replace(/"/g, '\\"')}")`);
+    } else {
+      section.style.removeProperty("--portfolio-banner-image");
+    }
   }
-  syncPortfolioStyleControls({ ...style, glow });
+  syncPortfolioStyleControls({ ...style, glow, cardBorderWidth: borderWidth, cardRadius });
 }
 
 function savePortfolioStyle() {
+  localStorage.setItem(STORAGE_KEYS.portfolioPreset, refs.portfolioPresetInput?.value || "custom");
   localStorage.setItem(STORAGE_KEYS.portfolioMood, refs.portfolioMoodInput?.value || "aqua");
   localStorage.setItem(STORAGE_KEYS.portfolioDensity, refs.portfolioDensityInput?.value || "showcase");
   localStorage.setItem(STORAGE_KEYS.portfolioGlow, refs.portfolioGlowInput?.value || "65");
+  localStorage.setItem(STORAGE_KEYS.portfolioFont, refs.portfolioFontInput?.value || "system");
+  localStorage.setItem(STORAGE_KEYS.portfolioBackground, refs.portfolioBackgroundInput?.value || "cosmic");
+  localStorage.setItem(STORAGE_KEYS.portfolioTextColor, refs.portfolioTextColorInput?.value || "#eef5ff");
+  localStorage.setItem(STORAGE_KEYS.portfolioMutedColor, refs.portfolioMutedColorInput?.value || "#aebfe0");
+  localStorage.setItem(STORAGE_KEYS.portfolioCardColor, refs.portfolioCardColorInput?.value || "#050c1e");
+  localStorage.setItem(STORAGE_KEYS.portfolioCardBorderColor, refs.portfolioCardBorderColorInput?.value || "#42e8d5");
+  localStorage.setItem(STORAGE_KEYS.portfolioCardBorderWidth, refs.portfolioCardBorderWidthInput?.value || "1");
+  localStorage.setItem(STORAGE_KEYS.portfolioCardRadius, refs.portfolioCardRadiusInput?.value || "18");
+  localStorage.setItem(STORAGE_KEYS.portfolioBadgePlacement, refs.portfolioBadgePlacementInput?.value || "bottom");
+  localStorage.setItem(STORAGE_KEYS.portfolioSectionOrder, refs.portfolioSectionOrderInput?.value || "wallet-first");
+  localStorage.setItem(STORAGE_KEYS.portfolioBorderAnimation, refs.portfolioBorderAnimationInput?.value || "none");
+  localStorage.setItem(STORAGE_KEYS.portfolioPublicPreview, refs.portfolioPublicPreviewInput?.checked ? "true" : "false");
+  localStorage.setItem(STORAGE_KEYS.profileShareWallet, refs.profileShareWalletInput?.checked ? "true" : "false");
   applyPortfolioStyle();
+  updateProfileSharePanel(getWalletState());
+}
+
+function applyPortfolioPreset(presetKey = "custom") {
+  const preset = PORTFOLIO_PRESETS[presetKey];
+  if (refs.portfolioPresetInput) refs.portfolioPresetInput.value = presetKey;
+  localStorage.setItem(STORAGE_KEYS.portfolioPreset, presetKey);
+  if (!preset) {
+    savePortfolioStyle();
+    return;
+  }
+
+  const setValue = (ref, value) => {
+    if (ref && value !== undefined) ref.value = String(value);
+  };
+
+  setValue(refs.portfolioMoodInput, preset.mood);
+  setValue(refs.portfolioDensityInput, preset.density);
+  setValue(refs.portfolioGlowInput, preset.glow);
+  setValue(refs.portfolioFontInput, preset.font);
+  setValue(refs.portfolioBackgroundInput, preset.background);
+  setValue(refs.portfolioTextColorInput, preset.textColor);
+  setValue(refs.portfolioMutedColorInput, preset.mutedColor);
+  setValue(refs.portfolioCardColorInput, preset.cardColor);
+  setValue(refs.portfolioCardBorderColorInput, preset.cardBorderColor);
+  setValue(refs.portfolioCardBorderWidthInput, preset.cardBorderWidth);
+  setValue(refs.portfolioCardRadiusInput, preset.cardRadius);
+  setValue(refs.portfolioBadgePlacementInput, preset.badgePlacement);
+  setValue(refs.portfolioSectionOrderInput, preset.sectionOrder);
+  setValue(refs.portfolioBorderAnimationInput, preset.borderAnimation);
+  setValue(refs.avatarGlowColorInput, preset.avatarGlowColor);
+  setValue(refs.avatarGlowIntensityInput, preset.avatarGlowIntensity);
+  setValue(refs.avatarBorderColorInput, preset.avatarBorderColor);
+  setValue(refs.avatarBorderWidthInput, preset.avatarBorderWidth);
+  setValue(refs.avatarBorderShapeInput, preset.avatarBorderShape);
+
+  saveAvatarStyle();
+  savePortfolioStyle();
+  renderProfile(getWalletState());
+  setFeedback("Profile theme preset applied.");
+}
+
+function encodeBase64Url(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeBase64Url(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function getPublicProfileFields(profile = getProfileFields()) {
+  return {
+    displayName: String(profile.displayName || "Wayfinder Scholar").slice(0, 60),
+    handle: String(profile.handle || "@ike-journey").slice(0, 40),
+    realm: String(profile.realm || "Dreamtime").slice(0, 50),
+    bio: String(profile.bio || "Protecting a public XRPL address while keeping the profile layer private.").slice(0, 280),
+    initials: String(profile.initials || "WV").slice(0, 3).toUpperCase()
+  };
+}
+
+function sanitizePublicPortfolioStyle(style = {}) {
+  const pick = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+  const color = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+  const intRange = (value, fallback, min, max) => {
+    const next = Number.parseInt(value, 10);
+    return Number.isFinite(next) ? Math.max(min, Math.min(max, next)) : fallback;
+  };
+
+  return {
+    mood: pick(style.mood, ["aqua", "gold", "violet", "ember"], "aqua"),
+    density: pick(style.density, ["showcase", "compact"], "showcase"),
+    glow: intRange(style.glow, 65, 0, 100),
+    font: pick(style.font, ["system", "cinzel", "cormorant", "playfair", "syne", "orbitron", "unbounded", "serif", "mono", "display"], "system"),
+    background: pick(style.background, ["cosmic", "ledger-grid", "mana-rings", "aurora", "eclipse", "glyph"], "cosmic"),
+    textColor: color(style.textColor, "#eef5ff"),
+    mutedColor: color(style.mutedColor, "#aebfe0"),
+    cardColor: color(style.cardColor, "#050c1e"),
+    cardBorderColor: color(style.cardBorderColor, "#42e8d5"),
+    cardBorderWidth: intRange(style.cardBorderWidth, 1, 1, 6),
+    cardRadius: intRange(style.cardRadius, 18, 6, 28),
+    badgePlacement: pick(style.badgePlacement, ["bottom", "hero", "side", "hidden"], "bottom"),
+    sectionOrder: pick(style.sectionOrder, ["wallet-first", "learning-first", "portfolio-first"], "wallet-first"),
+    borderAnimation: pick(style.borderAnimation, ["none", "pulse", "scan", "orbit"], "none")
+  };
+}
+
+function getPublicPortfolioStyle(style = getPortfolioStyle()) {
+  return sanitizePublicPortfolioStyle({
+    mood: style.mood,
+    density: style.density,
+    glow: style.glow,
+    font: style.font,
+    background: style.background,
+    textColor: style.textColor,
+    mutedColor: style.mutedColor,
+    cardColor: style.cardColor,
+    cardBorderColor: style.cardBorderColor,
+    cardBorderWidth: style.cardBorderWidth,
+    cardRadius: style.cardRadius,
+    badgePlacement: style.badgePlacement,
+    sectionOrder: style.sectionOrder,
+    borderAnimation: style.borderAnimation
+  });
+}
+
+function buildProfileShareUrl(walletState = getWalletState()) {
+  const style = getPortfolioStyle();
+  const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider") || "read-only";
+  const payload = {
+    v: 1,
+    profile: getPublicProfileFields(walletState.profile || getProfileFields()),
+    style: getPublicPortfolioStyle(style),
+    badgeIds: getPublicShareBadgeIds({
+      isVerified: Boolean(walletState.snapshot),
+      providerKey,
+      publicAddress: walletState.publicAddress || "",
+      portfolioStyle: style
+    })
+  };
+
+  if (style.shareWallet && XRPL_ADDRESS_PATTERN.test(walletState.publicAddress || "")) {
+    payload.walletAddress = walletState.publicAddress;
+    payload.network = walletState.network || DEFAULT_NETWORK;
+    payload.walletVerified = Boolean(walletState.snapshot);
+  }
+
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("view", "profile");
+  url.searchParams.set("pub", encodeBase64Url(JSON.stringify(payload)));
+  return url.toString();
+}
+
+function readSharedProfileFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("view") !== "profile" || !params.get("pub")) return null;
+    const payload = JSON.parse(decodeBase64Url(params.get("pub")));
+    const profile = getPublicProfileFields(payload.profile || {});
+    const walletAddress = XRPL_ADDRESS_PATTERN.test(payload.walletAddress || "") ? payload.walletAddress : "";
+    return {
+      profile,
+      style: sanitizePublicPortfolioStyle(payload.style && typeof payload.style === "object" ? payload.style : {}),
+      badgeIds: Array.isArray(payload.badgeIds) ? payload.badgeIds.filter((id) => typeof id === "string").slice(0, PROFILE_BADGE_LIMIT) : [],
+      walletAddress,
+      walletVerified: Boolean(payload.walletVerified && walletAddress),
+      network: NETWORKS[payload.network]?.key || DEFAULT_NETWORK
+    };
+  } catch {
+    return null;
+  }
+}
+
+function updateProfileSharePanel(walletState = getWalletState()) {
+  const shareUrl = buildProfileShareUrl(walletState);
+  if (refs.profileShareUrlInput) refs.profileShareUrlInput.value = shareUrl;
+  if (refs.profileShareQr) {
+    refs.profileShareQr.innerHTML = `
+      <img
+        src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}&margin=6"
+        alt="QR code for public IkeLedger profile"
+        width="180"
+        height="180"
+        loading="lazy" />
+    `;
+  }
 }
 
 function getAvatarStatusClass(walletState) {
@@ -2662,15 +3097,54 @@ function onPhotoFile(file) {
   reader.readAsDataURL(file);
 }
 
+function onBannerFile(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    setFeedback("Please select an image file for the profile banner.", true);
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    setFeedback("Banner image too large - max 10 MB.", true);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    try {
+      localStorage.setItem(STORAGE_KEYS.profileBanner, dataUrl);
+    } catch {
+      setFeedback("Storage full - try a smaller banner image.", true);
+      return;
+    }
+    applyPortfolioStyle();
+    setFeedback("Profile banner updated.");
+  };
+  reader.readAsDataURL(file);
+}
+
 function renderProfile(walletState) {
-  const html = buildProfileIdentityHTML(walletState);
+  const effectiveWalletState = state.sharedProfile
+    ? {
+        ...walletState,
+        profile: state.sharedProfile.profile,
+        publicAddress: state.sharedProfile.walletAddress || "",
+        network: state.sharedProfile.network || walletState.network || DEFAULT_NETWORK,
+        provider: "shared",
+        mode: "Public Preview",
+        snapshot: null
+      }
+    : walletState;
+  const html = buildProfileIdentityHTML(effectiveWalletState);
   if (refs.profileStatus) refs.profileStatus.innerHTML = html;
   if (refs.profilePagePanel) refs.profilePagePanel.innerHTML = html;
   applyProfilePhoto();
   applyPortfolioStyle();
-  syncProfileEditor(walletState.profile || getProfileFields());
-  renderPortfolioStudioWallet(walletState);
-  renderProfileWalletCard(walletState);
+  if (!state.sharedProfile) {
+    syncProfileEditor(walletState.profile || getProfileFields());
+    renderPortfolioStudioWallet(walletState);
+    renderProfileBadgeManager(walletState);
+    updateProfileSharePanel(walletState);
+  }
+  renderProfileWalletCard(effectiveWalletState);
 }
 
 function renderPortfolioStudioWallet(walletState) {
@@ -2706,6 +3180,221 @@ function renderPortfolioStudioWallet(walletState) {
   `;
 }
 
+function getStoredProfileBadgeSelection() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.profileBadgeSelection) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveProfileBadgeSelection(ids = []) {
+  const unique = [...new Set(ids.filter(Boolean))].slice(0, PROFILE_BADGE_LIMIT);
+  localStorage.setItem(STORAGE_KEYS.profileBadgeSelection, JSON.stringify(unique));
+}
+
+function buildAvailableProfileBadges({ isVerified, providerKey, publicAddress, portfolioStyle }) {
+  const addressVisible = Boolean(publicAddress) && Boolean(portfolioStyle.shareWallet);
+  return [
+    {
+      id: "wallet-verified",
+      code: "WV",
+      label: "Wallet Verified",
+      tone: "safe",
+      earned: Boolean(isVerified),
+      sensitive: true,
+      note: "On-chain account data loaded"
+    },
+    {
+      id: "wallet-loaded",
+      code: "WL",
+      label: "Wallet Loaded",
+      tone: "watch",
+      earned: Boolean(publicAddress),
+      sensitive: true,
+      note: "XRPL address connected"
+    },
+    {
+      id: "xaman-signer",
+      code: "XS",
+      label: "Xaman Signer",
+      tone: "xaman",
+      earned: providerKey === "xaman",
+      sensitive: true,
+      note: "Can request signatures in Xaman"
+    },
+    {
+      id: "created-wallet",
+      code: "CW",
+      label: "Created Wallet",
+      tone: "created",
+      earned: providerKey === "created",
+      sensitive: true,
+      note: "Created through IkeLedger"
+    },
+    {
+      id: "public-view",
+      code: "PV",
+      label: "Public View",
+      tone: "private",
+      earned: providerKey === "shared",
+      sensitive: false,
+      note: "Viewing shared profile"
+    },
+    {
+      id: "privacy-safe",
+      code: "PS",
+      label: "Privacy Safe",
+      tone: "private",
+      earned: true,
+      sensitive: false,
+      note: "Share link excludes secrets"
+    },
+    {
+      id: "address-hidden",
+      code: "AH",
+      label: "Address Hidden",
+      tone: "private",
+      earned: !addressVisible,
+      sensitive: false,
+      note: "Wallet address is private"
+    },
+    {
+      id: "learning-profile",
+      code: "LK",
+      label: "Learning Profile",
+      tone: "learning",
+      earned: true,
+      sensitive: false,
+      note: "Living Knowledge profile ready"
+    },
+    {
+      id: "safety-aware",
+      code: "SA",
+      label: "Safety Aware",
+      tone: "learning",
+      earned: true,
+      sensitive: false,
+      note: "Security-first wallet habits"
+    },
+    {
+      id: "profile-styled",
+      code: "ST",
+      label: "Profile Styled",
+      tone: "created",
+      earned: true,
+      sensitive: false,
+      note: "Custom theme active"
+    }
+  ].map((badge) => ({
+    ...badge,
+    icon: PROFILE_BADGE_IMAGES[badge.id] ? `${BADGE_IMAGE_BASE}/${PROFILE_BADGE_IMAGES[badge.id]}` : ""
+  }));
+}
+
+function resolveDisplayedProfileBadges(context, explicitSelection = null) {
+  const available = buildAvailableProfileBadges(context);
+  const earned = available.filter((badge) => badge.earned);
+  const selectedIds = explicitSelection || getStoredProfileBadgeSelection();
+  const selected = selectedIds.length
+    ? selectedIds
+        .map((id) => earned.find((badge) => badge.id === id))
+        .filter(Boolean)
+    : [];
+  return (selected.length ? selected : earned).slice(0, PROFILE_BADGE_LIMIT);
+}
+
+function getPublicShareBadgeIds(context) {
+  const selected = resolveDisplayedProfileBadges(context);
+  const allowSensitive = Boolean(context.portfolioStyle.shareWallet && context.publicAddress);
+  return selected
+    .filter((badge) => allowSensitive || !badge.sensitive)
+    .map((badge) => badge.id)
+    .slice(0, PROFILE_BADGE_LIMIT);
+}
+
+function buildProfileBadgeItems(context) {
+  const sharedSelection = state.sharedProfile?.badgeIds || null;
+  return resolveDisplayedProfileBadges(context, sharedSelection);
+}
+
+function renderProfileBadgeIcon(badge) {
+  const icon = badge.icon
+    ? `<img src="${escapeHtml(badge.icon)}" alt="" loading="lazy" />`
+    : "";
+  return `
+    <span class="portfolio-badge-icon" aria-hidden="true">
+      ${icon}
+      <strong>${escapeHtml(badge.code)}</strong>
+    </span>
+  `;
+}
+
+function renderProfileBadgeStack(badges) {
+  return `
+    <div class="portfolio-avatar-badges" aria-label="Profile verification badges">
+      ${badges.map((badge) => `
+        <span class="portfolio-verify-badge ${escapeHtml(badge.tone)}" title="${escapeHtml(badge.label)}">
+          ${renderProfileBadgeIcon(badge)}
+          <em>${escapeHtml(badge.label)}</em>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderProfileBadgeManager(walletState = getWalletState()) {
+  if (!refs.profileBadgeManager || state.sharedProfile) return;
+  const portfolioStyle = getPortfolioStyle();
+  const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider") || "read-only";
+  const context = {
+    isVerified: Boolean(walletState.snapshot),
+    providerKey,
+    publicAddress: walletState.publicAddress || "",
+    portfolioStyle
+  };
+  const available = buildAvailableProfileBadges(context);
+  const displayed = resolveDisplayedProfileBadges(context);
+  const displayedIds = new Set(displayed.map((badge) => badge.id));
+  const selectedCount = displayedIds.size;
+
+  refs.profileBadgeManager.innerHTML = `
+    <div class="badge-manager-top">
+      <span class="mode-pill">${selectedCount}/${PROFILE_BADGE_LIMIT} displayed</span>
+      <span class="muted">Locked badges unlock when the matching profile or wallet condition is met.</span>
+    </div>
+    <div class="badge-manager-grid">
+      ${available.map((badge) => `
+        <label class="badge-manager-card ${badge.earned ? "earned" : "locked"}">
+          <input type="checkbox" data-badge-id="${escapeHtml(badge.id)}" ${displayedIds.has(badge.id) ? "checked" : ""} ${badge.earned ? "" : "disabled"} />
+          <span class="portfolio-verify-badge ${escapeHtml(badge.tone)}">
+            ${renderProfileBadgeIcon(badge)}
+            <em>${escapeHtml(badge.label)}</em>
+          </span>
+          <small>${escapeHtml(badge.earned ? badge.note : `Locked - ${badge.note}`)}</small>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  refs.profileBadgeManager.querySelectorAll("input[data-badge-id]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const checked = Array.from(refs.profileBadgeManager.querySelectorAll("input[data-badge-id]:checked"))
+        .map((item) => item.dataset.badgeId)
+        .filter(Boolean);
+      if (checked.length > PROFILE_BADGE_LIMIT) {
+        input.checked = false;
+        setFeedback(`Choose up to ${PROFILE_BADGE_LIMIT} badges for the avatar stack.`, true);
+        return;
+      }
+      saveProfileBadgeSelection(checked);
+      renderProfile(getWalletState());
+      updateProfileSharePanel(getWalletState());
+    });
+  });
+}
+
 function renderProfileWalletCard(walletState) {
   if (!refs.profileWalletPanel) return;
 
@@ -2714,6 +3403,51 @@ function renderProfileWalletCard(walletState) {
 
   if (refs.profileWalletNetworkBadge) {
     refs.profileWalletNetworkBadge.textContent = netConfig.label;
+  }
+
+  if (!publicAddress && state.sharedProfile) {
+    const profile = walletState.profile || state.sharedProfile.profile || getProfileFields();
+    const portfolioStyle = getPortfolioStyle();
+    const badges = buildProfileBadgeItems({
+      isVerified: Boolean(state.sharedProfile.walletVerified),
+      providerKey: "shared",
+      publicAddress: "",
+      portfolioStyle: { ...portfolioStyle, publicPreview: true }
+    });
+    const avatarMarkup = `<span class="portfolio-profile-avatar">${escapeHtml(profile.initials)}</span>`;
+    refs.profileWalletPanel.innerHTML = `
+      <div class="portfolio-showcase-hero public-share-hero">
+        <div class="portfolio-profile-block">
+          <div class="portfolio-avatar-stack">
+            ${avatarMarkup}
+            ${renderProfileBadgeStack(badges)}
+          </div>
+          <div class="portfolio-hero-copy">
+            <span class="mode-pill">Public Profile</span>
+            <h3>${escapeHtml(profile.displayName)}</h3>
+            <div class="portfolio-hero-meta">
+              <span>${escapeHtml(profile.handle)}</span>
+              <span>${escapeHtml(profile.realm)}</span>
+              <span>Wallet address hidden</span>
+            </div>
+            <p>${escapeHtml(profile.bio)}</p>
+            <p class="muted">This shared IkeLedger profile is privacy-safe. Wallet address, balances, activity, and signing details are hidden by the owner.</p>
+          </div>
+        </div>
+      </div>
+      <section class="profile-overview-section profile-wallet-overview-section">
+        <div class="portfolio-section-heading">
+          <div>
+            <h4>Public Profile Privacy</h4>
+            <p class="muted">The profile owner did not include an XRPL address in this share link.</p>
+          </div>
+        </div>
+        <div class="profile-wallet-unverified">
+          <p class="muted">Public view only. No wallet address, balances, recent activity, seed phrase, private key, or signing access is included in this profile URL.</p>
+        </div>
+      </section>
+    `;
+    return;
   }
 
   if (!publicAddress) {
@@ -2734,23 +3468,37 @@ function renderProfileWalletCard(walletState) {
   }
 
   const account = snapshot?.account;
-  const isVerified = Boolean(snapshot);
+  const isVerified = Boolean(snapshot) || Boolean(state.sharedProfile?.walletVerified);
   const providerKey = walletState.provider || sessionStorage.getItem("ike_wallet_provider") || "read-only";
   const providerLabel = providerKey === "xaman" ? "Xaman signer"
     : providerKey === "created" ? "IkeLedger-created wallet"
+      : providerKey === "shared" ? "Public profile"
       : "Read-only account";
   const signingLabel = providerKey === "xaman" ? "Transactions sign in Xaman"
     : providerKey === "created" ? "Created wallet loaded - connect in Xaman to sign"
+      : providerKey === "shared" ? "Shared privacy-safe view"
       : "Read-only exploration";
   const holdings = snapshot?.tokenHoldings || [];
   const nfts = snapshot?.nftItems || [];
   const amm = snapshot?.amm || {};
   const txItems = snapshot?.txItems || [];
   const profile = walletState.profile || getProfileFields();
-  const photo = localStorage.getItem(STORAGE_KEYS.profilePhoto);
+  const portfolioStyle = getPortfolioStyle();
+  const shouldRevealAddress = providerKey === "shared"
+    ? Boolean(state.sharedProfile?.walletAddress)
+    : !portfolioStyle.publicPreview || portfolioStyle.shareWallet;
+  const publicAddressDisplay = shouldRevealAddress ? (portfolioStyle.publicPreview || providerKey === "shared" ? formatAddress(publicAddress) : publicAddress) : "Hidden by profile privacy";
+  const photo = state.sharedProfile ? "" : localStorage.getItem(STORAGE_KEYS.profilePhoto);
   const avatarMarkup = photo
     ? `<span class="portfolio-profile-avatar has-photo"><img src="${escapeHtml(photo)}" alt="${escapeHtml(profile.displayName)} profile photo" /></span>`
     : `<span class="portfolio-profile-avatar">${escapeHtml(profile.initials)}</span>`;
+  const verificationBadges = buildProfileBadgeItems({ isVerified, providerKey, publicAddress, portfolioStyle });
+  const avatarStackHtml = `
+    <div class="portfolio-avatar-stack">
+      ${avatarMarkup}
+      ${renderProfileBadgeStack(verificationBadges)}
+    </div>
+  `;
 
   // Reserve breakdown — live from XRPL or fallback to current spec values
   const ownerCount = account?.ownerCount ?? 0;
@@ -2796,8 +3544,11 @@ function renderProfileWalletCard(walletState) {
   const learningProgress = Math.min(100, mana.completedLessons * 12);
   const credentialCount = mana.badges?.length || 0;
   const knowledgeStatus = mana.completedLessons >= 6 ? "Scholar path active" : mana.completedLessons > 0 ? "Learning path in progress" : "Profile ready";
+  const badgeFallback = ["Profile Ready", "Wallet Linked", "Safety Aware"];
+  const badgeItems = (mana.badges && mana.badges.length ? mana.badges : badgeFallback).slice(0, 6);
+  const badgesHtml = badgeItems.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("");
   const livingKnowledgeHtml = `
-    <div class="living-knowledge-panel">
+    <section class="living-knowledge-panel profile-overview-section profile-learning-section">
       <div class="section-top compact">
         <div>
           <h4>Living Knowledge Platform</h4>
@@ -2815,15 +3566,15 @@ function renderProfileWalletCard(walletState) {
         <div><span>Scholar Path</span><strong>${learningProgress}%</strong><em>progress</em></div>
       </div>
       <div class="knowledge-badge-strip">
-        ${(mana.badges || []).map((badge) => `<span>${escapeHtml(badge)}</span>`).join("") || `<span>Connect a wallet to begin tracking learning credentials</span>`}
+        ${badgesHtml || `<span>Connect a wallet to begin tracking learning credentials</span>`}
       </div>
-    </div>
+    </section>
   `;
 
   refs.profileWalletPanel.innerHTML = `
     <div class="portfolio-showcase-hero">
       <div class="portfolio-profile-block">
-        ${avatarMarkup}
+        ${avatarStackHtml}
         <div class="portfolio-hero-copy">
           <span class="mode-pill">${escapeHtml(providerLabel)}</span>
           <h3>${escapeHtml(profile.displayName)}</h3>
@@ -2832,6 +3583,7 @@ function renderProfileWalletCard(walletState) {
             <span>${escapeHtml(profile.realm)}</span>
             <span>${isVerified ? "Wallet Portfolio Loaded" : "Wallet Address Loaded"}</span>
           </div>
+          <div class="portfolio-hero-badges">${badgesHtml}</div>
           <p>${escapeHtml(profile.bio)}</p>
           <p class="muted">${escapeHtml(signingLabel)}. This profile tracks wallet health, XRPL exposure, credentials, Mana, and Living Knowledge Platform progress.</p>
         </div>
@@ -2845,10 +3597,18 @@ function renderProfileWalletCard(walletState) {
       </div>
     </div>
 
+    <section class="profile-overview-section profile-wallet-overview-section">
+    <div class="portfolio-section-heading">
+      <div>
+        <h4>Wallet Overview</h4>
+        <p class="muted">Connected account, signing mode, network status, and on-chain readiness.</p>
+      </div>
+    </div>
+
     <div class="profile-wallet-address-row portfolio-address-row">
-      <span class="profile-wallet-addr-label">Classic Address</span>
-      <code class="profile-wallet-addr">${escapeHtml(publicAddress)}</code>
-      <button type="button" class="ghost keygen-copy-btn profile-wallet-copy" data-copy="${escapeHtml(publicAddress)}">Copy</button>
+      <span class="profile-wallet-addr-label">${shouldRevealAddress ? "Classic Address" : "Classic Address · Private"}</span>
+      <code class="profile-wallet-addr">${escapeHtml(publicAddressDisplay)}</code>
+      ${shouldRevealAddress ? `<button type="button" class="ghost keygen-copy-btn profile-wallet-copy" data-copy="${escapeHtml(publicAddress)}">Copy</button>` : ""}
     </div>
 
     <div class="profile-wallet-status-row">
@@ -2856,8 +3616,17 @@ function renderProfileWalletCard(walletState) {
       <span style="color:${statusColor}; font-size:0.82rem; font-weight:600;">${statusLabel}</span>
       <span class="muted" style="font-size:0.78rem;">- ${escapeHtml(mode || "Read-only Mode")}</span>
     </div>
+    </section>
 
     ${livingKnowledgeHtml}
+
+    <section class="profile-overview-section profile-assets-section">
+    <div class="portfolio-section-heading">
+      <div>
+        <h4>Portfolio Overview</h4>
+        <p class="muted">Balances, reserves, owned objects, assets, and recent XRPL movement for this profile.</p>
+      </div>
+    </div>
 
     ${isVerified ? `
     <div class="profile-wallet-kpi-grid">
@@ -2947,6 +3716,11 @@ function renderProfileWalletCard(walletState) {
       </div>
     </div>
     ` : `
+    ${providerKey === "shared" ? `
+    <div class="profile-wallet-unverified">
+      <p class="muted">The owner chose to include a compact public wallet address. Balances, activity, and signing tools are still hidden in this share view.</p>
+    </div>
+    ` : `
     <div class="profile-wallet-unverified">
       <p class="muted">Account not yet verified on-chain. Press <strong>Refresh Account</strong> on the dashboard to query the XRPL.</p>
       <div class="button-row">
@@ -2956,6 +3730,8 @@ function renderProfileWalletCard(walletState) {
       ${netConfig.isMainnet ? `<p class="keygen-danger-note">Mainnet selected - real assets may be involved.</p>` : ""}
     </div>
     `}
+    `}
+    </section>
   `;
 
   // Wire copy button
@@ -2975,10 +3751,14 @@ function renderProfileWalletCard(walletState) {
 function onSaveProfile() {
   const nextProfile = getProfileEditorValues();
   updateProfileState(nextProfile);
+  saveAvatarStyle();
   savePortfolioStyle();
   const walletState = getWalletState();
   renderProfile(walletState);
-  setFeedback("Profile saved.");
+  setActivePage("profile");
+  closeProfileSettingsDrawer();
+  showProfileSavedEffect();
+  setFeedback("Profile settings saved. Portfolio overview refreshed.");
 }
 
 function renderProofLearning(walletState) {
@@ -7548,6 +8328,53 @@ function closeSettingsDrawer() {
   }
 }
 
+function openProfileSettingsDrawer() {
+  if (!hasXrplAccount()) {
+    setFeedback("Connect Xaman or load an XRPL account before editing profile settings.", true);
+    return;
+  }
+  if (state.activePage !== "profile") {
+    setActivePage("profile");
+  }
+  if (state.activePage !== "profile") return;
+  refs.portfolioStudioCard?.classList.add("open");
+  refs.portfolioStudioCard?.setAttribute("aria-hidden", "false");
+  syncProfileEditor(getWalletState().profile || getProfileFields());
+  renderPortfolioStudioWallet(getWalletState());
+  renderProfileBadgeManager(getWalletState());
+  updateProfileSharePanel(getWalletState());
+  if (window.innerWidth <= 1100) closeSidebarPanel();
+}
+
+function closeProfileSettingsDrawer() {
+  refs.portfolioStudioCard?.classList.remove("open");
+  refs.portfolioStudioCard?.setAttribute("aria-hidden", "true");
+}
+
+function showProfileSavedEffect() {
+  const portfolioCard = document.querySelector(".portfolio-unified-card");
+  portfolioCard?.classList.remove("profile-save-pulse");
+  void portfolioCard?.offsetWidth;
+  portfolioCard?.classList.add("profile-save-pulse");
+
+  if (refs.saveProfileButton) {
+    const originalText = refs.saveProfileButton.dataset.originalText || refs.saveProfileButton.textContent || "Save Settings";
+    refs.saveProfileButton.dataset.originalText = originalText;
+    refs.saveProfileButton.classList.add("is-saved");
+    refs.saveProfileButton.textContent = "Saved";
+    refs.saveProfileButton.disabled = true;
+    window.setTimeout(() => {
+      refs.saveProfileButton.classList.remove("is-saved");
+      refs.saveProfileButton.textContent = originalText;
+      refs.saveProfileButton.disabled = false;
+    }, 1400);
+  }
+
+  window.setTimeout(() => {
+    portfolioCard?.classList.remove("profile-save-pulse");
+  }, 1300);
+}
+
 function openAuthModal() {
   refs.authModal?.classList.remove("hidden");
   if (refs.authModal) {
@@ -8418,6 +9245,7 @@ function initEventHandlers() {
     if (event.key === "Escape") {
       closeAuthModal();
       closeSettingsDrawer();
+      closeProfileSettingsDrawer();
       closeSidebarPanel();
       if (!refs.signGateModal?.classList.contains("hidden")) {
         closeSignGateModal();
@@ -8446,9 +9274,11 @@ function initEventHandlers() {
   });
 
   bindClick(refs.openSettingsButton, openSettingsDrawer);
+  bindClick(refs.openProfileSettingsPanelButton, openProfileSettingsDrawer);
   bindClick(refs.openSidebarButton, openSidebarPanel);
   bindClick(refs.closeSidebarButton, closeSidebarPanel);
   bindClick(refs.closeSettingsButton, closeSettingsDrawer);
+  bindClick(refs.closeProfileSettingsButton, closeProfileSettingsDrawer);
   bindClick(refs.saveProfileButton, onSaveProfile);
   bindClick(refs.settingsDisconnectButton, onDisconnect);
   bindClick(refs.settingsClearSessionButton, onClearSession);
@@ -8461,6 +9291,12 @@ function initEventHandlers() {
   bindClick(refs.uploadPhotoButton, () => refs.avatarPhotoInput?.click());
   bindClick(refs.cameraPhotoButton, () => refs.avatarCameraInput?.click());
   bindClick(refs.profileAvatarPill, () => refs.avatarPhotoInput?.click());
+  bindClick(refs.uploadBannerButton, () => refs.profileBannerInput?.click());
+  bindClick(refs.clearBannerButton, () => {
+    localStorage.removeItem(STORAGE_KEYS.profileBanner);
+    applyPortfolioStyle();
+    setFeedback("Profile banner removed.");
+  });
   bindClick(refs.clearPhotoButton, () => {
     localStorage.removeItem(STORAGE_KEYS.profilePhoto);
     applyProfilePhoto();
@@ -8474,6 +9310,11 @@ function initEventHandlers() {
   refs.avatarCameraInput?.addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (file) onPhotoFile(file);
+    e.target.value = "";
+  });
+  refs.profileBannerInput?.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (file) onBannerFile(file);
     e.target.value = "";
   });
 
@@ -8505,9 +9346,57 @@ function initEventHandlers() {
     el?.addEventListener("input", saveAvatarStyle);
     el?.addEventListener("change", saveAvatarStyle);
   });
-  [refs.portfolioMoodInput, refs.portfolioDensityInput, refs.portfolioGlowInput].forEach((el) => {
-    el?.addEventListener("input", savePortfolioStyle);
-    el?.addEventListener("change", savePortfolioStyle);
+  refs.portfolioPresetInput?.addEventListener("change", () => {
+    applyPortfolioPreset(refs.portfolioPresetInput?.value || "custom");
+  });
+
+  refs.profileShareWalletInput?.addEventListener("change", () => {
+    localStorage.setItem(STORAGE_KEYS.profileShareWallet, refs.profileShareWalletInput.checked ? "true" : "false");
+    updateProfileSharePanel(getWalletState());
+    renderProfile(getWalletState());
+  });
+
+  bindClick(refs.copyProfileShareUrlButton, async () => {
+    const url = refs.profileShareUrlInput?.value || buildProfileShareUrl(getWalletState());
+    try {
+      await navigator.clipboard.writeText(url);
+      if (refs.copyProfileShareUrlButton) refs.copyProfileShareUrlButton.textContent = "Copied!";
+      setFeedback("Public profile link copied.");
+      setTimeout(() => { if (refs.copyProfileShareUrlButton) refs.copyProfileShareUrlButton.textContent = "Copy Link"; }, 1800);
+    } catch {
+      setFeedback("Copy failed - select the link and copy manually.", true);
+    }
+  });
+
+  bindClick(refs.openProfileShareUrlButton, () => {
+    const url = refs.profileShareUrlInput?.value || buildProfileShareUrl(getWalletState());
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+
+  [
+    refs.portfolioMoodInput,
+    refs.portfolioDensityInput,
+    refs.portfolioGlowInput,
+    refs.portfolioFontInput,
+    refs.portfolioBackgroundInput,
+    refs.portfolioTextColorInput,
+    refs.portfolioMutedColorInput,
+    refs.portfolioCardColorInput,
+    refs.portfolioCardBorderColorInput,
+    refs.portfolioCardBorderWidthInput,
+    refs.portfolioCardRadiusInput,
+    refs.portfolioBadgePlacementInput,
+    refs.portfolioSectionOrderInput,
+    refs.portfolioBorderAnimationInput,
+    refs.portfolioPublicPreviewInput
+  ].forEach((el) => {
+    const saveAsCustom = () => {
+      if (refs.portfolioPresetInput) refs.portfolioPresetInput.value = "custom";
+      savePortfolioStyle();
+      renderProfile(getWalletState());
+    };
+    el?.addEventListener("input", saveAsCustom);
+    el?.addEventListener("change", saveAsCustom);
   });
 
   // Keygen handlers
@@ -8533,7 +9422,8 @@ function initEventHandlers() {
   refs.sidebarOverlay?.addEventListener("click", closeSidebarPanel);
   refs.sidebarPanel?.querySelectorAll(".sidebar-btn").forEach((button) => {
     button.addEventListener("click", () => {
-      setActivePage(button.dataset.page || "dashboard");
+      if (!button.dataset.page) return;
+      setActivePage(button.dataset.page);
       if (window.innerWidth <= 1100) {
         closeSidebarPanel();
       }
@@ -8637,12 +9527,13 @@ function boot() {
 
   state.adminMode = localStorage.getItem(STORAGE_KEYS.adminMode) === "true";
   state.appUser = getStoredAppUser();
+  state.sharedProfile = readSharedProfileFromUrl();
   state.tokenWatchlist = getStoredWatchlist(STORAGE_KEYS.tokenWatchlist);
   state.ammWatchlist = getStoredWatchlist(STORAGE_KEYS.ammWatchlist);
   loadTrackerWallets();
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
   applyAccent(localStorage.getItem(STORAGE_KEYS.accent) || "aqua");
-  setActivePage("dashboard");
+  setActivePage(state.sharedProfile ? "profile" : "dashboard");
 
   if (refs.networkSelect) refs.networkSelect.value = walletState.network;
   if (refs.addressInput) refs.addressInput.value = walletState.publicAddress || "";

@@ -11,6 +11,9 @@
     <meta property="og:description" content="XRPL account intelligence - wallet health, security, assets, AMM, NFTs, and live activity." />
     <meta name="theme-color" content="#f5c76b" />
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Orbitron:wght@500;700;800&family=Playfair+Display:wght@600;700;800&family=Syne:wght@600;700;800&family=Unbounded:wght@500;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./ikeledger/css/ikeledger.css?v=mobile-xaman-polish" />
   </head>
   <body>
@@ -65,6 +68,7 @@
             <button class="sidebar-btn" data-page="credentials" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/manapoints.png" alt="" /></span>Credentials & Mana</button>
             <button class="sidebar-btn" data-page="security" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/NLF.png" alt="" /></span>Security Center</button>
             <button class="sidebar-btn" data-page="profile" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeprofile.png" alt="" /></span>Portfolio</button>
+            <button id="openProfileSettingsPanelButton" class="sidebar-btn hidden" type="button" aria-hidden="true"><span class="nav-icon"><img src="./ikeledger/assets/images/settings.png" alt="" /></span>Profile Settings</button>
             <button class="sidebar-btn" data-page="settings" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/settings.png" alt="" /></span>Settings</button>
           </nav>
           <div class="sidebar-footer">
@@ -81,17 +85,17 @@
 
         <section class="dashboard-column">
           <section class="page-section active" data-page="dashboard">
-            <article id="commandOverviewHero" class="glass-card account-hero">
+            <article id="commandOverviewHero" class="glass-card account-hero command-center-hero">
               <div class="account-hero-left">
                 <img class="section-visual command-visual" src="./ikeledger/assets/images/Ikeledger.png" alt="IkeLedger command center" loading="lazy" />
                 <div class="command-overview">
                   <span class="mode-pill">XRPL Operations</span>
                   <h1>Command Center</h1>
-                  <p>Monitor the loaded account, network status, spendable XRP, ledger objects, and signing readiness from one overview.</p>
+                  <p>Use this as the app-wide overview for XRPL network health, XRP market context, liquidity conditions, safety learning, and where each IkeLedger tool fits.</p>
                   <div class="command-overview-list">
-                    <span>Wallet connection</span>
-                    <span>Portfolio counts</span>
-                    <span>Network health</span>
+                    <span>XRPL network pulse</span>
+                    <span>XRP market overview</span>
+                    <span>AMM / liquidity watch</span>
                     <span>Security signals</span>
                   </div>
                 </div>
@@ -862,20 +866,32 @@
           </section>
 
           <section class="page-section" data-page="profile">
-            <article class="glass-card profile-card profile-settings-card portfolio-studio-card">
-              <img class="section-visual wide-visual" src="./ikeledger/assets/images/ikeprofile.png" alt="IkeLedger profile" loading="lazy" />
+            <article class="glass-card portfolio-unified-card">
+              <div class="portfolio-unified-layout">
+                <aside class="profile-card profile-settings-card portfolio-studio-card" aria-hidden="true">
               <div class="section-top">
                 <div>
-                  <h2>Portfolio Studio</h2>
-                  <p class="muted">Customize the public-facing portfolio card, identity, photo, and avatar glow.</p>
+                  <h2>Profile Settings</h2>
+                  <p class="muted">Edit the same identity, wallet view, and profile styling shown in the portfolio overview.</p>
                 </div>
-                <button id="saveProfileButton" type="button">Save Settings</button>
+                <div class="button-row">
+                  <button id="saveProfileButton" type="button">Save Settings</button>
+                  <button id="closeProfileSettingsButton" type="button" class="ghost">Close</button>
+                </div>
               </div>
               <div class="profile-layout">
-                <div class="profile-summary">
-                  <div class="profile-photo-zone" id="profileUploadZone" role="region" aria-label="Profile photo upload">
-                    <button id="profileAvatarPill" class="avatar-pill avatar-xl avatar-clickable" type="button" aria-label="Change profile photo" title="Click to upload or drop photo">WV</button>
-                    <p class="photo-drop-hint muted">Drop photo here</p>
+                <div class="profile-summary profile-summary-hidden" aria-hidden="true">
+                  <button id="profileAvatarPill" class="avatar-pill avatar-xl avatar-clickable" type="button" aria-label="Change profile photo" title="Click to upload or drop photo">WV</button>
+                  <div id="profilePagePanel" class="card-content"></div>
+                </div>
+                <div class="profile-editor control-grid">
+                  <div id="portfolioStudioWalletPanel" class="portfolio-studio-wallet"></div>
+
+                  <details class="studio-editor-drawer" open>
+                    <summary>Customize Profile</summary>
+                    <div class="studio-editor-content control-grid">
+                  <div class="profile-photo-zone profile-photo-settings" id="profileUploadZone" role="region" aria-label="Profile photo upload">
+                    <p class="photo-drop-hint muted">Profile image is shown once in the portfolio overview. Upload, camera, or remove it here.</p>
                     <div class="photo-upload-controls">
                       <input id="avatarPhotoInput" type="file" accept="image/*" class="hidden" aria-label="Upload profile photo" />
                       <button id="uploadPhotoButton" type="button" class="ghost photo-action-btn">Upload</button>
@@ -886,14 +902,14 @@
                       <button id="clearPhotoButton" type="button" class="ghost photo-action-btn">Remove</button>
                     </div>
                   </div>
-                  <div id="profilePagePanel" class="card-content"></div>
-                </div>
-                <div class="profile-editor control-grid">
-                  <div id="portfolioStudioWalletPanel" class="portfolio-studio-wallet"></div>
-
-                  <details class="studio-editor-drawer" open>
-                    <summary>Customize Profile</summary>
-                    <div class="studio-editor-content control-grid">
+                  <div class="profile-photo-zone profile-photo-settings portfolio-banner-settings" role="region" aria-label="Profile banner upload">
+                    <p class="photo-drop-hint muted">Banner/background image for the portfolio hero. Wide images work best.</p>
+                    <div class="photo-upload-controls">
+                      <input id="profileBannerInput" type="file" accept="image/*" class="hidden" aria-label="Upload profile banner" />
+                      <button id="uploadBannerButton" type="button" class="ghost photo-action-btn">Upload Banner</button>
+                      <button id="clearBannerButton" type="button" class="ghost photo-action-btn">Remove Banner</button>
+                    </div>
+                  </div>
                   <label>
                     Display Name
                     <input id="profileDisplayNameInput" type="text" maxlength="40" autocomplete="off" />
@@ -955,6 +971,17 @@
                     <h4 class="customizer-heading">Portfolio Page Style</h4>
                     <div class="customizer-grid">
                       <label class="customizer-label">
+                        Theme Preset
+                        <select id="portfolioPresetInput">
+                          <option value="custom">Custom</option>
+                          <option value="crypto-beast">Crypto Beast</option>
+                          <option value="dreamtime">Dreamtime</option>
+                          <option value="solar-ledger">Solar Ledger</option>
+                          <option value="neon-matrix">Neon Matrix</option>
+                          <option value="mana-royal">Mana Royal</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
                         Page Mood
                         <select id="portfolioMoodInput">
                           <option value="aqua">Aqua Ledger</option>
@@ -974,16 +1001,143 @@
                         Page Glow
                         <input type="range" id="portfolioGlowInput" min="0" max="100" value="65" class="style-range" />
                       </label>
+                      <label class="customizer-label">
+                        Font Style
+                        <select id="portfolioFontInput">
+                          <option value="system">Clean System</option>
+                          <option value="cinzel">Cinzel Ledger</option>
+                          <option value="cormorant">Cormorant Archive</option>
+                          <option value="playfair">Playfair Royal</option>
+                          <option value="syne">Syne Signal</option>
+                          <option value="orbitron">Orbitron Future</option>
+                          <option value="unbounded">Unbounded Mythic</option>
+                          <option value="serif">Ledger Serif</option>
+                          <option value="mono">Terminal Mono</option>
+                          <option value="display">Dream Display</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Background Field
+                        <select id="portfolioBackgroundInput">
+                          <option value="cosmic">Cosmic Field</option>
+                          <option value="ledger-grid">Ledger Grid</option>
+                          <option value="mana-rings">Mana Rings</option>
+                          <option value="aurora">Aurora Veil</option>
+                          <option value="eclipse">Eclipse Glass</option>
+                          <option value="glyph">Glyph Trace</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Lettering Color
+                        <div class="color-picker-row">
+                          <input type="color" id="portfolioTextColorInput" value="#eef5ff" />
+                          <span class="color-picker-swatch" id="portfolioTextColorSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Soft Text Color
+                        <div class="color-picker-row">
+                          <input type="color" id="portfolioMutedColorInput" value="#aebfe0" />
+                          <span class="color-picker-swatch" id="portfolioMutedColorSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Card Tint
+                        <div class="color-picker-row">
+                          <input type="color" id="portfolioCardColorInput" value="#050c1e" />
+                          <span class="color-picker-swatch" id="portfolioCardColorSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Card Border Color
+                        <div class="color-picker-row">
+                          <input type="color" id="portfolioCardBorderColorInput" value="#42e8d5" />
+                          <span class="color-picker-swatch" id="portfolioCardBorderSwatch"></span>
+                        </div>
+                      </label>
+                      <label class="customizer-label">
+                        Card Border Width
+                        <input type="range" id="portfolioCardBorderWidthInput" min="1" max="6" value="1" class="style-range" />
+                      </label>
+                      <label class="customizer-label">
+                        Card Roundness
+                        <input type="range" id="portfolioCardRadiusInput" min="6" max="28" value="18" class="style-range" />
+                      </label>
+                      <label class="customizer-label">
+                        Badge Placement
+                        <select id="portfolioBadgePlacementInput">
+                          <option value="bottom">Learning Panel</option>
+                          <option value="hero">Hero Badges</option>
+                          <option value="side">Side Rail</option>
+                          <option value="hidden">Hidden</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Section Order
+                        <select id="portfolioSectionOrderInput">
+                          <option value="wallet-first">Wallet First</option>
+                          <option value="learning-first">Learning First</option>
+                          <option value="portfolio-first">Portfolio First</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label">
+                        Border Motion
+                        <select id="portfolioBorderAnimationInput">
+                          <option value="none">None</option>
+                          <option value="pulse">Glow Pulse</option>
+                          <option value="scan">Scanline</option>
+                          <option value="orbit">Orbit Ring</option>
+                        </select>
+                      </label>
+                      <label class="customizer-label customizer-toggle">
+                        Public Preview
+                        <span class="toggle-row">
+                          <input type="checkbox" id="portfolioPublicPreviewInput" />
+                          <span>Hide editing-style actions and compact wallet details</span>
+                        </span>
+                      </label>
                     </div>
-                    <p class="muted portfolio-style-note">These settings stay local in this browser, giving each portfolio its own creative look.</p>
+                    <p class="muted portfolio-style-note">These settings stay local in this browser, giving each portfolio its own creative look across the hero, overview cards, wallet panels, and editor drawer.</p>
+                  </div>
+                  <div class="portfolio-badge-customizer">
+                    <h4 class="customizer-heading">Badge Manager</h4>
+                    <p class="muted portfolio-style-note">Choose which earned badges appear under your profile image. Image assets can replace these placeholders later.</p>
+                    <div id="profileBadgeManager" class="profile-badge-manager" aria-live="polite"></div>
+                  </div>
+                  <div class="portfolio-share-customizer">
+                    <h4 class="customizer-heading">Share Profile</h4>
+                    <p class="muted portfolio-style-note">Create a public-safe profile URL and QR. Wallet address stays hidden unless you turn it on.</p>
+                    <label class="customizer-label customizer-toggle">
+                      Wallet Address Privacy
+                      <span class="toggle-row">
+                        <input type="checkbox" id="profileShareWalletInput" />
+                        <span>Include wallet address in shared profile link</span>
+                      </span>
+                    </label>
+                    <div class="profile-share-grid">
+                      <div class="profile-share-url-box">
+                        <label class="customizer-label">
+                          Public Profile URL
+                          <input id="profileShareUrlInput" type="text" readonly />
+                        </label>
+                        <div class="button-row">
+                          <button id="copyProfileShareUrlButton" type="button" class="ghost">Copy Link</button>
+                          <button id="openProfileShareUrlButton" type="button" class="ghost">Open Preview</button>
+                        </div>
+                      </div>
+                      <div class="profile-share-qr-card">
+                        <div id="profileShareQr" class="profile-share-qr" aria-label="Profile share QR"></div>
+                        <span class="muted">Scan to open the public profile preview.</span>
+                      </div>
+                    </div>
                   </div>
                     </div>
                   </details>
                 </div>
               </div>
-            </article>
+                </aside>
 
-            <article class="glass-card portfolio-primary-card" id="profileWalletCard">
+                <section class="portfolio-primary-card" id="profileWalletCard">
               <div class="section-top">
                 <div>
                   <h2>Portfolio</h2>
@@ -992,6 +1146,8 @@
                 <span id="profileWalletNetworkBadge" class="mode-pill"></span>
               </div>
               <div id="profileWalletPanel" class="card-content"></div>
+                </section>
+              </div>
             </article>
 
             <article class="glass-card hidden" id="fundWalletCard">
