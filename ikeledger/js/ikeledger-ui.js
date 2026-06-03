@@ -332,6 +332,7 @@ const refs = {
   marketSourceCoinGecko: document.getElementById("marketSourceCoinGecko"),
   marketSourceXrpl: document.getElementById("marketSourceXrpl"),
   marketSourceXrplTo: document.getElementById("marketSourceXrplTo"),
+  commandLedgerPulse: document.getElementById("commandLedgerPulse"),
   authModal: document.getElementById("authModal"),
   closeAuthModalButton: document.getElementById("closeAuthModalButton"),
   commandOpenAuthButton: document.getElementById("commandOpenAuthButton"),
@@ -430,6 +431,7 @@ const refs = {
   issuedTokens: document.getElementById("issuedTokens"),
   nftInventory: document.getElementById("nftInventory"),
   ammStatus: document.getElementById("ammStatus"),
+  commandAmmWatch: document.getElementById("commandAmmWatch"),
   valueMix: document.getElementById("valueMix"),
   txHistory: document.getElementById("txHistory"),
   txRawJson: document.getElementById("txRawJson"),
@@ -1218,7 +1220,7 @@ function setActivePage(page) {
     void loadDexChart();
   }
 
-  if (page === "amm") {
+  if (page === "dashboard" || page === "amm") {
     void loadTopAmmPools();
   }
 
@@ -1596,6 +1598,12 @@ function renderMarketSnapshot(snapshot) {
   if (refs.marketLedgerIndex) refs.marketLedgerIndex.textContent = snapshot.ledgerIndex ? snapshot.ledgerIndex.toLocaleString() : "n/a";
   if (refs.marketTps) refs.marketTps.textContent = snapshot.tps || "n/a";
   if (refs.marketFee) refs.marketFee.textContent = feeDrops === "n/a" ? "n/a" : `${feeDrops} drops`;
+  if (refs.commandLedgerPulse) {
+    const ledger = snapshot.ledgerIndex ? `Ledger ${snapshot.ledgerIndex.toLocaleString()}` : "Ledger n/a";
+    const tps = snapshot.tps ? `${snapshot.tps} tx/s` : "TPS n/a";
+    const fee = feeDrops === "n/a" ? "fee n/a" : `${feeDrops} drops`;
+    refs.commandLedgerPulse.textContent = `${ledger} - ${tps} - ${fee}`;
+  }
   if (refs.xrpPriceStat) refs.xrpPriceStat.textContent = Number.isFinite(price) ? `$${price.toFixed(4)}` : "n/a";
   if (refs.xrpChangeStat) refs.xrpChangeStat.textContent = changeText;
   if (refs.xrpNavPrice) {
@@ -2629,14 +2637,39 @@ function applyAvatarStyle() {
     ? "none"
     : `0 0 ${spread1}px rgba(${r},${g},${b},${alpha1.toFixed(2)}), 0 0 ${spread2}px rgba(${r},${g},${b},${alpha2.toFixed(2)})`;
 
-  // Sync border-radius between ring and pill/image via CSS var on wrap
-  const radii = { circle: "50%", rounded: "20px", square: "6px" };
-  const radius = radii[borderShape] || "50%";
+  // Sync outer ring, image crop, and status ring shape without shrinking the image.
+  const shapeStyles = {
+    circle:  { radius: "50%", outerRadius: "50%", clip: "none" },
+    rounded: { radius: "20px", outerRadius: "calc(20px + var(--avatar-border-width, 2px))", clip: "none" },
+    soft:    { radius: "34px", outerRadius: "calc(34px + var(--avatar-border-width, 2px))", clip: "none" },
+    square:  { radius: "6px", outerRadius: "calc(6px + var(--avatar-border-width, 2px))", clip: "none" },
+    arch:    {
+      radius: "48% 48% 18px 18px / 42% 42% 18px 18px",
+      outerRadius: "50% 50% calc(18px + var(--avatar-border-width, 2px)) calc(18px + var(--avatar-border-width, 2px)) / 44% 44% calc(18px + var(--avatar-border-width, 2px)) calc(18px + var(--avatar-border-width, 2px))",
+      clip: "none"
+    },
+    shield:  { radius: "22px", outerRadius: "26px", clip: "polygon(50% 0%, 92% 18%, 84% 76%, 50% 100%, 16% 76%, 8% 18%)" },
+    hex:     { radius: "18px", outerRadius: "22px", clip: "polygon(24% 4%, 76% 4%, 100% 50%, 76% 96%, 24% 96%, 0 50%)" },
+    diamond: { radius: "18px", outerRadius: "22px", clip: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
+    ticket:  {
+      radius: "30px 8px 30px 8px",
+      outerRadius: "calc(30px + var(--avatar-border-width, 2px)) calc(8px + var(--avatar-border-width, 2px)) calc(30px + var(--avatar-border-width, 2px)) calc(8px + var(--avatar-border-width, 2px))",
+      clip: "none"
+    }
+  };
+  const shapeKey = shapeStyles[borderShape] ? borderShape : "circle";
+  const shape = shapeStyles[shapeKey];
+  const shapeClasses = Object.keys(shapeStyles).map((key) => `avatar-shape-${key}`);
+  const radius = shape.radius;
+  const outerRadius = shape.outerRadius;
+  const clipPath = shape.clip;
 
   if (section) {
     section.style.setProperty("--avatar-glow", glowShadow);
     section.style.setProperty("--avatar-border-color", borderColor);
     section.style.setProperty("--avatar-border-radius", radius);
+    section.style.setProperty("--avatar-outer-border-radius", outerRadius);
+    section.style.setProperty("--avatar-clip-path", clipPath);
     section.style.setProperty("--avatar-border-width", `${borderWidth}px`);
   }
 
@@ -2644,14 +2677,17 @@ function applyAvatarStyle() {
     pill.style.setProperty("--avatar-glow", glowShadow);
     pill.style.setProperty("--avatar-border-color", borderColor);
     pill.style.setProperty("--avatar-border-radius", radius);
+    pill.style.setProperty("--avatar-outer-border-radius", outerRadius);
+    pill.style.setProperty("--avatar-clip-path", clipPath);
     pill.style.setProperty("--avatar-border-width", `${borderWidth}px`);
-    pill.classList.remove("avatar-shape-circle", "avatar-shape-rounded", "avatar-shape-square");
-    pill.classList.add(`avatar-shape-${borderShape}`);
+    pill.classList.remove(...shapeClasses);
+    pill.classList.add(`avatar-shape-${shapeKey}`);
   });
 
   // Keep status ring shape in sync
   if (refs.heroAvatarStatusRing) {
     refs.heroAvatarStatusRing.style.borderRadius = radius;
+    refs.heroAvatarStatusRing.style.clipPath = clipPath;
   }
 
   // Sync swatches and inputs
@@ -2659,7 +2695,7 @@ function applyAvatarStyle() {
   if (refs.avatarGlowIntensityInput) refs.avatarGlowIntensityInput.value = String(glowIntensity);
   if (refs.avatarBorderColorInput)   refs.avatarBorderColorInput.value   = borderColor;
   if (refs.avatarBorderWidthInput)   refs.avatarBorderWidthInput.value   = String(borderWidth);
-  if (refs.avatarBorderShapeInput)   refs.avatarBorderShapeInput.value   = borderShape;
+  if (refs.avatarBorderShapeInput)   refs.avatarBorderShapeInput.value   = shapeKey;
   if (refs.avatarGlowSwatch)         refs.avatarGlowSwatch.style.background  = glowColor;
   if (refs.avatarBorderSwatch)       refs.avatarBorderSwatch.style.background = borderColor;
 }
@@ -5070,10 +5106,69 @@ function onAmmToolInputChange(event) {
   renderAmmTools();
 }
 
+function renderCommandAmmWatch() {
+  if (!refs.commandAmmWatch) return;
+  const { items, loading, error, fetchedAt } = state.topAmmPools;
+
+  if (!items.length && loading) {
+    refs.commandAmmWatch.innerHTML = `
+      <div class="command-watch-empty">
+        <strong>Loading liquidity watch...</strong>
+        <p class="muted">Fetching top AMM pools, TVL, turnover, and issuer risk.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!items.length) {
+    refs.commandAmmWatch.innerHTML = `
+      <div class="command-watch-empty">
+        <strong>${error ? "Liquidity watch unavailable" : "Liquidity watch loading soon"}</strong>
+        <p class="muted">${error ? escapeHtml(error) : "Top AMM pool intelligence will appear here after the market feed loads."}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const top = items[0];
+  const totalTvl = items.reduce((sum, pool) => sum + (Number.isFinite(pool.tvl) ? pool.tvl : 0), 0);
+  const totalVolume = items.reduce((sum, pool) => sum + (Number.isFinite(pool.volume24hAmm) ? pool.volume24hAmm : 0), 0);
+  const health = items.reduce((acc, pool) => {
+    const score = scoreAmmPoolHealth(pool);
+    acc[score.level] = (acc[score.level] || 0) + 1;
+    const tvl = toFiniteNumber(pool.tvl, Number.NaN);
+    const volume = toFiniteNumber(pool.volume24hAmm, Number.NaN);
+    const turnover = Number.isFinite(volume) && Number.isFinite(tvl) && tvl > 0 ? volume / tvl : Number.NaN;
+    if (Number.isFinite(turnover) && turnover > 0.35) acc.highChurn += 1;
+    return acc;
+  }, { Strong: 0, Watch: 0, Thin: 0, Fragile: 0, highChurn: 0 });
+
+  refs.commandAmmWatch.innerHTML = `
+    <div class="command-watch-kpis">
+      <div><span>Tracked Pools</span><strong>${items.length}</strong></div>
+      <div><span>Combined TVL</span><strong>${formatUsd(totalTvl)}</strong></div>
+      <div><span>24h Flow</span><strong>${formatCompactNumber(totalVolume, 1)} XRP</strong></div>
+      <div><span>Strong / Fragile</span><strong>${health.Strong} / ${health.Fragile}</strong></div>
+    </div>
+    <div class="command-watch-focus">
+      <span class="mode-pill">Largest Pool</span>
+      <div class="market-token-identity">
+        ${tokenLogoMarkup(top, top.symbol)}
+        <div>
+          <strong>${escapeHtml(top.symbol)} / XRP</strong>
+          <span>${formatUsd(top.tvl)} TVL - ${formatCompactNumber(top.volume24hAmm, 1)} XRP flow</span>
+        </div>
+      </div>
+    </div>
+    <p class="muted">Watch ${health.Watch + health.Thin} pools need review and ${health.highChurn} show high churn. Updated ${fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : "from cache"}.</p>
+  `;
+}
+
 function renderTopAmmPools() {
   if (!refs.topAmmPoolsPanel) return;
   const { items, loading, error, fetchedAt } = state.topAmmPools;
   renderAmmTools();
+  renderCommandAmmWatch();
   if (refs.refreshTopAmmPoolsButton) {
     refs.refreshTopAmmPoolsButton.disabled = loading;
     refs.refreshTopAmmPoolsButton.textContent = loading ? "Loading..." : "Refresh";
@@ -5696,17 +5791,18 @@ function renderNfts(walletState) {
 }
 
 function renderAmm(walletState) {
-  if (!refs.ammStatus) return;
+  if (!refs.ammStatus && !refs.ammPagePanel) return;
   const amm = walletState.snapshot?.amm || { objectCount: 0, recentActivityCount: 0, recentActivity: [] };
   if (!amm.objectCount) {
-    refs.ammStatus.innerHTML = "<p>No active AMM / LP positions found.</p>";
+    const emptyHtml = "<p>No active AMM / LP positions found.</p>";
+    if (refs.ammStatus) refs.ammStatus.innerHTML = emptyHtml;
     if (refs.ammPagePanel) {
       refs.ammPagePanel.innerHTML = "<p>Add liquidity, withdraw, vote, and bid actions will appear once a pool position is detected.</p>";
     }
     return;
   }
 
-  refs.ammStatus.innerHTML = `
+  const ammHtml = `
     <p><strong>Pool Pair:</strong> XRP / USDC</p>
     <p><strong>LP Balance:</strong> ${safeNumber(amm.objectCount * 13.77, 2)} LP</p>
     <p><strong>Pool Share:</strong> ${(amm.objectCount * 0.34).toFixed(2)}%</p>
@@ -5715,9 +5811,10 @@ function renderAmm(walletState) {
     <p><strong>Vote Status:</strong> ${amm.recentActivity[0]?.type || "No active vote"}</p>
     <div class="button-row"><button class="ghost" type="button">Deposit</button><button class="ghost" type="button">Withdraw</button><button class="ghost" type="button">View Pool</button></div>
   `;
+  if (refs.ammStatus) refs.ammStatus.innerHTML = ammHtml;
 
   if (refs.ammPagePanel) {
-    refs.ammPagePanel.innerHTML = refs.ammStatus.innerHTML + "<p>AMM deposits are not risk-free. Fees do not guarantee profit.</p>";
+    refs.ammPagePanel.innerHTML = `${ammHtml}<p>AMM deposits are not risk-free. Fees do not guarantee profit.</p>`;
   }
 }
 
@@ -9267,7 +9364,7 @@ function initEventHandlers() {
     if (event.target === refs.authModal) closeAuthModal();
   });
   document.addEventListener("click", (event) => {
-    const authButton = event.target.closest?.("#commandOpenAuthButton, #dexAuthPromptButton");
+    const authButton = event.target.closest?.("#commandOpenAuthButton, #dexAuthPromptButton, [data-auth-trigger]");
     if (!authButton) return;
     event.preventDefault();
     openAuthModal();

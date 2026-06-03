@@ -813,6 +813,164 @@ button.ghost:hover {
   font-size: 0.78rem;
   font-weight: 700;
 }
+
+.command-hero-main {
+  gap: 0.8rem;
+}
+
+.command-mission-panel {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.95rem;
+  border: 1px solid rgba(66, 232, 213, 0.18);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(66, 232, 213, 0.08), transparent 42%),
+    linear-gradient(180deg, rgba(6, 13, 32, 0.82), rgba(5, 10, 26, 0.66));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 38px rgba(0, 0, 0, 0.18);
+}
+
+.command-mission-panel h2 {
+  margin: 0;
+  color: var(--ink-0);
+  font-size: clamp(1.18rem, 1.8vw, 1.72rem);
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.command-mission-panel p {
+  margin: 0;
+  color: var(--ink-1);
+  line-height: 1.56;
+}
+
+.command-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.48rem;
+}
+
+.command-proof-grid div,
+.command-live-card,
+.command-watch-kpis div,
+.command-watch-focus {
+  border: 1px solid rgba(118, 153, 212, 0.16);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(135deg, rgba(70, 188, 255, 0.07), transparent 62%),
+    rgba(4, 9, 24, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 26px rgba(0, 0, 0, 0.16);
+}
+
+.command-proof-grid div {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.62rem;
+}
+
+.command-proof-grid span {
+  color: var(--turquoise);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.command-proof-grid strong,
+.command-live-card strong,
+.command-watch-focus strong {
+  color: var(--ink-0);
+  font-weight: 900;
+}
+
+.command-proof-grid em,
+.command-live-card p,
+.command-watch-focus span,
+.command-watch-empty p {
+  color: var(--ink-2);
+  font-size: 0.76rem;
+  font-style: normal;
+  line-height: 1.42;
+}
+
+.command-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.command-cta-row button {
+  min-height: 42px;
+}
+
+.command-hero-right {
+  gap: 0.55rem;
+}
+
+.command-live-card {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.76rem;
+}
+
+.command-live-card .meta-label {
+  color: var(--turquoise);
+}
+
+.command-liquidity-card {
+  min-height: 0;
+}
+
+.command-amm-watch {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.command-watch-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.command-watch-kpis div {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.52rem 0.6rem;
+}
+
+.command-watch-kpis span {
+  color: var(--ink-2);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-watch-kpis strong {
+  color: var(--ink-0);
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.command-watch-focus {
+  display: grid;
+  gap: 0.46rem;
+  padding: 0.62rem;
+}
+
+.command-watch-empty {
+  border: 1px solid rgba(118, 153, 212, 0.16);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem;
+  background: rgba(4, 9, 24, 0.62);
+}
+
+.command-watch-empty strong {
+  color: var(--ink-0);
+}
 /* ---------------------------------------------
    Account Hero
    --------------------------------------------- */
@@ -849,27 +1007,58 @@ button.ghost:hover {
 .avatar-pill {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--avatar-border-radius, 50%);
   display: grid;
   place-items: center;
   font-weight: 800;
   font-size: 1.1rem;
-  background: linear-gradient(135deg, rgba(233, 199, 122, 0.94), rgba(70, 188, 255, 0.82));
+  background: transparent;
   color: #10203a;
   flex-shrink: 0;
-  border: 2px solid rgba(233, 199, 122, 0.5);
+  border: 0;
   box-shadow: 0 0 22px rgba(233, 199, 122, 0.28), 0 4px 16px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+  overflow: visible;
   line-height: 1;
   padding: 0;
 }
 
+.avatar-pill::before,
+.avatar-pill::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.avatar-pill::before {
+  inset: calc(var(--avatar-border-width, 2px) * -1);
+  z-index: -2;
+  border-radius: var(--avatar-outer-border-radius, var(--avatar-border-radius, 50%));
+  clip-path: var(--avatar-clip-path, none);
+  background: var(--avatar-border-color, rgba(233, 199, 122, 0.72));
+  box-shadow:
+    var(--avatar-glow, 0 0 22px rgba(233, 199, 122, 0.28)),
+    0 0 18px color-mix(in srgb, var(--avatar-border-color, #e9c77a) 36%, transparent);
+}
+
+.avatar-pill::after {
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--avatar-border-radius, 50%);
+  clip-path: var(--avatar-clip-path, none);
+  background: linear-gradient(135deg, rgba(233, 199, 122, 0.94), rgba(70, 188, 255, 0.82));
+}
+
 .avatar-pill img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center top;
-  border-radius: 50%;
+  border-radius: var(--avatar-border-radius, 50%);
+  clip-path: var(--avatar-clip-path, none);
   display: block;
 }
 
@@ -879,8 +1068,7 @@ button.ghost:hover {
 }
 
 .avatar-clickable:hover {
-  border-color: rgba(70, 188, 255, 0.8);
-  box-shadow: 0 0 32px rgba(70, 188, 255, 0.38), 0 0 20px rgba(233, 199, 122, 0.28);
+  box-shadow: 0 0 32px rgba(70, 188, 255, 0.38), 0 0 20px rgba(233, 199, 122, 0.28), 0 8px 22px rgba(0, 0, 0, 0.34);
   transform: scale(1.05);
 }
 
@@ -888,20 +1076,24 @@ button.ghost:hover {
   width: 86px;
   height: 86px;
   font-size: 1.65rem;
-  border-width: var(--avatar-border-width, 2px);
-  border-color: var(--avatar-border-color, rgba(233, 199, 122, 0.6));
   border-radius: var(--avatar-border-radius, 50%);
   box-shadow: var(--avatar-glow, 0 0 28px rgba(70, 188, 255, 0.35)), 0 0 60px rgba(233, 199, 122, 0.15), 0 6px 24px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 0.4s ease, border-color 0.3s ease, border-radius 0.3s ease;
+  transition: box-shadow 0.4s ease, border-radius 0.3s ease, transform 0.2s ease;
 }
 
 .avatar-hero img {
   border-radius: var(--avatar-border-radius, 50%);
 }
 
-.avatar-shape-circle  { --avatar-border-radius: 50%; }
-.avatar-shape-rounded { --avatar-border-radius: 20px; }
-.avatar-shape-square  { --avatar-border-radius: 6px; }
+.avatar-shape-circle  { --avatar-border-radius: 50%; --avatar-outer-border-radius: 50%; --avatar-clip-path: none; }
+.avatar-shape-rounded { --avatar-border-radius: 20px; --avatar-outer-border-radius: calc(20px + var(--avatar-border-width, 2px)); --avatar-clip-path: none; }
+.avatar-shape-soft    { --avatar-border-radius: 34px; --avatar-outer-border-radius: calc(34px + var(--avatar-border-width, 2px)); --avatar-clip-path: none; }
+.avatar-shape-square  { --avatar-border-radius: 6px; --avatar-outer-border-radius: calc(6px + var(--avatar-border-width, 2px)); --avatar-clip-path: none; }
+.avatar-shape-arch    { --avatar-border-radius: 48% 48% 18px 18px / 42% 42% 18px 18px; --avatar-outer-border-radius: 50% 50% calc(18px + var(--avatar-border-width, 2px)) calc(18px + var(--avatar-border-width, 2px)) / 44% 44% calc(18px + var(--avatar-border-width, 2px)) calc(18px + var(--avatar-border-width, 2px)); --avatar-clip-path: none; }
+.avatar-shape-shield  { --avatar-border-radius: 22px; --avatar-outer-border-radius: 26px; --avatar-clip-path: polygon(50% 0%, 92% 18%, 84% 76%, 50% 100%, 16% 76%, 8% 18%); }
+.avatar-shape-hex     { --avatar-border-radius: 18px; --avatar-outer-border-radius: 22px; --avatar-clip-path: polygon(24% 4%, 76% 4%, 100% 50%, 76% 96%, 24% 96%, 0 50%); }
+.avatar-shape-diamond { --avatar-border-radius: 18px; --avatar-outer-border-radius: 22px; --avatar-clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+.avatar-shape-ticket  { --avatar-border-radius: 30px 8px 30px 8px; --avatar-outer-border-radius: calc(30px + var(--avatar-border-width, 2px)) calc(8px + var(--avatar-border-width, 2px)) calc(30px + var(--avatar-border-width, 2px)) calc(8px + var(--avatar-border-width, 2px)); --avatar-clip-path: none; }
 
 .avatar-xl {
   width: 110px;
@@ -2655,33 +2847,72 @@ button.ghost:hover {
 .portfolio-profile-avatar {
   width: clamp(112px, 15vw, 176px);
   aspect-ratio: 1;
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  border: var(--avatar-border-width) solid var(--avatar-border-color);
+  overflow: visible;
+  border: 0;
   border-radius: var(--avatar-border-radius);
   color: var(--portfolio-text-color);
   font-size: clamp(1.3rem, 3vw, 2rem);
   font-weight: 900;
   letter-spacing: 0.02em;
+  background: transparent;
+  box-shadow:
+    var(--avatar-glow),
+    0 0 calc(var(--portfolio-glow-size) * 0.75) rgba(var(--portfolio-accent-rgb), var(--portfolio-glow-alpha));
+}
+
+.portfolio-profile-avatar::before,
+.portfolio-profile-avatar::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.portfolio-profile-avatar::before {
+  inset: calc(var(--avatar-border-width) * -1);
+  z-index: -2;
+  border-radius: var(--avatar-outer-border-radius, var(--avatar-border-radius));
+  clip-path: var(--avatar-clip-path, none);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--avatar-border-color) 92%, #ffffff 8%), var(--avatar-border-color)),
+    var(--avatar-border-color);
+  box-shadow:
+    var(--avatar-glow),
+    0 0 calc(var(--portfolio-glow-size) * 0.62) rgba(var(--portfolio-accent-rgb), var(--portfolio-glow-alpha));
+}
+
+.portfolio-profile-avatar::after {
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--avatar-border-radius);
+  clip-path: var(--avatar-clip-path, none);
   background:
     radial-gradient(circle at 35% 22%, rgba(255, 255, 255, 0.18), transparent 24%),
     linear-gradient(145deg, rgba(var(--portfolio-accent-rgb), 0.36), rgba(8, 16, 38, 0.88));
   box-shadow:
-    var(--avatar-glow),
-    0 0 calc(var(--portfolio-glow-size) * 0.75) rgba(var(--portfolio-accent-rgb), var(--portfolio-glow-alpha)),
-    inset 0 0 24px rgba(255, 255, 255, 0.07);
+    inset 0 0 24px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .portfolio-profile-avatar.has-photo {
+  background: transparent;
+}
+
+.portfolio-profile-avatar.has-photo::after {
   background: rgba(var(--portfolio-card-rgb), 0.78);
 }
 
 .portfolio-profile-avatar img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: var(--avatar-border-radius);
+  clip-path: var(--avatar-clip-path, none);
 }
 
 .portfolio-avatar-badges {
@@ -3655,7 +3886,6 @@ button.ghost:hover {
 
 .page-section[data-page="profile"][data-portfolio-density="compact"] .portfolio-profile-avatar {
   width: 96px;
-  border-radius: 18px;
 }
 
 .page-section[data-page="profile"][data-portfolio-density="compact"] .portfolio-hero-copy h3 {
@@ -4318,6 +4548,10 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
+  .command-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
   .account-hero {
     grid-template-columns: 1fr;
   }
@@ -4382,6 +4616,7 @@ button.ghost:hover {
 
   .wallet-meta-grid,
   .portfolio-kpi-grid,
+  .command-watch-kpis,
   .profile-wallet-kpi-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -4446,7 +4681,6 @@ button.ghost:hover {
 
   .portfolio-profile-avatar {
     width: 120px;
-    border-radius: 20px;
   }
 
   .portfolio-studio-card .avatar-xl {

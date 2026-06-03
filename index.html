@@ -90,17 +90,37 @@
                 <img class="section-visual command-visual" src="./ikeledger/assets/images/Ikeledger.png" alt="IkeLedger command center" loading="lazy" />
                 <div class="command-overview">
                   <span class="mode-pill">XRPL Operations</span>
-                  <h1>Command Center</h1>
-                  <p>Use this as the app-wide overview for XRPL network health, XRP market context, liquidity conditions, safety learning, and where each IkeLedger tool fits.</p>
+                  <h1>IkeLedger Command Center</h1>
+                  <p>A professional XRPL operations hub for market intelligence, liquidity awareness, wallet safety, account tools, and learning paths across the IkeLedger ecosystem.</p>
                   <div class="command-overview-list">
-                    <span>XRPL network pulse</span>
-                    <span>XRP market overview</span>
-                    <span>AMM / liquidity watch</span>
-                    <span>Security signals</span>
+                    <span>XRPL network and XRP market pulse</span>
+                    <span>AMM liquidity and issuer risk awareness</span>
+                    <span>Web3 safety education and transaction hygiene</span>
+                    <span>DEX, NFT, token, portfolio, and learning tools</span>
                   </div>
                 </div>
               </div>
-              <div class="account-hero-main">
+              <div class="account-hero-main command-hero-main">
+                <div class="command-mission-panel">
+                  <span class="mode-pill">What IkeLedger Aims To Do</span>
+                  <h2>Make XRPL data easier to understand before users connect, trade, or sign.</h2>
+                  <p>IkeLedger blends network data, token and AMM market context, safety education, portfolio tools, and account intelligence into one guided XRPL workspace.</p>
+                  <div class="command-proof-grid" aria-label="IkeLedger operating pillars">
+                    <div><span>01</span><strong>Observe</strong><em>Network pulse, XRP markets, token tables, and AMM liquidity.</em></div>
+                    <div><span>02</span><strong>Understand</strong><em>Issuer risk, pool health, red flags, and educational checklists.</em></div>
+                    <div><span>03</span><strong>Act Carefully</strong><em>Xaman signing, DEX previews, and transaction consent gates.</em></div>
+                  </div>
+                </div>
+                <div class="command-cta-row">
+                  <button type="button" data-auth-trigger>Sign In / Connect</button>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="dex">Open DEX</button>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="amm">Liquidity Watch</button>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="tracker">Account Intelligence</button>
+                </div>
+                <p id="xamanStatus" class="feedback" aria-live="polite"></p>
+                <p id="feedback" class="feedback" aria-live="polite"></p>
+              </div>
+              <div class="account-hero-main command-wallet-legacy hidden" aria-hidden="true">
                 <label>
                   Public XRPL Address
                   <input id="addressInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" inputmode="text" aria-label="Public XRPL address" />
@@ -136,10 +156,25 @@
                   </div>
                 </div>
                 <div id="walletStatus" class="wallet-status-panel"></div>
-                <p id="xamanStatus" class="feedback" aria-live="polite"></p>
-                <p id="feedback" class="feedback" aria-live="polite"></p>
               </div>
-              <div class="account-hero-right">
+              <div class="account-hero-right command-hero-right">
+                <article class="command-live-card">
+                  <span class="meta-label">Live Network Pulse</span>
+                  <strong id="commandLedgerPulse">XRPL Mainnet</strong>
+                  <p>Ledger speed, fee pressure, and XRP market context are shown below without exposing a user's wallet address.</p>
+                </article>
+                <article class="command-live-card">
+                  <span class="meta-label">Wallet Privacy</span>
+                  <strong>Profile first, wallet details separate</strong>
+                  <p>Public addresses, balances, activity, and portfolio controls live in Profile, Wallet, and Account Intelligence.</p>
+                </article>
+                <article class="command-live-card">
+                  <span class="meta-label">Safety Model</span>
+                  <strong>Read before signing</strong>
+                  <p>Seed phrase protection, red-flag patterns, AMM risk, and DEX warnings stay visible before users act.</p>
+                </article>
+              </div>
+              <div class="account-hero-right command-wallet-legacy hidden" aria-hidden="true">
                 <div class="hero-tab-bar" role="tablist" aria-label="Portfolio and wallet actions">
                   <button class="hero-tab is-active" data-hero-tab="overview" type="button" id="heroTabOverviewBtn" role="tab" aria-selected="true">Portfolio</button>
                   <button class="hero-tab" data-hero-tab="send" type="button" id="heroTabSendBtn" role="tab" aria-selected="false">Send</button>
@@ -213,21 +248,42 @@
 
             <section id="commandOverviewCards" class="card-grid overview-grid">
               <article class="glass-card command-bg-card wallet-connection-card">
-                <img class="card-visual" src="./ikeledger/assets/images/ikewallet.png" alt="Wallet connection" loading="lazy" />
-                <h3>Connection Plan</h3>
+                <img class="card-visual" src="./ikeledger/assets/images/Ikeledger.png" alt="IkeLedger tool map" loading="lazy" />
+                <h3>IkeLedger Tool Map</h3>
                 <div class="card-content">
-                  <p><strong>Overview:</strong> Command Center stays focused on XRPL network and XRP market intelligence.</p>
-                  <p><strong>Profile:</strong> Email sign-in unlocks profile tools, not wallet-only features.</p>
-                  <p><strong>Wallet:</strong> Xumm or a created XRPL account unlocks account pages and transaction tools.</p>
+                  <p><strong>Explore:</strong> XRP markets, issued assets, AMM pools, NFTs, and XRPL account intelligence.</p>
+                  <p><strong>Connect:</strong> Xaman or a created wallet unlocks wallet-backed pages and transaction tools.</p>
+                  <p><strong>Learn:</strong> Safety basics and Living Knowledge Platform progress support better decisions.</p>
                   <div class="button-row">
-                    <button id="commandOpenAuthButton" type="button">Sign In / Connect</button>
-                    <button type="button" class="ghost profile-wallet-nav-btn" data-nav="create-wallet">Create Wallet</button>
+                    <button type="button" data-auth-trigger>Sign In / Connect</button>
+                    <button type="button" class="ghost profile-wallet-nav-btn" data-nav="profile">View Profile</button>
                   </div>
                 </div>
               </article>
-              <article class="glass-card command-bg-card recent-activity-card"><img class="card-visual" src="./ikeledger/assets/images/ikenotifications.png" alt="Recent activity" loading="lazy" /><h3>Recent Activity</h3><div id="dashboardActivity" class="card-content"></div></article>
-              <article class="glass-card command-bg-card security-signals-card"><img class="card-visual" src="./ikeledger/assets/images/NLF.png" alt="Security signals" loading="lazy" /><h3>Security Signals</h3><div id="securityStatus" class="card-content"></div></article>
-              <article class="glass-card command-bg-card value-mix-card"><img class="card-visual" src="./ikeledger/assets/images/manapoints.png" alt="Value mix" loading="lazy" /><h3>Value Mix</h3><div id="valueMix" class="card-content"></div></article>
+              <article class="glass-card command-bg-card recent-activity-card">
+                <img class="card-visual" src="./ikeledger/assets/images/ikenotifications.png" alt="Account intelligence" loading="lazy" />
+                <h3>Account Intelligence</h3>
+                <div class="card-content">
+                  <p>Track wallet health, transaction categories, risk signals, NFT activity, token exposure, and AMM/DEX events after a user connects.</p>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="tracker">Open Intelligence</button>
+                </div>
+              </article>
+              <article class="glass-card command-bg-card security-signals-card">
+                <img class="card-visual" src="./ikeledger/assets/images/NLF.png" alt="Safety learning" loading="lazy" />
+                <h3>Safety Learning</h3>
+                <div class="card-content">
+                  <p>Seed phrase rules, signing hygiene, project red flags, market discipline, and manipulation patterns stay visible before wallet actions.</p>
+                  <span class="mode-pill">Learning guide below</span>
+                </div>
+              </article>
+              <article class="glass-card command-bg-card value-mix-card">
+                <img class="card-visual" src="./ikeledger/assets/images/manapoints.png" alt="Living Knowledge Platform" loading="lazy" />
+                <h3>Living Knowledge Platform</h3>
+                <div class="card-content">
+                  <p>Profile learning, Mana, badges, credentials, and ecosystem participation can sit beside wallet intelligence without exposing private settings.</p>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="profile">Open Profile</button>
+                </div>
+              </article>
             </section>
 
             <section id="commandSafetyGuide" class="card-grid command-safety-grid" aria-label="Web3 safety best practices">
@@ -399,11 +455,17 @@
                 </div>
               </article>
 
-              <article class="glass-card amm-card">
+              <article class="glass-card amm-card command-liquidity-card">
                 <img class="card-visual" src="./ikeledger/assets/images/ikeamm.png" alt="AMM and liquidity pools" loading="lazy" />
-                <h3>AMM / LP Position Viewer</h3>
-                <div id="ammStatus" class="card-content"></div>
-                <p class="warning-inline">Liquidity positions can lose value. Understand impermanent loss before depositing.</p>
+                <div class="section-top compact">
+                  <div>
+                    <h3>AMM / Liquidity Watch</h3>
+                    <p class="muted">Top pool context without showing a user's wallet positions.</p>
+                  </div>
+                  <button type="button" class="ghost profile-wallet-nav-btn" data-nav="amm">Open AMM / LP</button>
+                </div>
+                <div id="commandAmmWatch" class="card-content command-amm-watch"></div>
+                <p class="warning-inline">Liquidity can move fast. Review TVL, turnover, issuer risk, and LP concentration before depositing.</p>
               </article>
 
             </section>
@@ -961,7 +1023,13 @@
                         <select id="avatarBorderShapeInput">
                           <option value="circle">Circle</option>
                           <option value="rounded">Rounded</option>
+                          <option value="soft">Soft Rectangle</option>
                           <option value="square">Square</option>
+                          <option value="arch">Portrait Arch</option>
+                          <option value="shield">Shield</option>
+                          <option value="hex">Hex Badge</option>
+                          <option value="diamond">Diamond</option>
+                          <option value="ticket">Ticket</option>
                         </select>
                       </label>
                     </div>
