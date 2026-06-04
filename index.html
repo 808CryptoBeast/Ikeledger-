@@ -449,6 +449,7 @@
                     <div class="button-row charttype-row">
                       <button class="ghost ct-btn is-active" data-ct="line" type="button">Line</button>
                       <button class="ghost ct-btn" data-ct="candle" type="button">Candles</button>
+                      <button class="ghost ct-btn" id="toggleSubChartsBtn" type="button" title="Toggle RSI/MACD">Indicators</button>
                     </div>
                   </div>
                 </div>
@@ -492,6 +493,30 @@
                 </div>
                 <div class="chart-shell">
                   <canvas id="marketChart" width="1200" height="420" aria-label="XRP market chart"></canvas>
+                  <div class="chart-legend">
+                    <button class="legend-btn is-active" id="toggleMA20" type="button" aria-pressed="true">
+                      <span class="legend-dot ma20"></span>
+                      <span>MA20</span>
+                    </button>
+                    <button class="legend-btn is-active" id="toggleMA50" type="button" aria-pressed="true">
+                      <span class="legend-dot ma50"></span>
+                      <span>MA50</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="marketSubCharts" class="market-sub-charts hidden">
+                  <div class="sub-chart-row">
+                    <div class="sub-chart-container">
+                      <span class="sub-chart-label">RSI (14)</span>
+                      <canvas id="marketRsiChart" width="1200" height="120" aria-label="RSI indicator"></canvas>
+                    </div>
+                  </div>
+                  <div class="sub-chart-row">
+                    <div class="sub-chart-container">
+                      <span class="sub-chart-label">MACD</span>
+                      <canvas id="marketMacdChart" width="1200" height="120" aria-label="MACD indicator"></canvas>
+                    </div>
+                  </div>
                 </div>
               </article>
 

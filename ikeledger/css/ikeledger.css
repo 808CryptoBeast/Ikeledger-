@@ -1901,6 +1901,99 @@ button.ghost:hover {
   min-height: 200px;
 }
 
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0;
+  justify-content: flex-start;
+}
+
+.legend-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  border: 1px solid rgba(99, 183, 255, 0.3);
+  background: rgba(99, 183, 255, 0.08);
+  color: rgba(99, 183, 255, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.legend-btn:hover {
+  background: rgba(99, 183, 255, 0.15);
+  border-color: rgba(99, 183, 255, 0.5);
+}
+
+.legend-btn.is-active {
+  background: rgba(99, 183, 255, 0.2);
+  border-color: rgba(99, 183, 255, 0.7);
+  color: rgba(99, 183, 255, 0.9);
+}
+
+.legend-btn:not(.is-active) {
+  opacity: 0.5;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legend-dot.ma20 {
+  background: rgba(66, 232, 213, 0.6);
+}
+
+.legend-dot.ma50 {
+  background: rgba(233, 199, 122, 0.6);
+}
+
+.market-sub-charts {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.market-sub-charts.hidden {
+  display: none;
+}
+
+.sub-chart-row {
+  border: 1px solid rgba(70, 188, 255, 0.18);
+  border-radius: var(--radius-md);
+  padding: 0.5rem;
+  background: rgba(5, 10, 26, 0.72);
+}
+
+.sub-chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sub-chart-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 0.5rem;
+}
+
+#marketRsiChart,
+#marketMacdChart {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  min-height: 100px;
+}
+
 .timeframe-row {
   flex-wrap: nowrap;
   gap: 0.28rem;

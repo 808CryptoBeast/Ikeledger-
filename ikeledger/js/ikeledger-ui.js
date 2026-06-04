@@ -215,6 +215,8 @@ const state = {
   ammWatchlist: new Set(),
   chartTimeframe: "24H",
   marketChartType: "line",
+  showMA20: true,
+  showMA50: true,
   marketTimer: null,
   marketCache: {
     key: "",
@@ -322,6 +324,8 @@ const refs = {
   qrCodeButton: document.getElementById("qrCodeButton"),
   lastSyncStatus: document.getElementById("lastSyncStatus"),
   marketChart: document.getElementById("marketChart"),
+  toggleMA20: document.getElementById("toggleMA20"),
+  toggleMA50: document.getElementById("toggleMA50"),
   timeframeButtons: Array.from(document.querySelectorAll(".tf-btn")),
   chartTypeButtons: Array.from(document.querySelectorAll(".ct-btn")),
   marketPrice: document.getElementById("marketPrice"),
@@ -1846,43 +1850,34 @@ function drawMarketChart(rawPoints) {
   const ma50 = sma(closes, 50);
 
   // MA20
-  const maPath20 = new Path2D();
-  closes.forEach((v, i) => {
-    const m = ma20[i];
-    if (!Number.isFinite(m)) return;
-    const x = toX(i);
-    const y = toYPrice(m);
-    i === 0 || !Number.isFinite(ma20[i - 1]) ? maPath20.moveTo(x, y) : maPath20.lineTo(x, y);
-  });
-  ctx.strokeStyle = "rgba(66, 232, 213, 0.5)";
-  ctx.lineWidth = 1.2;
-  ctx.stroke(maPath20);
+  if (state.showMA20) {
+    const maPath20 = new Path2D();
+    closes.forEach((v, i) => {
+      const m = ma20[i];
+      if (!Number.isFinite(m)) return;
+      const x = toX(i);
+      const y = toYPrice(m);
+      i === 0 || !Number.isFinite(ma20[i - 1]) ? maPath20.moveTo(x, y) : maPath20.lineTo(x, y);
+    });
+    ctx.strokeStyle = "rgba(66, 232, 213, 0.5)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke(maPath20);
+  }
 
   // MA50
-  const maPath50 = new Path2D();
-  closes.forEach((v, i) => {
-    const m = ma50[i];
-    if (!Number.isFinite(m)) return;
-    const x = toX(i);
-    const y = toYPrice(m);
-    i === 0 || !Number.isFinite(ma50[i - 1]) ? maPath50.moveTo(x, y) : maPath50.lineTo(x, y);
-  });
-  ctx.strokeStyle = "rgba(233, 199, 122, 0.5)";
-  ctx.lineWidth = 1.2;
-  ctx.stroke(maPath50);
-
-  // ── Legend ──────────────────────────────────────────────────────
-  ctx.fillStyle = "rgba(148, 163, 184, 0.4)";
-  ctx.font = "700 11px system-ui";
-  ctx.textAlign = "left";
-  ctx.fillText("MA20", padL + 4, padT + 14);
-  ctx.fillStyle = "rgba(66, 232, 213, 0.6)";
-  ctx.fillRect(padL - 2, padT + 6, 12, 2);
-
-  ctx.fillStyle = "rgba(148, 163, 184, 0.4)";
-  ctx.fillText("MA50", padL + 55, padT + 14);
-  ctx.fillStyle = "rgba(233, 199, 122, 0.6)";
-  ctx.fillRect(padL + 48, padT + 6, 12, 2);
+  if (state.showMA50) {
+    const maPath50 = new Path2D();
+    closes.forEach((v, i) => {
+      const m = ma50[i];
+      if (!Number.isFinite(m)) return;
+      const x = toX(i);
+      const y = toYPrice(m);
+      i === 0 || !Number.isFinite(ma50[i - 1]) ? maPath50.moveTo(x, y) : maPath50.lineTo(x, y);
+    });
+    ctx.strokeStyle = "rgba(233, 199, 122, 0.5)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke(maPath50);
+  }
 }
 
 function setSourceChip(el, label, status = "Loading") {
@@ -1922,6 +1917,156 @@ function syncXrplToSourceStatus(status = "Cached") {
     }
   };
   renderMarketSourceStatus(state.marketCache.snapshot);
+}
+
+function renderMarketSubCharts(rawPoints) {
+  const rsiCanvas = document.getElementById("marketRsiChart");
+  const macdCanvas = document.getElementById("marketMacdChart");
+  if (!rsiCanvas || !macdCanvas) return;
+
+  const candles = rawPoints.map(p => typeof p === "object" ? p : {t:0, o:p, h:p, l:p, c:p, v:0});
+  if (candles.length < 15) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const drawRsi = () => {
+    const cssW = rsiCanvas.clientWidth;
+    const cssH = rsiCanvas.clientHeight || 120;
+    rsiCanvas.width = Math.round(cssW * dpr);
+    rsiCanvas.height = Math.round(cssH * dpr);
+    const ctx = rsiCanvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    const rsiVals = rsi(candles, 14);
+    const w = cssW, h = cssH;
+    const pad = {l: 35, r: 8, t: 8, b: 20};
+    const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+
+    ctx.fillStyle = "rgba(5, 10, 26, 0.5)";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = "rgba(99, 183, 255, 0.15)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 100; i += 20) {
+      const y = pad.t + plotH * (1 - i/100);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, y);
+      ctx.lineTo(w - pad.r, y);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(99, 183, 255, 0.5)";
+    ctx.font = "0.7rem monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let i = 0; i <= 100; i += 20) {
+      const y = pad.t + plotH * (1 - i/100);
+      ctx.fillText(i, pad.l - 5, y);
+    }
+
+    const overbought = pad.t + plotH * (1 - 0.8);
+    const oversold = pad.t + plotH * (1 - 0.2);
+    ctx.strokeStyle = "rgba(255, 68, 68, 0.3)";
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, overbought);
+    ctx.lineTo(w - pad.r, overbought);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pad.l, oversold);
+    ctx.lineTo(w - pad.r, oversold);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = "#46bcff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < rsiVals.length; i++) {
+      const v = rsiVals[i];
+      if (Number.isNaN(v)) continue;
+      const x = pad.l + (i / rsiVals.length) * plotW;
+      const y = pad.t + plotH * (1 - v/100);
+      if (i === 0 || Number.isNaN(rsiVals[i-1])) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+
+  const drawMacd = () => {
+    const cssW = macdCanvas.clientWidth;
+    const cssH = macdCanvas.clientHeight || 120;
+    macdCanvas.width = Math.round(cssW * dpr);
+    macdCanvas.height = Math.round(cssH * dpr);
+    const ctx = macdCanvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    const macdData = macd(candles, 12, 26, 9);
+    const {macdLine, signalLine, histogram} = macdData;
+    const w = cssW, h = cssH;
+    const pad = {l: 35, r: 8, t: 8, b: 20};
+    const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+
+    ctx.fillStyle = "rgba(5, 10, 26, 0.5)";
+    ctx.fillRect(0, 0, w, h);
+
+    const allVals = [...macdLine, ...signalLine, ...histogram].filter(v => !Number.isNaN(v));
+    const minVal = Math.min(...allVals, 0);
+    const maxVal = Math.max(...allVals, 0);
+    const range = maxVal - minVal || 1;
+
+    ctx.strokeStyle = "rgba(99, 183, 255, 0.15)";
+    ctx.lineWidth = 1;
+    const centerY = pad.t + plotH * (0 - minVal) / range;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, centerY);
+    ctx.lineTo(w - pad.r, centerY);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(99, 183, 255, 0.5)";
+    ctx.font = "0.7rem monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("0", pad.l - 5, centerY);
+
+    ctx.fillStyle = "rgba(72, 214, 168, 0.3)";
+    for (let i = 0; i < histogram.length; i++) {
+      if (Number.isNaN(histogram[i])) continue;
+      const h_val = (histogram[i] - minVal) / range;
+      const x = pad.l + (i / histogram.length) * plotW;
+      const y_base = centerY;
+      const y_top = pad.t + plotH * (1 - h_val);
+      if (histogram[i] >= 0) ctx.fillRect(x - 0.5, y_top, 1, y_base - y_top);
+      else ctx.fillRect(x - 0.5, y_base, 1, y_top - y_base);
+    }
+
+    ctx.strokeStyle = "#46bcff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < macdLine.length; i++) {
+      if (Number.isNaN(macdLine[i])) continue;
+      const v = (macdLine[i] - minVal) / range;
+      const x = pad.l + (i / macdLine.length) * plotW;
+      const y = pad.t + plotH * (1 - v);
+      if (i === 0 || Number.isNaN(macdLine[i-1])) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = "#ff7488";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < signalLine.length; i++) {
+      if (Number.isNaN(signalLine[i])) continue;
+      const v = (signalLine[i] - minVal) / range;
+      const x = pad.l + (i / signalLine.length) * plotW;
+      const y = pad.t + plotH * (1 - v);
+      if (i === 0 || Number.isNaN(signalLine[i-1])) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+
+  drawRsi();
+  drawMacd();
 }
 
 function renderMarketSnapshot(snapshot) {
@@ -10067,11 +10212,37 @@ function initEventHandlers() {
 
   refs.chartTypeButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.id === "toggleSubChartsBtn") return;
       refs.chartTypeButtons.forEach((b) => b.classList.remove("is-active"));
       button.classList.add("is-active");
       state.marketChartType = button.dataset.ct || "line";
       if (state.marketCache.points?.length) drawMarketChart(state.marketCache.points);
     });
+  });
+
+  document.getElementById("toggleSubChartsBtn")?.addEventListener("click", () => {
+    const subCharts = document.getElementById("marketSubCharts");
+    const btn = document.getElementById("toggleSubChartsBtn");
+    if (!subCharts || !btn) return;
+    const isHidden = subCharts.classList.toggle("hidden");
+    btn.classList.toggle("is-active", !isHidden);
+    if (!isHidden && state.marketCache.points?.length) {
+      renderMarketSubCharts(state.marketCache.points);
+    }
+  });
+
+  refs.toggleMA20?.addEventListener("click", () => {
+    state.showMA20 = !state.showMA20;
+    refs.toggleMA20.classList.toggle("is-active", state.showMA20);
+    refs.toggleMA20.setAttribute("aria-pressed", state.showMA20);
+    if (state.marketCache.points?.length) drawMarketChart(state.marketCache.points);
+  });
+
+  refs.toggleMA50?.addEventListener("click", () => {
+    state.showMA50 = !state.showMA50;
+    refs.toggleMA50.classList.toggle("is-active", state.showMA50);
+    refs.toggleMA50.setAttribute("aria-pressed", state.showMA50);
+    if (state.marketCache.points?.length) drawMarketChart(state.marketCache.points);
   });
 
   refs.addressInput?.addEventListener("paste", (event) => {
