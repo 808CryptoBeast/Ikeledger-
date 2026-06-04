@@ -326,6 +326,8 @@ const refs = {
   marketChart: document.getElementById("marketChart"),
   toggleMA20: document.getElementById("toggleMA20"),
   toggleMA50: document.getElementById("toggleMA50"),
+  mobileNetworkSelect: document.getElementById("mobileNetworkSelect"),
+  mobileThemeToggleButton: document.getElementById("mobileThemeToggleButton"),
   timeframeButtons: Array.from(document.querySelectorAll(".tf-btn")),
   chartTypeButtons: Array.from(document.querySelectorAll(".ct-btn")),
   marketPrice: document.getElementById("marketPrice"),
@@ -9847,9 +9849,15 @@ async function onHeroSendPreview() {
 
 function initNetworkOptions() {
   if (!refs.networkSelect) return;
-  refs.networkSelect.innerHTML = Object.values(NETWORKS)
+  const options = Object.values(NETWORKS)
     .map((network) => `<option value="${network.key}">${network.label}</option>`)
     .join("");
+  refs.networkSelect.innerHTML = options;
+
+  // Also populate mobile network select
+  if (refs.mobileNetworkSelect) {
+    refs.mobileNetworkSelect.innerHTML = options;
+  }
 }
 
 function bindClick(ref, handler) {
@@ -10293,6 +10301,26 @@ function initEventHandlers() {
       topicSpans[0].classList.add("is-active");
     }
   }
+
+  // Mobile sticky header - sync network select
+  if (refs.mobileNetworkSelect && refs.networkSelect) {
+    refs.mobileNetworkSelect.addEventListener("change", () => {
+      refs.networkSelect.value = refs.mobileNetworkSelect.value;
+      refs.networkSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    refs.networkSelect.addEventListener("change", () => {
+      refs.mobileNetworkSelect.value = refs.networkSelect.value;
+    });
+  }
+
+  // Mobile theme toggle
+  refs.mobileThemeToggleButton?.addEventListener("click", () => {
+    const currentTheme = document.body.classList.contains("light-mode") ? "light" : "dark";
+    const newTheme = currentTheme === "light" ? "dark" : "light";
+    applyTheme(newTheme);
+    localStorage.setItem(STORAGE_KEYS.theme, newTheme);
+  });
 }
 
 function boot() {
@@ -10311,6 +10339,7 @@ function boot() {
   setActivePage(state.sharedProfile ? "profile" : "dashboard");
 
   if (refs.networkSelect) refs.networkSelect.value = walletState.network;
+  if (refs.mobileNetworkSelect) refs.mobileNetworkSelect.value = walletState.network;
   if (refs.addressInput) refs.addressInput.value = walletState.publicAddress || "";
   if (refs.supabaseUrlInput) refs.supabaseUrlInput.value = supabaseConfig.url;
   if (refs.supabaseAnonKeyInput) refs.supabaseAnonKeyInput.value = supabaseConfig.anonKey;

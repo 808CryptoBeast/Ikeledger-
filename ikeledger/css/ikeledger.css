@@ -5006,6 +5006,55 @@ button.ghost:hover {
     margin: 0;
     padding-left: 1.2rem;
   }
+
+  /* Mobile sticky header */
+  .mobile-sticky-header {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-sticky-header {
+    display: flex;
+    position: fixed;
+    top: 54px;
+    left: 0;
+    right: 0;
+    height: 44px;
+    background: rgba(5, 8, 18, 0.98);
+    border-bottom: 1px solid rgba(70, 188, 255, 0.12);
+    backdrop-filter: blur(8px);
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    align-items: center;
+    z-index: 24;
+  }
+
+  .mobile-sticky-header .inline-control {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .mobile-sticky-header .mobile-network-control label {
+    display: none;
+  }
+
+  .mobile-sticky-header .mobile-network-control select {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.4rem;
+  }
+
+  .mobile-sticky-header button {
+    padding: 0.3rem 0.5rem;
+    min-height: auto;
+    height: 32px;
+    width: 32px;
+  }
+
+  /* Offset dashboard content for sticky header */
+  .dashboard-column {
+    margin-top: 44px;
+  }
 }
 
 /* ---------------------------------------------
