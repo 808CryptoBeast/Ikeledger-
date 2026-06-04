@@ -1402,6 +1402,19 @@
               <p class="muted">Generate a fresh Ed25519 keypair directly in your browser — no servers, no network calls, no uploads.</p>
             </div>
 
+            <!-- Progress indicator -->
+            <div class="create-wallet-progress">
+              <div class="progress-step active" id="progressStep1">
+                <div class="progress-marker">1</div>
+                <span>Security Checklist</span>
+              </div>
+              <div class="progress-line"></div>
+              <div class="progress-step" id="progressStep2">
+                <div class="progress-marker">2</div>
+                <span>Key Display & Activation</span>
+              </div>
+            </div>
+
             <!-- Step 1: Security gate -->
             <article class="glass-card keygen-gate" id="keygenGate">
               <div class="keygen-warning-banner">
@@ -1501,7 +1514,7 @@
             </article>
 
             <div class="card-grid overview-grid">
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <h3>How Key Generation Works</h3>
                 <div class="card-content">
                   <p><strong>Ed25519 keypair</strong> — generated using your browser's built-in <code>crypto.subtle.generateKey</code> API. No external library, no network requests, no servers involved.</p>
@@ -1510,7 +1523,7 @@
                   <p class="muted">Keys are held only in browser memory and cleared the moment you leave this page.</p>
                 </div>
               </article>
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <h3>XRPL Reserve Requirements</h3>
                 <div class="card-content">
                   <p><strong>Base reserve:</strong> 1 XRP — required to activate any new XRPL account. Cannot be spent; only recovered by deleting the account.</p>
@@ -1519,7 +1532,7 @@
                   <p class="muted">Reserves were lowered from 10 XRP / 2 XRP in December 2024 via validator vote.</p>
                 </div>
               </article>
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <h3>Security Best Practices</h3>
                 <div class="card-content">
                   <p><strong>Write it down:</strong> Paper and pen, stored offline. Fireproof safe or safety deposit box are ideal locations.</p>

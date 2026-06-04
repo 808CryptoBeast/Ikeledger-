@@ -5007,6 +5007,91 @@ button.ghost:hover {
     padding-left: 1.2rem;
   }
 
+  /* Create Wallet page progress indicator */
+  .create-wallet-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    margin: 2rem 0 2.5rem;
+    padding: 1.5rem 1rem;
+    background: rgba(70, 188, 255, 0.08);
+    border: 1px solid rgba(70, 188, 255, 0.2);
+    border-radius: 12px;
+  }
+
+  .progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+  }
+
+  .progress-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(99, 183, 255, 0.15);
+    border: 2px solid rgba(99, 183, 255, 0.3);
+    color: rgba(99, 183, 255, 0.6);
+    font-weight: 700;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+  }
+
+  .progress-step.active .progress-marker {
+    background: rgba(70, 188, 255, 0.25);
+    border-color: rgba(70, 188, 255, 0.6);
+    color: rgba(70, 188, 255, 0.95);
+    box-shadow: 0 0 12px rgba(70, 188, 255, 0.2);
+  }
+
+  .progress-step span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: center;
+    max-width: 100px;
+    color: rgba(99, 183, 255, 0.6);
+    transition: color 0.3s ease;
+  }
+
+  .progress-step.active span {
+    color: rgba(70, 188, 255, 0.95);
+  }
+
+  .progress-line {
+    width: 80px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(99, 183, 255, 0.2), rgba(99, 183, 255, 0.1));
+  }
+
+  @media (max-width: 768px) {
+    .create-wallet-progress {
+      gap: 1rem;
+      margin: 1.5rem 0 2rem;
+      padding: 1rem 0.75rem;
+    }
+
+    .progress-marker {
+      width: 36px;
+      height: 36px;
+      font-size: 0.85rem;
+    }
+
+    .progress-step span {
+      max-width: 80px;
+      font-size: 0.7rem;
+    }
+
+    .progress-line {
+      width: 60px;
+    }
+  }
+
   /* Mobile sticky header */
   .mobile-sticky-header {
     display: none;

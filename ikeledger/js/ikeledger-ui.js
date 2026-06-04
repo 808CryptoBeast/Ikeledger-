@@ -328,6 +328,8 @@ const refs = {
   toggleMA50: document.getElementById("toggleMA50"),
   mobileNetworkSelect: document.getElementById("mobileNetworkSelect"),
   mobileThemeToggleButton: document.getElementById("mobileThemeToggleButton"),
+  progressStep1: document.getElementById("progressStep1"),
+  progressStep2: document.getElementById("progressStep2"),
   timeframeButtons: Array.from(document.querySelectorAll(".tf-btn")),
   chartTypeButtons: Array.from(document.querySelectorAll(".ct-btn")),
   marketPrice: document.getElementById("marketPrice"),
@@ -9676,6 +9678,10 @@ function clearCreateWalletKeys() {
   refs.keygenChecks.forEach((cb) => { cb.checked = false; });
   if (refs.keygenGenerateButton) refs.keygenGenerateButton.disabled = true;
   if (refs.keygenResultStatus) refs.keygenResultStatus.textContent = "";
+
+  // Reset progress indicator to step 1
+  if (refs.progressStep1) refs.progressStep1.classList.add("active");
+  if (refs.progressStep2) refs.progressStep2.classList.remove("active");
 }
 
 function onKeygenCheckChange() {
@@ -9714,6 +9720,10 @@ async function onKeygenGenerate() {
     if (refs.keygenGate) refs.keygenGate.classList.add("hidden");
     if (refs.keygenResult) refs.keygenResult.classList.remove("hidden");
     if (refs.keygenGateStatus) refs.keygenGateStatus.textContent = "";
+
+    // Update progress indicator
+    if (refs.progressStep1) refs.progressStep1.classList.remove("active");
+    if (refs.progressStep2) refs.progressStep2.classList.add("active");
 
     logSecurityEvent("wallet_generated", RISK_LEVELS.SAFE, { context: "keygen", note: "keys shown in-browser only" });
   } catch (err) {
