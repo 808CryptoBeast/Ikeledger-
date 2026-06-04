@@ -402,6 +402,11 @@ const refs = {
   nftsPagePanel: document.getElementById("nftsPagePanel"),
   nftListingsPagePanel: document.getElementById("nftListingsPagePanel"),
   dexPagePanel: document.getElementById("dexPagePanel"),
+  dexMarkPrice: document.getElementById("dexMarkPrice"),
+  dexSpread: document.getElementById("dexSpread"),
+  dexVolume: document.getElementById("dexVolume"),
+  dexDepth: document.getElementById("dexDepth"),
+  dexTotalCost: document.getElementById("dexTotalCost"),
   dexAccessBadge: document.getElementById("dexAccessBadge"),
   dexLookupInput: document.getElementById("dexLookupInput"),
   dexLookupButton: document.getElementById("dexLookupButton"),
@@ -7105,6 +7110,15 @@ function renderDexStatsPanel() {
     <div class="dex-stat"><span class="dex-label">Ask Depth</span><span>${formatCompactNumber(stats.askDepth)}</span></div>
   `;
 
+  // Update DEX stats header
+  if (refs.dexMarkPrice) refs.dexMarkPrice.textContent = `${decimalString(stats.midPrice, 6)} XRP`;
+  if (refs.dexSpread) refs.dexSpread.textContent = `${decimalString(stats.spreadPct, 2)}%`;
+  if (refs.dexVolume) refs.dexVolume.textContent = stats.volume24h ? formatCompactNumber(stats.volume24h) : "-";
+  if (refs.dexDepth) {
+    const depth = Math.min(stats.bidDepth, stats.askDepth);
+    refs.dexDepth.textContent = formatCompactNumber(depth);
+  }
+
   if (refs.dexBookUpdated) {
     refs.dexBookUpdated.textContent = updatedAt
       ? `Updated ${new Date(updatedAt).toLocaleTimeString()}`
@@ -8843,6 +8857,19 @@ function onDexAssetChange() {
 function onDexInputChange() {
   syncDexStateFromInputs();
   state.dex.latestTx = null;
+
+  // Update total cost calculation
+  const amount = toFiniteNumber(state.dex.amount, 0);
+  const price = toFiniteNumber(state.dex.price, 0);
+  if (refs.dexTotalCost) {
+    if (amount > 0 && price > 0) {
+      const total = amount * price;
+      refs.dexTotalCost.textContent = `${decimalString(total, 4)} XRP`;
+    } else {
+      refs.dexTotalCost.textContent = "-";
+    }
+  }
+
   renderDexRiskRewardPanel();
   drawDexAnalysisChart();
   renderDexInsightPanel();

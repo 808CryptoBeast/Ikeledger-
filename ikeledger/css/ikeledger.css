@@ -9335,6 +9335,181 @@ button.ghost:hover {
 .dex-grid {
   grid-template-columns: 1fr;
 }
+
+/* DEX Stats Header */
+.dex-stats-header {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.08), rgba(233, 199, 122, 0.04));
+  border: 1px solid rgba(70, 188, 255, 0.15);
+  border-radius: 12px;
+}
+
+.dex-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dex-stat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(99, 183, 255, 0.6);
+}
+
+.dex-stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(70, 188, 255, 0.95);
+  font-family: var(--mono, monospace);
+}
+
+@media (max-width: 1024px) {
+  .dex-stats-header {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .dex-stats-header {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+  }
+
+  .dex-stat-label {
+    font-size: 0.65rem;
+  }
+
+  .dex-stat-value {
+    font-size: 0.95rem;
+  }
+}
+
+/* DEX Form Groups */
+.dex-form-group {
+  border: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dex-form-group:first-of-type {
+  margin-top: 0;
+}
+
+.dex-form-group legend {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(99, 183, 255, 0.7);
+  margin-bottom: 0.5rem;
+  padding: 0;
+  width: 100%;
+}
+
+.dex-input-pair {
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(99, 183, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(99, 183, 255, 0.04);
+}
+
+.dex-input-pair input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+}
+
+.dex-input-pair input:focus {
+  outline: none;
+  background: rgba(99, 183, 255, 0.08);
+}
+
+.input-unit {
+  display: inline-block;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(99, 183, 255, 0.6);
+  border-left: 1px solid rgba(99, 183, 255, 0.15);
+  white-space: nowrap;
+}
+
+.dex-input-pair-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.dex-input-pair-label > span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+/* Improved Button Styling */
+button.primary-action {
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.2), rgba(70, 188, 255, 0.1));
+  border: 1px solid rgba(70, 188, 255, 0.5);
+  color: rgba(70, 188, 255, 0.95);
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+
+button.primary-action:hover {
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.3), rgba(70, 188, 255, 0.15));
+  border-color: rgba(70, 188, 255, 0.7);
+  box-shadow: 0 0 16px rgba(70, 188, 255, 0.2);
+}
+
+/* DEX Ticket Panel */
+.dex-ticket-grid {
+  display: none;
+}
+
+.dex-ticket-panel {
+  padding: 1rem 0;
+}
+
+/* Improved Order Book */
+.dex-orderbook {
+  background: rgba(99, 183, 255, 0.05);
+  border: 1px solid rgba(99, 183, 255, 0.15);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-top: 1rem;
+}
+
+.book-row {
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.book-row.ask {
+  color: rgba(248, 113, 113, 0.8);
+}
+
+.book-row.bid {
+  color: rgba(52, 211, 153, 0.8);
+}
+
 .dex-command-card {
   container-type: inline-size;
 }

@@ -717,13 +717,36 @@
 
                 <div id="dexPagePanel" class="dex-access-panel"></div>
 
+                <!-- DEX Trading Stats Row -->
+                <div class="dex-stats-header" id="dexStatsHeader">
+                  <div class="dex-stat-item">
+                    <span class="dex-stat-label">Mark Price</span>
+                    <span class="dex-stat-value" id="dexMarkPrice">-</span>
+                  </div>
+                  <div class="dex-stat-item">
+                    <span class="dex-stat-label">Spread</span>
+                    <span class="dex-stat-value" id="dexSpread">-</span>
+                  </div>
+                  <div class="dex-stat-item">
+                    <span class="dex-stat-label">24h Volume</span>
+                    <span class="dex-stat-value" id="dexVolume">-</span>
+                  </div>
+                  <div class="dex-stat-item">
+                    <span class="dex-stat-label">Depth (10 BBO)</span>
+                    <span class="dex-stat-value" id="dexDepth">-</span>
+                  </div>
+                </div>
+
                 <div class="dex-trading-layout">
                   <section class="dex-ticket-panel" aria-label="DEX trade ticket">
                     <div class="section-top compact">
                       <h4>Trade Ticket</h4>
                       <span class="mode-pill">OfferCreate</span>
                     </div>
-                    <div class="dex-ticket-grid">
+
+                    <!-- Token Selection Group -->
+                    <fieldset class="dex-form-group">
+                      <legend>Select Asset</legend>
                       <label class="dex-lookup-field">
                         Token Lookup
                         <div class="dex-lookup-row">
@@ -734,34 +757,35 @@
                       </label>
                       <div id="dexLookupResults" class="dex-lookup-results" aria-live="polite"></div>
                       <label>
-                        Asset
+                        Top Assets
                         <select id="dexAssetSelect">
                           <option value="">Select a top issued asset</option>
                         </select>
                       </label>
+                    </fieldset>
+
+                    <!-- Token Details Group -->
+                    <fieldset class="dex-form-group">
+                      <legend>Token Details</legend>
+                      <label>
+                        Currency Code
+                        <input id="dexCurrencyInput" type="text" placeholder="USDC or 40-char hex" autocomplete="off" spellcheck="false" />
+                      </label>
+                      <label>
+                        Issuer Address
+                        <input id="dexIssuerInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
+                      </label>
+                    </fieldset>
+
+                    <!-- Order Setup Group -->
+                    <fieldset class="dex-form-group">
+                      <legend>Order Setup</legend>
                       <label>
                         Side
                         <select id="dexSideSelect">
                           <option value="buy">Buy with XRP</option>
                           <option value="sell">Sell for XRP</option>
                         </select>
-                      </label>
-                      <label>
-                        Currency
-                        <input id="dexCurrencyInput" type="text" placeholder="USDC or 40-char hex" autocomplete="off" spellcheck="false" />
-                      </label>
-                      <label>
-                        Issuer
-                        <input id="dexIssuerInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
-                      </label>
-                      <label>
-                        Token Amount
-                        <input id="dexAmountInput" type="number" min="0" step="0.000001" placeholder="100" inputmode="decimal" />
-                      </label>
-                      <label>
-                        Limit Price
-                        <input id="dexPriceInput" type="number" min="0" step="0.000001" placeholder="0.50" inputmode="decimal" />
-                        <span class="field-hint">XRP per token</span>
                       </label>
                       <label>
                         Order Style
@@ -772,25 +796,57 @@
                           <option value="passive">Passive maker order</option>
                         </select>
                       </label>
+                    </fieldset>
+
+                    <!-- Amount & Price Group -->
+                    <fieldset class="dex-form-group">
+                      <legend>Amount &amp; Price</legend>
+                      <label class="dex-input-pair-label">
+                        <span>Token Amount</span>
+                        <div class="dex-input-pair">
+                          <input id="dexAmountInput" type="number" min="0" step="0.000001" placeholder="100" inputmode="decimal" />
+                          <span class="input-unit" id="dexAmountUnit">tokens</span>
+                        </div>
+                      </label>
+                      <label class="dex-input-pair-label">
+                        <span>Limit Price (XRP per token)</span>
+                        <div class="dex-input-pair">
+                          <input id="dexPriceInput" type="number" min="0" step="0.000001" placeholder="0.50" inputmode="decimal" />
+                          <span class="input-unit">XRP</span>
+                        </div>
+                      </label>
+                      <div class="dex-preview-row" style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(70, 188, 255, 0.08); border-radius: 6px;">
+                        <span>Total Cost</span>
+                        <strong id="dexTotalCost" style="color: var(--gold);">-</strong>
+                      </div>
+                    </fieldset>
+
+                    <!-- Risk Management Group -->
+                    <fieldset class="dex-form-group">
+                      <legend>Risk Management</legend>
                       <label>
                         Slippage Guard
-                        <input id="dexSlippageInput" type="number" min="0" max="50" step="0.1" value="1" inputmode="decimal" />
+                        <div class="dex-input-pair">
+                          <input id="dexSlippageInput" type="number" min="0" max="50" step="0.1" value="1" inputmode="decimal" />
+                          <span class="input-unit">%</span>
+                        </div>
                         <span class="field-hint">Percent tolerance for planning</span>
                       </label>
                       <label>
-                        Stop Loss
-                        <input id="dexStopLossInput" type="number" min="0" step="0.000001" placeholder="Optional" inputmode="decimal" />
+                        Stop Loss (Optional)
+                        <input id="dexStopLossInput" type="number" min="0" step="0.000001" placeholder="Price level to sell" inputmode="decimal" />
                         <span class="field-hint">Planning only, not automatic</span>
                       </label>
                       <label>
-                        Take Profit
-                        <input id="dexTakeProfitInput" type="number" min="0" step="0.000001" placeholder="Optional" inputmode="decimal" />
+                        Take Profit (Optional)
+                        <input id="dexTakeProfitInput" type="number" min="0" step="0.000001" placeholder="Price level to close" inputmode="decimal" />
                         <span class="field-hint">Planning only, not automatic</span>
                       </label>
-                    </div>
+                    </fieldset>
+
                     <div class="button-row dex-action-row">
-                      <button id="dexAnalyzeButton" type="button">Analyze Trade</button>
-                      <button id="dexSignOfferButton" type="button">Create Xumm Sign Request</button>
+                      <button id="dexAnalyzeButton" type="button" class="primary-action">Analyze Trade</button>
+                      <button id="dexSignOfferButton" type="button">Create Xumm Sign</button>
                       <button id="dexRefreshBookButton" type="button" class="ghost">Refresh Book</button>
                     </div>
                     <p id="dexTicketStatus" class="feedback" aria-live="polite"></p>
