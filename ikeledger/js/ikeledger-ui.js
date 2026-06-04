@@ -3583,6 +3583,7 @@ function renderProfile(walletState) {
     updateProfileSharePanel(walletState);
   }
   renderProfileWalletCard(effectiveWalletState);
+  renderPortfolioKpiRow(effectiveWalletState);
 }
 
 function renderPortfolioStudioWallet(walletState) {
@@ -3831,6 +3832,46 @@ function renderProfileBadgeManager(walletState = getWalletState()) {
       updateProfileSharePanel(getWalletState());
     });
   });
+}
+
+function renderPortfolioKpiRow(walletState) {
+  const kpiRow = document.getElementById("portfolioKpiRow");
+  if (!kpiRow) return;
+
+  const { publicAddress, snapshot } = walletState;
+  if (!publicAddress || !snapshot) {
+    kpiRow.innerHTML = "";
+    return;
+  }
+
+  const account = snapshot.account || {};
+  const holdings = snapshot.tokenHoldings || [];
+  const nfts = snapshot.nftItems || [];
+  const amm = snapshot.amm || {};
+
+  const xrpBalance = safeNumber(account.balanceXrp || 0, 2);
+  const tokenCount = holdings.length;
+  const nftCount = nfts.length;
+  const ammCount = Object.keys(amm).length || 0;
+
+  kpiRow.innerHTML = `
+    <div class="portfolio-kpi">
+      <span>XRP Balance</span>
+      <span>${xrpBalance}</span>
+    </div>
+    <div class="portfolio-kpi">
+      <span>Tokens</span>
+      <span>${tokenCount}</span>
+    </div>
+    <div class="portfolio-kpi">
+      <span>NFTs</span>
+      <span>${nftCount}</span>
+    </div>
+    <div class="portfolio-kpi">
+      <span>AMM / LP</span>
+      <span>${ammCount}</span>
+    </div>
+  `;
 }
 
 function renderProfileWalletCard(walletState) {

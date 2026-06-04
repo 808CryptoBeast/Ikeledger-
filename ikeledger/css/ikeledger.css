@@ -6351,6 +6351,49 @@ button.ghost:hover {
   border-left-color: #46bcff;
 }
 
+.portfolio-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+  padding: 0.75rem;
+  background: rgba(70, 188, 255, 0.06);
+  border-radius: 10px;
+  border: 1px solid rgba(70, 188, 255, 0.12);
+}
+
+.portfolio-kpi {
+  display: grid;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.portfolio-kpi span:first-child {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.portfolio-kpi span:last-child {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #f4ca7a;
+}
+
+@media (max-width: 768px) {
+  .portfolio-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .portfolio-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Token Market And NFT Viewer Polish */
 .token-holdings-summary,
 .market-token-summary,
