@@ -380,6 +380,10 @@ const refs = {
   walletStatusLedgerIndex: document.getElementById("walletStatusLedgerIndex"),
   walletStatusFeeLevel: document.getElementById("walletStatusFeeLevel"),
   walletStatusTps: document.getElementById("walletStatusTps"),
+  trackerHealthScore: document.getElementById("trackerHealthScore"),
+  trackerRiskLevel: document.getElementById("trackerRiskLevel"),
+  trackerAssetCount: document.getElementById("trackerAssetCount"),
+  trackerLastRefresh: document.getElementById("trackerLastRefresh"),
   tokensPagePanel: document.getElementById("tokensPagePanel"),
   topIssuedTokensPanel: document.getElementById("topIssuedTokensPanel"),
   refreshTopIssuedTokensButton: document.getElementById("refreshTopIssuedTokensButton"),
@@ -2649,6 +2653,33 @@ function renderTrackerPage() {
   if (!refs.trackerPage) return;
   const walletState = getWalletState();
   const connected   = Boolean(walletState?.publicAddress);
+
+  // Update tracker KPIs
+  if (refs.trackerHealthScore) {
+    const healthFlags = walletState?.flags || 0;
+    const healthPercent = healthFlags === 0 ? "100%" : "75%";
+    refs.trackerHealthScore.textContent = healthPercent;
+  }
+
+  if (refs.trackerRiskLevel) {
+    const hasHighRiskFlags = Boolean(walletState?.flags);
+    refs.trackerRiskLevel.textContent = hasHighRiskFlags ? "Medium" : "Low";
+    refs.trackerRiskLevel.style.color = hasHighRiskFlags ? "rgba(248, 113, 113, 0.9)" : "rgba(52, 211, 153, 0.9)";
+  }
+
+  if (refs.trackerAssetCount) {
+    const trustLines = walletState?.accountLines || [];
+    const assetCount = trustLines.length + 1;
+    refs.trackerAssetCount.textContent = `${assetCount} assets`;
+  }
+
+  if (refs.trackerLastRefresh) {
+    const lastUpdate = state.marketCache.fetchedAt || 0;
+    refs.trackerLastRefresh.textContent = lastUpdate
+      ? new Date(lastUpdate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "Never";
+  }
+
   if (connected) {
     ensureConnectedWalletTracked(walletState);
   }
