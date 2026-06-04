@@ -7333,23 +7333,41 @@ async function resolveXrplToTokenMetadata(token = {}) {
   const rawCurrency = String(token.rawCurrency || token.currency || "").trim();
   if (!issuer || !rawCurrency) return token;
 
-  const slug = token.slug || `${issuer}-${rawCurrency}`;
-  try {
-    const data = await fetchMarketJson(`https://api.xrpl.to/v1/token/${encodeURIComponent(slug)}`);
-    const raw = data?.token || data;
-    if (!raw?.md5) return token;
-    const normalized = normalizeIssuedAssetMarketToken(raw);
-    const key = dexTokenKey(normalized);
-    const existing = state.dex.customTokens.findIndex((item) => dexTokenKey(item) === key);
-    if (existing >= 0) state.dex.customTokens[existing] = { ...state.dex.customTokens[existing], ...normalized };
-    else state.dex.customTokens.unshift(normalized);
-    state.dex.customTokens = state.dex.customTokens.slice(0, 25);
-    populateDexAssetSelect();
-    if (state.dex.selectedTokenId === token.id) state.dex.selectedTokenId = normalized.id;
-    return { ...token, ...normalized };
-  } catch {
-    return token;
+  // Try multiple resolution paths
+  const attempts = [
+    // Path 1: Use slug (issuer-currency)
+    token.slug || `${issuer}-${rawCurrency}`,
+    // Path 2: Try just currency code (for well-known tokens)
+    rawCurrency,
+    // Path 3: Try issuer + currency (url-safe format)
+    `${rawCurrency}+${issuer}`
+  ];
+
+  for (const slug of attempts) {
+    try {
+      const url = `https://api.xrpl.to/v1/token/${encodeURIComponent(slug)}`;
+      const data = await fetchMarketJson(url);
+      const raw = data?.token || data;
+
+      if (raw?.md5) {
+        const normalized = normalizeIssuedAssetMarketToken(raw);
+        const key = dexTokenKey(normalized);
+        const existing = state.dex.customTokens.findIndex((item) => dexTokenKey(item) === key);
+        if (existing >= 0) state.dex.customTokens[existing] = { ...state.dex.customTokens[existing], ...normalized };
+        else state.dex.customTokens.unshift(normalized);
+        state.dex.customTokens = state.dex.customTokens.slice(0, 25);
+        populateDexAssetSelect();
+        if (state.dex.selectedTokenId === token.id) state.dex.selectedTokenId = normalized.id;
+        // Log successful resolution for debugging
+        console.log(`[DEX] Token resolved: ${slug} → md5=${normalized.md5}`);
+        return { ...token, ...normalized };
+      }
+    } catch { /* Try next path */ }
   }
+
+  // Log failed resolution for debugging
+  console.warn(`[DEX] Failed to resolve token metadata: issuer=${issuer}, currency=${rawCurrency}`);
+  return token;
 }
 
 function normalizeOhlcRows(rows = []) {
@@ -7466,10 +7484,29 @@ async function fetchXrplToHistoryCandles(token, tf) {
   const resolvedToken = await resolveXrplToTokenMetadata(token);
   const md5 = tokenXrplToMd5(resolvedToken);
   if (!md5) return [];
-  const url = `${XRPL_TO_HISTORY_BASE_URL}?md5=${encodeURIComponent(md5)}&limit=500`;
-  const data = await fetchMarketJson(url);
-  const trades = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-  const points = trades.map((trade) => historyTradeToPoint(trade, token)).filter(Boolean);
+
+  // Fetch multiple pages of history to get full dataset
+  const allTrades = [];
+  const pageLimit = 500;
+  const maxPages = 20; // Fetch up to 10,000 trades total
+
+  for (let page = 0; page < maxPages; page++) {
+    try {
+      const url = `${XRPL_TO_HISTORY_BASE_URL}?md5=${encodeURIComponent(md5)}&limit=${pageLimit}&offset=${page * pageLimit}`;
+      const data = await fetchMarketJson(url);
+      const trades = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+
+      if (!trades.length) break; // No more data
+      allTrades.push(...trades);
+
+      if (trades.length < pageLimit) break; // Got less than a page, so we're at the end
+    } catch (err) {
+      if (page === 0) throw err; // Fail on first page
+      break; // Silently stop pagination on subsequent pages
+    }
+  }
+
+  const points = allTrades.map((trade) => historyTradeToPoint(trade, token)).filter(Boolean);
   return tradePointsToCandles(points, tf);
 }
 
@@ -7517,29 +7554,49 @@ async function fetchDexChartData(token, tf = "1D") {
     // XRP/USD — Kraken public API (CORS-friendly, XRP is native so not on xrpl.to)
     const candles = await fetchKrakenXrpOhlcv(krakenInterval, limit);
     if (!candles.length) throw new Error("No XRP/USD data from Kraken.");
+    console.log(`[DEX] XRP/USD loaded: ${candles.length} candles from Kraken (${tf})`);
     return { candles, label: `XRP / USD — ${tf} · Kraken`, source: "Kraken XRP/USD" };
   }
 
-  const { symbol, currency } = token;
+  const { symbol, currency, rawCurrency, issuer } = token;
   const chartLabel = `${symbol || currency} / XRP — ${tf}`;
+  console.log(`[DEX] Loading chart for ${symbol || currency} (${rawCurrency}/${issuer}, tf=${tf})`);
 
   // Source 1 — XRPL.to indexed OHLCV by token md5. This is the broadest XRPL-native chart source.
   try {
     const candles = await fetchXrplToOhlc(token, tf);
-    if (candles.length) return { candles, label: `${chartLabel} · XRPL.to OHLC`, source: "XRPL.to OHLC" };
-  } catch { /* fall through */ }
+    if (candles.length) {
+      console.log(`[DEX] ✓ XRPL.to OHLC: ${candles.length} candles`);
+      return { candles, label: `${chartLabel} · XRPL.to OHLC`, source: "XRPL.to OHLC" };
+    }
+    console.log(`[DEX] ✗ XRPL.to OHLC: no data`);
+  } catch (err) {
+    console.warn(`[DEX] ✗ XRPL.to OHLC: ${err?.message}`);
+  }
 
   // Source 2 — XRPL.to trade history, aggregated locally into candles.
   try {
     const candles = await fetchXrplToHistoryCandles(token, tf);
-    if (candles.length) return { candles, label: `${chartLabel} · XRPL.to trades`, source: "XRPL.to history" };
-  } catch { /* fall through */ }
+    if (candles.length) {
+      console.log(`[DEX] ✓ XRPL.to history: ${candles.length} candles from trades`);
+      return { candles, label: `${chartLabel} · XRPL.to trades`, source: "XRPL.to history" };
+    }
+    console.log(`[DEX] ✗ XRPL.to history: no trades`);
+  } catch (err) {
+    console.warn(`[DEX] ✗ XRPL.to history: ${err?.message}`);
+  }
 
   // Source 3 — Sologenic DEX OHLCV (XRPL-native prices in XRP)
   try {
     const candles = await fetchSologenicOhlcv(token, tf);
-    if (candles.length) return { candles, label: `${chartLabel} · Sologenic`, source: "Sologenic OHLC" };
-  } catch { /* fall through */ }
+    if (candles.length) {
+      console.log(`[DEX] ✓ Sologenic: ${candles.length} candles`);
+      return { candles, label: `${chartLabel} · Sologenic`, source: "Sologenic OHLC" };
+    }
+    console.log(`[DEX] ✗ Sologenic: no data`);
+  } catch (err) {
+    console.warn(`[DEX] ✗ Sologenic: ${err?.message}`);
+  }
 
   // Source 4 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
   const cgSymbol = symbol || currency;
@@ -7547,6 +7604,7 @@ async function fetchDexChartData(token, tf = "1D") {
     try {
       const cgId = await fetchCoinGeckoId(cgSymbol);
       if (cgId) {
+        console.log(`[DEX] CoinGecko ID: ${cgId}`);
         // Map tf → CoinGecko days (granularity: 1=30min, 14=4h, 90=daily, 365=weekly)
         const cgDays = tf === "5M" || tf === "15M" || tf === "1H" ? 1
           : tf === "4H" ? 14
@@ -7578,9 +7636,15 @@ async function fetchDexChartData(token, tf = "1D") {
                   if (!xrp || xrp <= 0) return null;
                   return { t: c.t, o: c.o / xrp, h: c.h / xrp, l: c.l / xrp, c: c.c / xrp, v: c.v };
                 }).filter(Boolean);
-                if (converted.length) return { candles: converted, label: `${chartLabel} · CoinGecko converted`, source: "CoinGecko + Kraken" };
+                if (converted.length) {
+                  console.log(`[DEX] ✓ CoinGecko+Kraken: ${converted.length} candles (converted USD→XRP)`);
+                  return { candles: converted, label: `${chartLabel} · CoinGecko converted`, source: "CoinGecko + Kraken" };
+                }
               }
-            } catch { /* fall through: show USD */ }
+            } catch (err) {
+              console.warn(`[DEX] ✗ CoinGecko conversion failed: ${err?.message}`);
+            }
+            console.log(`[DEX] ✓ CoinGecko USD: ${usdCandles.length} candles (fallback, USD prices)`);
             return {
               candles: usdCandles,
               label: `${symbol || currency} / USD — ${tf} · CoinGecko`,
@@ -7589,13 +7653,16 @@ async function fetchDexChartData(token, tf = "1D") {
           }
         }
       }
-    } catch { /* try live price fallback */ }
+    } catch (err) {
+      console.warn(`[DEX] ✗ CoinGecko lookup failed: ${err?.message}`);
+    }
   }
 
   // Source 5 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
   const livePrice = await fetchTokenSpotFromXrpl(token);
   if (livePrice > 0) {
     const now = Date.now();
+    console.log(`[DEX] ✓ XRPL live spot: ${livePrice.toFixed(8)} XRP (no history)`);
     return {
       candles: [{ t: now, o: livePrice, h: livePrice, l: livePrice, c: livePrice, v: 0 }],
       label: `${chartLabel} · live only`,
@@ -7603,7 +7670,9 @@ async function fetchDexChartData(token, tf = "1D") {
     };
   }
 
-  throw new Error(`No chart data for ${symbol || currency}. The token may have low trading volume.`);
+  const msg = `No chart data for ${symbol || currency}. The token may have low trading volume.`;
+  console.error(`[DEX] ✗ ${msg}`);
+  throw new Error(msg);
 }
 
 async function fetchTokenSpotFromXrpl(token) {
@@ -7655,12 +7724,15 @@ async function loadDexChart(force = false) {
   const tf = state.dex.chart.timeframe;
   const cacheKey = `${tokenId}:${tf}`;
 
+  console.log(`[DEX] loadDexChart: tokenId=${tokenId}, tf=${tf}, force=${force}`);
+
   if (
     !force
     && state.dex.chart.cacheKey === cacheKey
     && state.dex.chart.fetchedAt
     && Date.now() - state.dex.chart.fetchedAt < 5 * 60 * 1000
   ) {
+    console.log(`[DEX] Using cached chart (${(Date.now() - state.dex.chart.fetchedAt) / 1000}s old)`);
     renderDexInsightPanel();
     return;
   }
@@ -7742,12 +7814,6 @@ function ensureDexChartControls() {
     <div class="dex-ctrl-group">
       ${[["candle","Candles"],["ohlc","Bars"],["line","Line"],["area","Area"]].map(([t,l]) =>
         `<button class="dex-type-btn${t === chartType ? " is-active" : ""}" data-type="${t}">${l}</button>`
-      ).join("")}
-    </div>
-    <div class="dex-ctrl-divider"></div>
-    <div class="dex-ctrl-group dex-ind-group">
-      ${[["ma20","MA 20"],["ma50","MA 50"],["ema20","EMA 20"],["vwap","VWAP"],["bb","BB"],["volume","Vol"],["rsi","RSI"],["macd","MACD"]].map(([k,l]) =>
-        `<label class="dex-ind-label"><input type="checkbox" data-ind="${k}"${indicators[k] ? " checked" : ""}><span>${l}</span></label>`
       ).join("")}
     </div>
     <div class="dex-ctrl-divider"></div>
@@ -7835,14 +7901,6 @@ function ensureDexChartControls() {
       state.dex.chart.chartType = btn.dataset.type;
       ctrl.querySelectorAll(".dex-type-btn").forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
-      drawDexAnalysisChart();
-    });
-  });
-
-  // ── Indicator checkboxes ───────────────────────────────────────
-  ctrl.querySelectorAll("[data-ind]").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      state.dex.chart.indicators[cb.dataset.ind] = cb.checked;
       drawDexAnalysisChart();
     });
   });
@@ -7937,6 +7995,80 @@ function ensureDexChartControls() {
   }, { passive: false });
 }
 
+// ── Trading chart — legend overlay ────────────────────────────────────
+
+function updateDexChartLegend() {
+  const shell = refs.dexAnalysisChart?.parentElement;
+  if (!shell) return;
+
+  let legend = shell.querySelector("#dexChartLegend");
+  const inds = state.dex.chart.indicators;
+  const hasActive = Object.values(inds).some(v => v);
+
+  if (!hasActive) {
+    if (legend) legend.remove();
+    return;
+  }
+
+  const C = {
+    ma20:     "#f6c85b",
+    ma50:     "#7b7fdb",
+    ema20:    "#f06292",
+    vwap:     "#4dd0e1",
+    bb:       "#9966cc",
+    volume:   "rgba(38,166,154,0.4)",
+    rsiLine:  "#c084fc",
+    macdLine: "#42a5f5",
+    macdSignal: "#ffb74d",
+  };
+
+  if (!legend) {
+    legend = document.createElement("div");
+    legend.id = "dexChartLegend";
+    shell.appendChild(legend);
+  }
+
+  const items = [
+    inds.ma20  ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.ma20}"></div>MA 20</div>` : "",
+    inds.ma50  ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.ma50}"></div>MA 50</div>` : "",
+    inds.ema20 ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.ema20}"></div>EMA 20</div>` : "",
+    inds.vwap  ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.vwap}"></div>VWAP</div>` : "",
+    inds.bb    ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.bb}"></div>Bollinger Bands</div>` : "",
+    inds.volume ? `<div class="dex-legend-item legend-volume"><div class="dex-legend-color" style="background:rgba(38,166,154,0.6); height:3px"></div>Volume</div>` : "",
+    inds.rsi   ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.rsiLine}"></div>RSI (14)</div>` : "",
+    inds.macd  ? `<div class="dex-legend-item"><div class="dex-legend-color" style="background:${C.macdLine}"></div>MACD</div>` : ""
+  ];
+
+  legend.innerHTML = `
+    <div class="legend-title">Indicators</div>
+    ${items.filter(Boolean).join("")}
+  `;
+}
+
+// ── Render indicators toolbar above chart ──────────────────────
+function updateDexIndicatorsToolbar() {
+  const panel = document.getElementById("dexIndicatorsPanel");
+  if (!panel) return;
+
+  const inds = state.dex.chart.indicators;
+  const indicators = [
+    ["ma20", "MA 20"], ["ma50", "MA 50"], ["ema20", "EMA 20"], ["vwap", "VWAP"],
+    ["bb", "BB"], ["volume", "Vol"], ["rsi", "RSI"], ["macd", "MACD"]
+  ];
+
+  panel.innerHTML = indicators.map(([k, l]) =>
+    `<label class="dex-indicator-pill"><input type="checkbox" data-ind="${k}"${inds[k] ? " checked" : ""}><span>${l}</span></label>`
+  ).join("");
+
+  // Re-attach event listeners
+  panel.querySelectorAll("[data-ind]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      state.dex.chart.indicators[cb.dataset.ind] = cb.checked;
+      drawDexAnalysisChart();
+    });
+  });
+}
+
 // ── Trading chart — draw ──────────────────────────────────────────
 
 function drawDexAnalysisChart() {
@@ -7944,6 +8076,8 @@ function drawDexAnalysisChart() {
   if (!(canvas instanceof HTMLCanvasElement)) return;
 
   ensureDexChartControls();
+  updateDexIndicatorsToolbar();
+  updateDexChartLegend();
 
   const { loading, error, label } = state.dex.chart;
 
@@ -7962,8 +8096,8 @@ function drawDexAnalysisChart() {
   const MAIN = 380;  // main price area
   const SUB  = 80;   // volume / RSI sub-panel height
   const XBAR = 24;   // bottom time axis
-  const LP   = 4;    // left margin (tiny — axis is on right)
-  const RP   = 72;   // right price axis width
+  const LP   = 8;    // left margin
+  const RP   = 130;  // right price axis width (large for price labels)
 
   const dpr   = window.devicePixelRatio || 1;
   const W     = Math.max((canvas.parentElement?.clientWidth || 900), 300);
@@ -8111,24 +8245,61 @@ function drawDexAnalysisChart() {
     ctx.stroke();
   });
 
-  // ── Horizontal grid + right Y-axis labels ─────────────────────
-  const GRID_N = 5;
-  for (let i = 0; i <= GRID_N; i++) {
-    const frac  = i / GRID_N;
-    const price = maxP - frac * priceRange;
-    const y     = mainTop + frac * MAIN;
-    ctx.strokeStyle = C.grid;
-    ctx.lineWidth = 1;
-    if (i > 0 && i < GRID_N) {
-      ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke();
+  // ── Horizontal grid + right Y-axis price labels ────────────────
+  // Calculate smart price interval based on range
+  const getPriceInterval = (range) => {
+    if (range <= 0) return 1;
+    const log10 = Math.log10(range);
+    const magnitude = Math.pow(10, Math.floor(log10));
+
+    // Prefer intervals that give 8-15 levels
+    const options = [
+      magnitude * 0.1,
+      magnitude * 0.2,
+      magnitude * 0.25,
+      magnitude * 0.5,
+      magnitude,
+      magnitude * 2,
+      magnitude * 5,
+    ];
+
+    for (let opt of options) {
+      const levels = range / opt;
+      if (levels >= 8 && levels <= 15) return opt;
     }
-    if (y >= mainTop + 4 && y <= mainBottom - 4) {
-      const lbl = decimalString(price, price < 0.01 ? 6 : price < 1 ? 4 : 2);
+
+    // Fallback: return magnitude that gives roughly 10 levels
+    return range / 10;
+  };
+
+  const priceInterval = getPriceInterval(priceRange);
+  const startPrice = Math.floor(minP / priceInterval) * priceInterval;
+
+  ctx.fillStyle = C.axisText;
+  ctx.font = "11px system-ui";
+  ctx.textAlign = "right";
+
+  // Draw price levels with grid lines
+  let priceLevel = startPrice;
+  while (priceLevel <= maxP + priceInterval * 0.1) {
+    const y = mainTop + (1 - (priceLevel - minP) / priceRange) * MAIN;
+
+    if (y >= mainTop && y <= mainBottom) {
+      // Grid line
+      ctx.strokeStyle = C.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plotL, y);
+      ctx.lineTo(plotR, y);
+      ctx.stroke();
+
+      // Price label - right aligned within right axis area
+      const lbl = decimalString(priceLevel, priceLevel < 0.01 ? 6 : priceLevel < 1 ? 4 : 2);
       ctx.fillStyle = C.axisText;
-      ctx.font = "10px system-ui";
-      ctx.textAlign = "left";
-      ctx.fillText(lbl, plotR + 6, y + 3);
+      ctx.fillText(lbl, plotR - 4, y + 4);
     }
+
+    priceLevel += priceInterval;
   }
 
   // ── X-axis time labels ────────────────────────────────────────
@@ -10017,6 +10188,17 @@ function initEventHandlers() {
     el?.addEventListener("input", onDexInputChange);
     el?.addEventListener("change", onDexInputChange);
   });
+
+  // DEX Form toggles (collapsible sections)
+  document.querySelectorAll(".dex-ticket-panel .dex-form-group legend input[type='checkbox']").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      const content = cb.closest("legend").nextElementSibling;
+      if (content && content.classList.contains("form-content")) {
+        content.classList.toggle("hidden", !cb.checked);
+      }
+    });
+  });
+
   bindClick(refs.dexAnalyzeButton, onDexAnalyze);
   bindClick(refs.dexLookupButton, () => { void onDexLookup(); });
   refs.dexLookupInput?.addEventListener("keydown", (event) => {

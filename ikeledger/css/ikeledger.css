@@ -9392,28 +9392,95 @@ button.ghost:hover {
   }
 }
 
-/* DEX Form Groups */
-.dex-form-group {
-  border: none;
-  padding: 0;
-  margin: 1.5rem 0;
+/* DEX Form Groups - Collapsible */
+.dex-form-group legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.5rem 0;
+}
+.dex-form-group legend input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: rgba(70, 188, 255, 0.8);
+  cursor: pointer;
+}
+.dex-form-group .form-content {
   display: grid;
   gap: 0.75rem;
+  max-height: 500px;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+.dex-form-group .form-content.hidden {
+  max-height: 0;
+  gap: 0;
+  margin: 0;
+  visibility: hidden;
 }
 
-.dex-form-group:first-of-type {
-  margin-top: 0;
+/* DEX Quick Toggle */
+.dex-quick-toggle {
+  all: unset;
+  display: inline-block;
 }
-
-.dex-form-group legend {
-  display: block;
+.dex-quick-toggle summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.12), rgba(70, 140, 200, 0.08));
+  border: 1px solid rgba(70, 188, 255, 0.35);
+  border-radius: 5px;
+  color: rgba(200, 208, 224, 0.95);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  list-style: none;
+}
+.dex-quick-toggle summary::-webkit-details-marker {
+  display: none;
+}
+.dex-quick-toggle summary:hover {
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.18), rgba(70, 140, 200, 0.12));
+  border-color: rgba(70, 188, 255, 0.7);
+}
+.dex-quick-toggle .dex-toggle-content {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: rgba(19, 23, 34, 0.95);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  min-width: 200px;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: slideInDown 0.2s ease;
+}
+.dex-quick-toggle .dex-toggle-content label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.6rem;
   font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: rgba(99, 183, 255, 0.7);
-  margin-bottom: 0.5rem;
-  padding: 0;
+}
+.dex-quick-toggle .dex-toggle-content label:last-child {
+  margin-bottom: 0;
+}
+
+/* DEX Analysis Sidebar */
+.dex-analysis-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.dex-analysis-sidebar .primary-action.full-width {
   width: 100%;
 }
 
@@ -9553,15 +9620,29 @@ button.primary-action:hover {
 }
 .dex-stat {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(70, 140, 200, 0.1);
   font-size: 0.82rem;
+}
+.dex-stat:last-child {
+  border-bottom: none;
 }
 .dex-label {
   font-size: 0.7rem;
-  color: var(--ink-2, #888);
+  color: rgba(99, 183, 255, 0.6);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.dex-stat > span:last-child {
+  font-weight: 600;
+  color: rgba(200, 208, 224, 0.95);
+  text-align: right;
+  font-family: var(--mono, monospace);
 }
 .dex-orderbook {
   font-size: 0.8rem;
@@ -9595,14 +9676,58 @@ button.primary-action:hover {
 }
 .book-asks { display: flex; flex-direction: column-reverse; }
 .dex-analysis-layout {
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 1rem;
-  align-items: start;
-  margin-top: 0.75rem;
+  display: none;
 }
+
+/* DEX Chart Container - Full Width */
+.dex-chart-container {
+  width: calc(100% + 2.3rem);
+  margin: 0 -1.15rem -1rem -1.15rem;
+  padding: 1.5rem 1.15rem;
+  background: linear-gradient(135deg, rgba(19, 23, 34, 0.3), rgba(19, 23, 34, 0.2));
+  border-top: 1px solid rgba(70, 140, 200, 0.1);
+  border-bottom: 1px solid rgba(70, 140, 200, 0.1);
+}
+
+.dex-chart-container::after {
+  content: "💡 Drag to pan  •  Scroll to zoom  •  Fit ↔ to reset";
+  display: block;
+  font-size: 0.7rem;
+  color: rgba(99, 183, 255, 0.5);
+  margin-top: 0.75rem;
+  text-align: center;
+  font-style: italic;
+}
+
 @media (max-width: 760px) {
-  .dex-analysis-layout { grid-template-columns: 1fr; }
+  .dex-chart-container {
+    width: 100%;
+    margin: 0 -1.15rem;
+    padding: 1rem 1.15rem;
+  }
+
+  .dex-chart-container::after {
+    content: "💡 Drag to pan  •  Pinch to zoom";
+  }
+}
+
+/* DEX Risk & Reward Card */
+.dex-risk-reward-card,
+.dex-preview-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* DEX Preview Card */
+.dex-preview-card {
+  grid-column: auto;
+}
+
+@media (max-width: 760px) {
+  .dex-risk-reward-card,
+  .dex-preview-card {
+    grid-column: 1 / -1;
+  }
 }
 .dex-chart-shell {
   width: 100%;
@@ -9617,7 +9742,13 @@ button.primary-action:hover {
 .dex-risk-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.6rem;
+  background: linear-gradient(135deg, rgba(70, 140, 200, 0.08), rgba(70, 140, 200, 0.04));
+  border: 1px solid rgba(70, 140, 200, 0.15);
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
 }
 .dex-tx-preview {
   margin-top: 1rem;
@@ -9872,62 +10003,198 @@ button.primary-action:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem 0 0.5rem;
-  border-bottom: 1px solid rgba(104,139,197,0.15);
-  margin-bottom: 0.5rem;
+  gap: 0.75rem 1.25rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(70, 140, 200, 0.15);
+  margin-bottom: 0.75rem;
+  background: linear-gradient(180deg, rgba(70, 140, 200, 0.04), transparent);
+}
+.dex-ctrl-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(70, 140, 200, 0.2);
 }
 .dex-ctrl-group {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
   flex-wrap: wrap;
 }
 .dex-tf-btn,
 .dex-type-btn {
-  padding: 0.2rem 0.55rem;
-  font-size: 0.75rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.55);
+  border-radius: 5px;
+  background: rgba(70, 140, 200, 0.08);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  color: rgba(200, 208, 224, 0.7);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  line-height: 1.6;
+  transition: all 0.2s ease;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .dex-tf-btn:hover,
 .dex-type-btn:hover {
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.85);
+  background: rgba(70, 140, 200, 0.15);
+  color: rgba(200, 208, 224, 0.95);
+  border-color: rgba(70, 140, 200, 0.45);
 }
 .dex-tf-btn.is-active,
 .dex-type-btn.is-active {
-  background: rgba(41,98,255,0.2);
-  border-color: rgba(41,98,255,0.6);
-  color: #2962ff;
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.25), rgba(70, 140, 200, 0.15));
+  border-color: rgba(70, 188, 255, 0.6);
+  color: rgba(70, 188, 255, 0.95);
+  box-shadow: 0 0 8px rgba(70, 188, 255, 0.15);
 }
 .dex-ind-group {
-  gap: 0.5rem;
+  gap: 0.6rem;
+  position: relative;
 }
-.dex-ind-label {
+
+/* Indicators button */
+.dex-ind-btn {
+  background: rgba(70, 140, 200, 0.08);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 5px;
+  color: rgba(200, 208, 224, 0.7);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.dex-ind-btn:hover {
+  background: rgba(70, 140, 200, 0.15);
+  color: rgba(200, 208, 224, 0.95);
+  border-color: rgba(70, 140, 200, 0.45);
+}
+
+/* Indicators dropdown menu */
+.dex-ind-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  background: rgba(19, 23, 34, 0.96);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  padding: 0.75rem;
+  min-width: 160px;
+}
+
+.dex-ind-dropdown.hidden {
+  display: none;
+}
+
+.dex-ind-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+}
+
+.dex-ind-menu-item {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  font-size: 0.72rem;
-  color: rgba(255,255,255,0.55);
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: rgba(200, 208, 224, 0.7);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  transition: color 0.2s ease;
 }
-.dex-ind-label input[type="checkbox"] {
-  width: 12px;
-  height: 12px;
-  accent-color: #2962ff;
+
+.dex-ind-menu-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(70, 188, 255, 0.8);
   cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
 }
-.dex-ind-label:hover {
-  color: rgba(255,255,255,0.85);
+
+.dex-ind-menu-item:hover {
+  color: rgba(200, 208, 224, 0.95);
+}
+
+.dex-ind-menu-item:hover input[type="checkbox"] {
+  opacity: 1;
+}
+
+/* Indicators toolbar (above chart) */
+.dex-indicators-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(19, 23, 34, 0.4);
+  border: 1px solid rgba(70, 140, 200, 0.12);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  flex-wrap: wrap;
+}
+
+.dex-toolbar-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(200, 208, 224, 0.6);
+  white-space: nowrap;
+}
+
+#dexIndicatorsPanel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dex-indicator-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  background: rgba(70, 140, 200, 0.08);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 5px;
+  font-size: 0.74rem;
+  color: rgba(200, 208, 224, 0.7);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.dex-indicator-pill:hover {
+  background: rgba(70, 140, 200, 0.15);
+  border-color: rgba(70, 140, 200, 0.45);
+  color: rgba(200, 208, 224, 0.95);
+}
+
+.dex-indicator-pill input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(70, 188, 255, 0.8);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.dex-indicator-pill input[type="checkbox"]:checked {
+  opacity: 1;
+}
+
+.dex-indicator-pill:hover input[type="checkbox"] {
+  opacity: 1;
+}
+
+.dex-indicator-pill span {
+  font-weight: 500;
 }
 
 /* Chart canvas shell */
@@ -9935,46 +10202,108 @@ button.primary-action:hover {
   width: 100%;
   overflow-x: auto;
   position: relative;
+  background: linear-gradient(135deg, rgba(19, 23, 34, 0.5), rgba(19, 23, 34, 0.3));
+  border: 1px solid rgba(70, 140, 200, 0.12);
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+  min-height: 550px;
+  display: flex;
+  align-items: stretch;
 }
 .dex-chart-shell canvas {
   display: block;
-  width: 100%;
+  width: 100% !important;
   height: auto;
-  max-width: 100%;
-  border-radius: 4px;
+  flex: 1;
   cursor: crosshair;
+}
+.dex-chart-shell #dexChartLegend {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(19, 23, 34, 0.92);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  max-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+  animation: slideInDown 0.3s ease;
+}
+.dex-chart-shell #dexChartLegend .legend-title {
+  font-weight: 700;
+  color: rgba(99, 183, 255, 0.8);
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(99, 183, 255, 0.2);
+  padding-bottom: 0.4rem;
+}
+.dex-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  color: rgba(200, 208, 224, 0.8);
+  user-select: none;
+}
+.dex-legend-color {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.dex-legend-item.legend-volume {
+  color: rgba(148, 163, 184, 0.6);
+  font-size: 0.7rem;
 }
 
 /* Fit button */
 .dex-fit-btn {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 3px;
-  color: rgba(255,255,255,0.55);
-  font-size: 0.78rem;
-  padding: 0.15rem 0.45rem;
+  background: rgba(70, 140, 200, 0.08);
+  border: 1px solid rgba(70, 140, 200, 0.25);
+  border-radius: 5px;
+  color: rgba(200, 208, 224, 0.7);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.5rem;
   cursor: pointer;
   line-height: 1;
+  transition: all 0.2s ease;
+  min-width: 28px;
+  text-align: center;
 }
-.dex-fit-btn:hover { color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.25); }
+.dex-fit-btn:hover {
+  color: rgba(200, 208, 224, 0.95);
+  border-color: rgba(70, 140, 200, 0.45);
+  background: rgba(70, 140, 200, 0.15);
+}
 
 /* Asset picker */
 .dex-asset-picker-group { position: relative; }
 .dex-asset-btn {
-  background: rgba(41,98,255,0.12);
-  border: 1px solid rgba(41,98,255,0.35);
-  border-radius: 3px;
-  color: #c8d0e0;
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.12), rgba(70, 140, 200, 0.08));
+  border: 1px solid rgba(70, 188, 255, 0.35);
+  border-radius: 5px;
+  color: rgba(200, 208, 224, 0.95);
   font-size: 0.78rem;
   font-weight: 600;
-  padding: 0.15rem 0.5rem;
+  padding: 0.3rem 0.65rem;
   cursor: pointer;
   white-space: nowrap;
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: all 0.2s ease;
 }
-.dex-asset-btn:hover { border-color: rgba(41,98,255,0.7); color: #fff; }
+.dex-asset-btn:hover {
+  border-color: rgba(70, 188, 255, 0.7);
+  color: #fff;
+  background: linear-gradient(135deg, rgba(70, 188, 255, 0.18), rgba(70, 140, 200, 0.12));
+  box-shadow: 0 0 8px rgba(70, 188, 255, 0.1);
+}
 .dex-asset-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -10018,11 +10347,19 @@ button.primary-action:hover {
 .dex-asset-item-sub   { font-size: 0.68rem; color: rgba(255,255,255,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 600px) {
-  .dex-chart-controls { gap: 0.4rem 0.6rem; }
-  .dex-ind-group { gap: 0.3rem; }
-  .dex-tf-btn, .dex-type-btn { padding: 0.15rem 0.4rem; font-size: 0.7rem; }
-  .dex-asset-btn { max-width: 110px; font-size: 0.72rem; }
+  .dex-chart-controls { gap: 0.5rem 0.8rem; padding: 0.5rem 0; }
+  .dex-ind-group { gap: 0.4rem; }
+  .dex-tf-btn, .dex-type-btn { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
+  .dex-asset-btn { max-width: 130px; font-size: 0.72rem; padding: 0.25rem 0.45rem; }
+  .dex-fit-btn { padding: 0.25rem 0.4rem; font-size: 0.75rem; }
   .dex-asset-dropdown { width: 220px; }
+  .dex-chart-shell #dexChartLegend {
+    top: 4px;
+    right: 4px;
+    padding: 0.4rem 0.6rem;
+    max-width: 240px;
+    font-size: 0.7rem;
+  }
   .dex-lookup-row { grid-template-columns: 1fr; }
   .dex-lookup-card { grid-template-columns: auto minmax(0, 1fr); }
   .dex-lookup-meta {
@@ -10186,6 +10523,17 @@ button.primary-action:hover {
 @keyframes pulse-live {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.65; }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Active tracker layout ────────────────────────────────── */

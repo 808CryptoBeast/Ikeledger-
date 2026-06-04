@@ -741,107 +741,125 @@
                   <section class="dex-ticket-panel" aria-label="DEX trade ticket">
                     <div class="section-top compact">
                       <h4>Trade Ticket</h4>
-                      <span class="mode-pill">OfferCreate</span>
+                      <details class="dex-quick-toggle">
+                        <summary class="mode-pill">OfferCreate ▾</summary>
+                        <div class="dex-toggle-content">
+                          <label>
+                            Order Style
+                            <select id="dexOrderStyleSelect">
+                              <option value="limit">Limit resting order</option>
+                              <option value="ioc">Immediate or cancel</option>
+                              <option value="fok">Fill or kill</option>
+                              <option value="passive">Passive maker order</option>
+                            </select>
+                          </label>
+                          <label>
+                            Side
+                            <select id="dexSideSelect">
+                              <option value="buy">Buy with XRP</option>
+                              <option value="sell">Sell for XRP</option>
+                            </select>
+                          </label>
+                        </div>
+                      </details>
                     </div>
 
                     <!-- Token Selection Group -->
                     <fieldset class="dex-form-group">
-                      <legend>Select Asset</legend>
-                      <label class="dex-lookup-field">
-                        Token Lookup
-                        <div class="dex-lookup-row">
-                          <input id="dexLookupInput" type="search" placeholder="XRP, RLUSD, USDC, currency.issuer, or currency issuer" autocomplete="off" spellcheck="false" />
-                          <button id="dexLookupButton" type="button" class="ghost">Lookup</button>
-                        </div>
-                        <span class="field-hint">Use XRP for native charting, or currency + issuer for any XRPL issued asset.</span>
-                      </label>
-                      <div id="dexLookupResults" class="dex-lookup-results" aria-live="polite"></div>
-                      <label>
-                        Top Assets
-                        <select id="dexAssetSelect">
-                          <option value="">Select a top issued asset</option>
-                        </select>
-                      </label>
+                      <legend>
+                        <input type="checkbox" class="form-toggle" checked />
+                        Select Asset
+                      </legend>
+                      <div class="form-content">
+                        <label class="dex-lookup-field">
+                          Token Lookup
+                          <div class="dex-lookup-row">
+                            <input id="dexLookupInput" type="search" placeholder="XRP, RLUSD, USDC, currency.issuer" autocomplete="off" spellcheck="false" />
+                            <button id="dexLookupButton" type="button" class="ghost">Lookup</button>
+                          </div>
+                        </label>
+                        <div id="dexLookupResults" class="dex-lookup-results" aria-live="polite"></div>
+                        <label>
+                          Top Assets
+                          <select id="dexAssetSelect">
+                            <option value="">Select a top issued asset</option>
+                          </select>
+                        </label>
+                      </div>
                     </fieldset>
 
-                    <!-- Token Details Group -->
+                    <!-- Token Details (Collapsible) -->
                     <fieldset class="dex-form-group">
-                      <legend>Token Details</legend>
-                      <label>
-                        Currency Code
-                        <input id="dexCurrencyInput" type="text" placeholder="USDC or 40-char hex" autocomplete="off" spellcheck="false" />
-                      </label>
-                      <label>
-                        Issuer Address
-                        <input id="dexIssuerInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
-                      </label>
-                    </fieldset>
-
-                    <!-- Order Setup Group -->
-                    <fieldset class="dex-form-group">
-                      <legend>Order Setup</legend>
-                      <label>
-                        Side
-                        <select id="dexSideSelect">
-                          <option value="buy">Buy with XRP</option>
-                          <option value="sell">Sell for XRP</option>
-                        </select>
-                      </label>
-                      <label>
-                        Order Style
-                        <select id="dexOrderStyleSelect">
-                          <option value="limit">Limit resting order</option>
-                          <option value="ioc">Immediate or cancel</option>
-                          <option value="fok">Fill or kill</option>
-                          <option value="passive">Passive maker order</option>
-                        </select>
-                      </label>
+                      <legend>
+                        <input type="checkbox" class="form-toggle" />
+                        Token Details
+                      </legend>
+                      <div class="form-content hidden">
+                        <label>
+                          Currency Code
+                          <input id="dexCurrencyInput" type="text" placeholder="USDC or 40-char hex" autocomplete="off" spellcheck="false" />
+                        </label>
+                        <label>
+                          Issuer Address
+                          <input id="dexIssuerInput" type="text" placeholder="r..." autocomplete="off" spellcheck="false" />
+                        </label>
+                      </div>
                     </fieldset>
 
                     <!-- Amount & Price Group -->
                     <fieldset class="dex-form-group">
-                      <legend>Amount &amp; Price</legend>
-                      <label class="dex-input-pair-label">
-                        <span>Token Amount</span>
-                        <div class="dex-input-pair">
-                          <input id="dexAmountInput" type="number" min="0" step="0.000001" placeholder="100" inputmode="decimal" />
-                          <span class="input-unit" id="dexAmountUnit">tokens</span>
+                      <legend>
+                        <input type="checkbox" class="form-toggle" checked />
+                        Amount &amp; Price
+                      </legend>
+                      <div class="form-content">
+                        <label class="dex-input-pair-label">
+                          <span>Token Amount</span>
+                          <div class="dex-input-pair">
+                            <input id="dexAmountInput" type="number" min="0" step="0.000001" placeholder="100" inputmode="decimal" />
+                            <span class="input-unit" id="dexAmountUnit">tokens</span>
+                          </div>
+                        </label>
+                        <label class="dex-input-pair-label">
+                          <span>Limit Price (XRP per token)</span>
+                          <div class="dex-input-pair">
+                            <input id="dexPriceInput" type="number" min="0" step="0.000001" placeholder="0.50" inputmode="decimal" />
+                            <span class="input-unit">XRP</span>
+                          </div>
+                        </label>
+                        <div class="dex-preview-row" style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(70, 188, 255, 0.08); border-radius: 6px;">
+                          <span>Total Cost</span>
+                          <strong id="dexTotalCost" style="color: var(--gold);">-</strong>
                         </div>
-                      </label>
-                      <label class="dex-input-pair-label">
-                        <span>Limit Price (XRP per token)</span>
-                        <div class="dex-input-pair">
-                          <input id="dexPriceInput" type="number" min="0" step="0.000001" placeholder="0.50" inputmode="decimal" />
-                          <span class="input-unit">XRP</span>
-                        </div>
-                      </label>
-                      <div class="dex-preview-row" style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(70, 188, 255, 0.08); border-radius: 6px;">
-                        <span>Total Cost</span>
-                        <strong id="dexTotalCost" style="color: var(--gold);">-</strong>
                       </div>
                     </fieldset>
 
-                    <!-- Risk Management Group -->
+                    <!-- Risk Management (Collapsible) -->
                     <fieldset class="dex-form-group">
-                      <legend>Risk Management</legend>
-                      <label>
-                        Slippage Guard
-                        <div class="dex-input-pair">
-                          <input id="dexSlippageInput" type="number" min="0" max="50" step="0.1" value="1" inputmode="decimal" />
-                          <span class="input-unit">%</span>
-                        </div>
-                        <span class="field-hint">Percent tolerance for planning</span>
-                      </label>
-                      <label>
-                        Stop Loss (Optional)
-                        <input id="dexStopLossInput" type="number" min="0" step="0.000001" placeholder="Price level to sell" inputmode="decimal" />
-                        <span class="field-hint">Planning only, not automatic</span>
-                      </label>
-                      <label>
-                        Take Profit (Optional)
-                        <input id="dexTakeProfitInput" type="number" min="0" step="0.000001" placeholder="Price level to close" inputmode="decimal" />
-                        <span class="field-hint">Planning only, not automatic</span>
-                      </label>
+                      <legend>
+                        <input type="checkbox" class="form-toggle" />
+                        Risk Management
+                      </legend>
+                      <div class="form-content hidden">
+                        <label>
+                          Slippage Guard
+                          <div class="dex-input-pair">
+                            <input id="dexSlippageInput" type="number" min="0" max="50" step="0.1" value="1" inputmode="decimal" />
+                            <span class="input-unit">%</span>
+                          </div>
+                          <span class="field-hint">Percent tolerance for planning</span>
+                        </label>
+                        <label>
+                          Stop Loss (Optional)
+                          <input id="dexStopLossInput" type="number" min="0" step="0.000001" placeholder="Price level to sell" inputmode="decimal" />
+                          <span class="field-hint">Planning only, not automatic</span>
+                        </label>
+                        <label>
+                          Take Profit (Optional)
+                          <input id="dexTakeProfitInput" type="number" min="0" step="0.000001" placeholder="Price level to close" inputmode="decimal" />
+                          <span class="field-hint">Planning only, not automatic</span>
+                        </label>
+                      </div>
                     </fieldset>
 
                     <div class="button-row dex-action-row">
@@ -866,20 +884,42 @@
               <article class="glass-card wide dex-analysis-card">
                 <div class="section-top">
                   <div>
-                    <h3>Chart Analysis &amp; Risk / Reward</h3>
-                    <p class="muted">Visualize entry, stop, take-profit, spread, and execution quality before opening Xumm.</p>
+                    <h3>Chart Analysis</h3>
+                    <p class="muted">Technical indicators, timeframes, and chart types for XRPL trading analysis.</p>
                   </div>
-                  <button id="openSignGateButton" type="button" class="ghost">Preview Current Transaction</button>
                 </div>
-                <div class="dex-analysis-layout">
+                <div class="dex-chart-container">
+                  <!-- Indicators Toolbar -->
+                  <div class="dex-indicators-toolbar">
+                    <div class="dex-toolbar-label">Indicators:</div>
+                    <div id="dexIndicatorsPanel" class="dex-indicators-list"></div>
+                  </div>
+                  <!-- Chart -->
                   <div class="dex-chart-shell">
                     <canvas id="dexAnalysisChart" width="900" height="300" aria-label="DEX risk reward chart"></canvas>
                   </div>
-                  <div id="dexRiskRewardPanel" class="dex-risk-panel"></div>
                 </div>
                 <div id="dexInsightPanel" class="dex-insight-panel"></div>
-                <div id="txPreview" class="card-content dex-tx-preview"></div>
               </article>
+
+              <div class="card-grid structured-grid">
+                <article class="glass-card dex-risk-reward-card">
+                  <div class="section-top">
+                    <h3>Risk &amp; Reward Analysis</h3>
+                    <p class="muted">Entry, stop-loss, take-profit, and R/R ratio calculation.</p>
+                  </div>
+                  <div id="dexRiskRewardPanel" class="dex-risk-panel"></div>
+                </article>
+
+                <article class="glass-card dex-preview-card">
+                  <div class="section-top">
+                    <h3>Transaction Preview</h3>
+                    <p class="muted">Review your trade details before signing on Xumm.</p>
+                  </div>
+                  <button id="openSignGateButton" type="button" class="primary-action full-width">Preview &amp; Sign Transaction</button>
+                  <div id="txPreview" class="card-content dex-tx-preview" style="margin-top: 1rem;"></div>
+                </article>
+              </div>
 
               <article class="glass-card dex-execution-card">
                 <h3>Triggered Execution Plan</h3>
