@@ -332,6 +332,7 @@ const refs = {
   marketFee: document.getElementById("marketFee"),
   marketLastUpdated: document.getElementById("marketLastUpdated"),
   marketSourceCoinGecko: document.getElementById("marketSourceCoinGecko"),
+  marketSourceKraken: document.getElementById("marketSourceKraken"),
   marketSourceXrpl: document.getElementById("marketSourceXrpl"),
   marketSourceXrplTo: document.getElementById("marketSourceXrplTo"),
   marketHigh: document.getElementById("marketHigh"),
@@ -1903,6 +1904,7 @@ function renderMarketSourceStatus(snapshot, fallbackStatus = "Loading") {
 
   const sources = snapshot?.sources || {};
   setSourceChip(refs.marketSourceCoinGecko, "CoinGecko", sources.coingecko || fallbackStatus);
+  setSourceChip(refs.marketSourceKraken, "Kraken", sources.kraken || "Live");
   setSourceChip(refs.marketSourceXrpl, "XRPL WS", sources.xrpl || fallbackStatus);
   setSourceChip(refs.marketSourceXrplTo, "XRPL.to", sources.xrplTo || "On demand");
 }
