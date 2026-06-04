@@ -4956,6 +4956,56 @@ button.ghost:hover {
     min-width: 120px;
     justify-content: center;
   }
+
+  /* Safety guide mobile tab navigation */
+  .safety-accordion-grid {
+    display: none;
+  }
+
+  .safety-topic-strip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 0.35rem;
+    padding: 0.4rem 0;
+    margin: 0.5rem -1.15rem 0.5rem -1.15rem;
+    padding-left: 1.15rem;
+    padding-right: 1.15rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .safety-topic-strip span {
+    cursor: pointer;
+    flex-shrink: 0;
+    border-color: rgba(114, 188, 255, 0.15);
+    background: rgba(7, 17, 37, 0.5);
+  }
+
+  .safety-topic-strip span.is-active {
+    background: rgba(70, 188, 255, 0.2);
+    border-color: rgba(70, 188, 255, 0.5);
+    color: rgba(70, 188, 255, 0.95);
+  }
+
+  .safety-mobile-content {
+    display: none;
+  }
+
+  .safety-mobile-content.is-active {
+    display: block;
+  }
+
+  .safety-mobile-content strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: rgba(232, 244, 255, 0.95);
+    font-size: 0.92rem;
+  }
+
+  .safety-mobile-content .safety-bullet-list {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
 }
 
 /* ---------------------------------------------

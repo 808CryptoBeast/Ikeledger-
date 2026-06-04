@@ -10259,6 +10259,40 @@ function initEventHandlers() {
       renderSecurity();
     }
   });
+
+  // Safety guide mobile tab switching
+  const safetyTopicStrip = document.querySelector(".safety-topic-strip");
+  if (safetyTopicStrip) {
+    const topicSpans = Array.from(safetyTopicStrip.querySelectorAll("span"));
+    const topicMap = {
+      0: "wallet",
+      1: "signing",
+      2: "red-flags",
+      3: "market",
+      4: "manipulation"
+    };
+
+    topicSpans.forEach((span, index) => {
+      const topicId = topicMap[index];
+      span.addEventListener("click", () => {
+        // Deactivate all tabs and panels
+        topicSpans.forEach(s => s.classList.remove("is-active"));
+        document.querySelectorAll(".safety-mobile-content").forEach(panel => {
+          panel.classList.remove("is-active");
+        });
+
+        // Activate clicked tab and corresponding panel
+        span.classList.add("is-active");
+        const activePanel = document.querySelector(`[data-topic="${topicId}"]`);
+        if (activePanel) activePanel.classList.add("is-active");
+      });
+    });
+
+    // Set first tab as active on mobile
+    if (window.innerWidth <= 768) {
+      topicSpans[0].classList.add("is-active");
+    }
+  }
 }
 
 function boot() {
