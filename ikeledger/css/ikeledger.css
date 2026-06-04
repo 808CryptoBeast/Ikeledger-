@@ -4915,6 +4915,47 @@ button.ghost:hover {
   #demoButton,
   #copyAddressButton,
   #clearSessionButton { display: none; }
+
+  /* Market card controls repositioning on mobile */
+  .market-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .market-card .section-top {
+    order: 10;
+  }
+
+  .market-card .chart-shell {
+    order: 5;
+  }
+
+  .market-card .market-stats-grid,
+  .market-card .market-ohlc-row,
+  .market-card .market-pct-row,
+  .market-card .market-orderbook-row,
+  .market-card .market-source-row {
+    order: 6;
+  }
+
+  .market-card .market-sub-charts {
+    order: 7;
+  }
+
+  .market-card .chart-controls {
+    margin-top: 0.5rem;
+    align-items: center;
+    flex-direction: row;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .market-card .button-row {
+    flex: 1;
+    min-width: 120px;
+    justify-content: center;
+  }
 }
 
 /* ---------------------------------------------
