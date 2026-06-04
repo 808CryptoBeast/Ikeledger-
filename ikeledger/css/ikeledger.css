@@ -1919,65 +1919,142 @@ button.ghost:hover {
   box-shadow: 0 0 10px rgba(66, 232, 213, 0.14);
 }
 
-.network-icon-strip {
-  display: flex;
-  gap: 0.4rem;
-  margin-top: 0.55rem;
-  width: 100%;
+.charttype-row {
+  flex-wrap: nowrap;
+  gap: 0.24rem;
+  margin-top: 0.3rem;
 }
 
-.network-icon-chip {
-  flex: 1;
+.charttype-row button {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+}
+
+.ct-btn.is-active {
+  border-color: rgba(233, 199, 122, 0.55);
+  color: var(--mana-gold);
+  background: rgba(233, 199, 122, 0.1);
+  box-shadow: 0 0 8px rgba(233, 199, 122, 0.12);
+}
+
+.chart-controls {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
+}
+
+.market-ohlc-row {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.3rem;
+  flex-wrap: wrap;
+}
+
+.ohlc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  padding: 0.3rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.ohlc-stat .stat-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.ohlc-stat span:last-child {
+  font-weight: 700;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+}
+
+.market-pct-row {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.3rem 0;
+  flex-wrap: wrap;
+}
+
+.pct-badge {
+  padding: 0.2rem 0.4rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  font-size: 0.68rem;
+  color: rgba(167, 187, 220, 0.7);
+}
+
+.pct-badge span {
+  font-weight: 700;
+  margin-left: 0.15rem;
+}
+
+.pct-badge span.pct-pos {
+  color: #34d399;
+}
+
+.pct-badge span.pct-neg {
+  color: #f87171;
+}
+
+.market-orderbook-row {
+  margin: 0.4rem 0;
+}
+
+.orderbook-depth {
+  display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.45rem 0.25rem 0.4rem;
-  border: 1px solid rgba(118, 153, 212, 0.22);
-  border-radius: var(--radius-md);
-  background: rgba(8, 15, 36, 0.5);
-  color: var(--ink-2);
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-align: center;
-  cursor: default;
-  min-width: 0;
-  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, color 0.18s;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
 }
 
-.network-icon-chip:hover {
-  border-color: rgba(70, 188, 255, 0.45);
-  background: rgba(14, 24, 52, 0.72);
-  box-shadow: 0 0 14px rgba(70, 188, 255, 0.1);
-  color: var(--ink-1);
-}
-
-.network-icon-chip img {
-  width: 4.2rem;
-  height: 4.2rem;
-  object-fit: contain;
-  display: block;
-  border: 1.5px solid rgba(233, 199, 122, 0.36);
-  border-radius: var(--radius-sm);
-  padding: 0.2rem;
-  background: rgba(8, 14, 32, 0.6);
-  box-shadow: 0 0 10px rgba(70, 188, 255, 0.1);
-  transition: border-color 0.18s, box-shadow 0.18s;
-}
-
-.network-icon-chip:hover img {
-  border-color: rgba(70, 188, 255, 0.6);
-  box-shadow: 0 0 16px rgba(70, 188, 255, 0.22);
-}
-
-.network-icon-chip span {
-  display: block;
-  line-height: 1.2;
+.ob-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.6);
   white-space: nowrap;
+}
+
+.ob-bar-container {
+  display: flex;
+  height: 20px;
+  border-radius: 4px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  flex: 1;
+  min-width: 100px;
+}
+
+.ob-bids-bar {
+  background: rgba(52, 211, 153, 0.6);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.ob-asks-bar {
+  background: rgba(248, 113, 113, 0.6);
+  height: 100%;
+  transition: width 0.3s ease;
+  margin-left: auto;
+}
+
+.ob-ratio {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: rgba(167, 187, 220, 0.6);
+  white-space: nowrap;
+  min-width: 50px;
 }
 
 /* ---------------------------------------------
@@ -4611,7 +4688,7 @@ button.ghost:hover {
   .assets-split,
   .market-stats-grid,
   .two-col {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .wallet-meta-grid,
@@ -4741,9 +4818,6 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
-  /* Shrink oversized network icon images */
-  .network-icon-chip img { width: 2.8rem; height: 2.8rem; }
-
   /* Hide secondary hero buttons on mobile � accessible via sidebar/settings */
   #demoButton,
   #copyAddressButton,
@@ -4764,6 +4838,9 @@ button.ghost:hover {
     padding: 0.34rem 0.5rem;
   }
 
+  .overview-grid,
+  .assets-split,
+  .market-stats-grid,
   .nft-grid {
     grid-template-columns: 1fr;
   }
@@ -5363,30 +5440,6 @@ button.ghost:hover {
   min-height: 100px;
 }
 
-.network-icon-strip {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.7rem;
-}
-
-.network-icon-chip {
-  min-width: 0;
-  justify-content: flex-start;
-  padding: 0.55rem 0.65rem;
-}
-
-.network-icon-chip img {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 14px;
-  object-fit: cover;
-}
-
-.network-icon-chip span {
-  min-width: 0;
-  white-space: normal;
-  line-height: 1.15;
-}
-
 @media (max-width: 1100px) {
   .nav-wordmark {
     height: 76px;
@@ -5412,20 +5465,6 @@ button.ghost:hover {
     border-radius: 10px;
   }
 
-  .network-icon-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.48rem;
-  }
-
-  .network-icon-chip {
-    padding: 0.44rem 0.5rem;
-  }
-
-  .network-icon-chip img {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 11px;
-  }
 }
 
 @media (max-width: 420px) {
@@ -5438,9 +5477,6 @@ button.ghost:hover {
     height: 44px;
   }
 
-  .network-icon-strip {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 /* ---------------------------------------------
    Command Center Safety Guide
@@ -6199,6 +6235,122 @@ button.ghost:hover {
     font-size: 0.84rem;
   }
 }
+
+/* Safety Guide Enhancements */
+.command-safety-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.safety-expand-btn {
+  margin-left: auto;
+  padding: 0.52rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 8px;
+  transition: all 0.18s ease;
+}
+
+.safety-expand-btn:hover {
+  background: rgba(244, 202, 122, 0.15);
+  color: #f4ca7a;
+}
+
+#commandSafetyWide.collapsed .safety-topic-strip,
+#commandSafetyWide.collapsed .safety-do-dont-panel,
+#commandSafetyWide.collapsed .safety-accordion-grid {
+  display: none;
+}
+
+.accordion-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.accordion-badge.risk-critical {
+  background: rgba(255, 68, 68, 0.18);
+  color: #ff5454;
+  border: 1px solid rgba(255, 68, 68, 0.36);
+}
+
+.accordion-badge.risk-high {
+  background: rgba(255, 116, 136, 0.18);
+  color: #ff7488;
+  border: 1px solid rgba(255, 116, 136, 0.36);
+}
+
+.accordion-badge.risk-medium {
+  background: rgba(244, 202, 122, 0.18);
+  color: #f4ca7a;
+  border: 1px solid rgba(244, 202, 122, 0.36);
+}
+
+.accordion-badge.risk-low {
+  background: rgba(72, 214, 168, 0.18);
+  color: #48d6a8;
+  border: 1px solid rgba(72, 214, 168, 0.36);
+}
+
+.card-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.card-stat {
+  display: inline-block;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(244, 202, 122, 0.12);
+  color: #f4ca7a;
+  border: 1px solid rgba(244, 202, 122, 0.28);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Category Color-Coded Card Borders */
+.card-market,
+.card-market.glass-card {
+  border-left: 4px solid rgba(233, 199, 122, 0.52);
+}
+
+.card-market:hover,
+.card-market.glass-card:hover {
+  border-left-color: #f4ca7a;
+}
+
+.card-safety,
+.card-safety.glass-card {
+  border-left: 4px solid rgba(255, 116, 136, 0.52);
+}
+
+.card-safety:hover,
+.card-safety.glass-card:hover {
+  border-left-color: #ff7488;
+}
+
+.card-account,
+.card-account.glass-card {
+  border-left: 4px solid rgba(70, 188, 255, 0.52);
+}
+
+.card-account:hover,
+.card-account.glass-card:hover {
+  border-left-color: #46bcff;
+}
+
 /* Token Market And NFT Viewer Polish */
 .token-holdings-summary,
 .market-token-summary,
@@ -8363,8 +8515,7 @@ button.ghost:hover {
 
 #commandOverviewCards .command-bg-card .card-content,
 .market-card.command-bg-card .market-stats-grid p,
-.market-card.command-bg-card .chart-shell,
-.market-card.command-bg-card .network-icon-chip {
+.market-card.command-bg-card .chart-shell {
   border-color: rgba(116, 202, 255, 0.18);
   background-color: rgba(3, 8, 22, 0.72);
   backdrop-filter: blur(10px);

@@ -20,6 +20,15 @@ function normalizeNetworkKey(networkKey) {
   return getNetwork(networkKey).key || networkKey;
 }
 
+function getNetworkEndpoints(network) {
+  const endpoints = Array.isArray(network.endpoints) && network.endpoints.length
+    ? network.endpoints
+    : [network.endpoint];
+  return endpoints
+    .filter(Boolean)
+    .filter((endpoint, index, list) => list.indexOf(endpoint) === index);
+}
+
 function rejectPendingRequests(networkKey, message) {
   const pending = sharedPending.get(networkKey);
   if (!pending) return;
@@ -76,58 +85,103 @@ export function ensureXrplConnection(networkKey) {
     return sharedOpenPromises.get(key);
   }
 
-  const socket = new WebSocket(network.endpoint);
-  const pending = new Map();
-  sharedSockets.set(key, socket);
+  const pending = sharedPending.get(key) || new Map();
+  const endpoints = getNetworkEndpoints(network);
   sharedPending.set(key, pending);
 
   const openPromise = new Promise((resolve, reject) => {
-    let settled = false;
-    const timeoutId = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      try {
-        socket.close();
-      } catch {
-        // noop
-      }
-      sharedOpenPromises.delete(key);
-      reject(new Error(`XRPL websocket connect timeout: ${network.label}`));
-    }, WS_TIMEOUT_MS);
+    let connected = false;
+    let attemptIndex = 0;
+    let lastError = "";
 
-    const settleOpen = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
+    const cleanupEstablishedSocket = (socket, message) => {
+      if (sharedSockets.get(key) !== socket) return;
+      rejectPendingRequests(key, message);
+      sharedPending.delete(key);
+      sharedSockets.delete(key);
       sharedOpenPromises.delete(key);
-      resolve(socket);
     };
 
-    const settleError = (message) => {
-      if (sharedSockets.get(key) === socket) {
-        rejectPendingRequests(key, message);
-        sharedPending.delete(key);
-        sharedSockets.delete(key);
+    const failAll = () => {
+      sharedOpenPromises.delete(key);
+      sharedPending.delete(key);
+      sharedSockets.delete(key);
+      reject(new Error(lastError || `XRPL websocket error: ${network.label}`));
+    };
+
+    const tryEndpoint = () => {
+      if (connected) return;
+      const endpoint = endpoints[attemptIndex];
+      attemptIndex += 1;
+
+      if (!endpoint) {
+        failAll();
+        return;
       }
 
-      if (!settled) {
-        settled = true;
+      const socket = new WebSocket(endpoint);
+      let endpointSettled = false;
+      sharedSockets.set(key, socket);
+
+      const timeoutId = setTimeout(() => {
+        if (endpointSettled || connected) return;
+        endpointSettled = true;
+        lastError = `XRPL websocket connect timeout: ${network.label} (${endpoint})`;
+        if (sharedSockets.get(key) === socket) sharedSockets.delete(key);
+        try {
+          socket.close();
+        } catch {
+          // noop
+        }
+        tryEndpoint();
+      }, WS_TIMEOUT_MS);
+
+      const failEndpoint = (message) => {
+        if (endpointSettled || connected) return;
+        endpointSettled = true;
+        lastError = message;
+        clearTimeout(timeoutId);
+        if (sharedSockets.get(key) === socket) sharedSockets.delete(key);
+        try {
+          socket.close();
+        } catch {
+          // noop
+        }
+        tryEndpoint();
+      };
+
+      socket.addEventListener("open", () => {
+        if (endpointSettled || connected) return;
+        endpointSettled = true;
+        connected = true;
         clearTimeout(timeoutId);
         sharedOpenPromises.delete(key);
-        reject(new Error(message));
-      }
+        resolve(socket);
+      }, { once: true });
+      socket.addEventListener("message", (event) => {
+        try {
+          routeResponsePayload(key, JSON.parse(event.data));
+        } catch {
+          // Ignore malformed WebSocket payloads.
+        }
+      });
+      socket.addEventListener("error", () => {
+        if (connected) {
+          cleanupEstablishedSocket(socket, `XRPL websocket error: ${network.label} (${endpoint})`);
+          return;
+        }
+        failEndpoint(`XRPL websocket error: ${network.label} (${endpoint})`);
+      }, { once: true });
+      socket.addEventListener("close", () => {
+        if (connected) {
+          cleanupEstablishedSocket(socket, `XRPL websocket closed: ${network.label} (${endpoint})`);
+          return;
+        }
+        failEndpoint(`XRPL websocket closed: ${network.label} (${endpoint})`);
+      }, { once: true });
     };
 
-    socket.addEventListener("open", settleOpen, { once: true });
-    socket.addEventListener("message", (event) => {
-      try {
-        routeResponsePayload(key, JSON.parse(event.data));
-      } catch {
-        // Ignore malformed WebSocket payloads.
-      }
-    });
-    socket.addEventListener("error", () => settleError(`XRPL websocket error: ${network.label}`), { once: true });
-    socket.addEventListener("close", () => settleError(`XRPL websocket closed: ${network.label}`), { once: true });
+    tryEndpoint();
   });
 
   sharedOpenPromises.set(key, openPromise);

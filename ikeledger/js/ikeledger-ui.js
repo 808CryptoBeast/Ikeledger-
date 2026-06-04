@@ -214,6 +214,7 @@ const state = {
   tokenWatchlist: new Set(),
   ammWatchlist: new Set(),
   chartTimeframe: "24H",
+  marketChartType: "line",
   marketTimer: null,
   marketCache: {
     key: "",
@@ -322,6 +323,7 @@ const refs = {
   lastSyncStatus: document.getElementById("lastSyncStatus"),
   marketChart: document.getElementById("marketChart"),
   timeframeButtons: Array.from(document.querySelectorAll(".tf-btn")),
+  chartTypeButtons: Array.from(document.querySelectorAll(".ct-btn")),
   marketPrice: document.getElementById("marketPrice"),
   marketVolume: document.getElementById("marketVolume"),
   marketCap: document.getElementById("marketCap"),
@@ -332,6 +334,18 @@ const refs = {
   marketSourceCoinGecko: document.getElementById("marketSourceCoinGecko"),
   marketSourceXrpl: document.getElementById("marketSourceXrpl"),
   marketSourceXrplTo: document.getElementById("marketSourceXrplTo"),
+  marketHigh: document.getElementById("marketHigh"),
+  marketLow: document.getElementById("marketLow"),
+  marketOpen: document.getElementById("marketOpen"),
+  marketClose: document.getElementById("marketClose"),
+  marketVolatility: document.getElementById("marketVolatility"),
+  marketPct5m: document.getElementById("marketPct5m"),
+  marketPct1h: document.getElementById("marketPct1h"),
+  marketPct24h: document.getElementById("marketPct24h"),
+  marketPct7d: document.getElementById("marketPct7d"),
+  marketOBBids: document.getElementById("marketOBBids"),
+  marketOBAsk: document.getElementById("marketOBAsk"),
+  marketOBRatio: document.getElementById("marketOBRatio"),
   commandLedgerPulse: document.getElementById("commandLedgerPulse"),
   authModal: document.getElementById("authModal"),
   closeAuthModalButton: document.getElementById("closeAuthModalButton"),
@@ -1358,6 +1372,151 @@ async function fetchXrpSpotPrice() {
   return 0;
 }
 
+// ── Technical Indicators ──────────────────────────────────────────────
+function sma(values, period) {
+  const result = [];
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      result.push(Number.NaN);
+    } else {
+      const sum = values.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+      result.push(sum / period);
+    }
+  }
+  return result;
+}
+
+function ema(values, period) {
+  const result = [];
+  const multiplier = 2 / (period + 1);
+  let emaCurrent = Number.NaN;
+  for (let i = 0; i < values.length; i++) {
+    if (i === 0) {
+      emaCurrent = values[0];
+    } else if (i === period - 1) {
+      const sum = values.slice(0, period).reduce((a, b) => a + b, 0);
+      emaCurrent = sum / period;
+    } else if (i >= period - 1) {
+      emaCurrent = values[i] * multiplier + emaCurrent * (1 - multiplier);
+    }
+    result.push(emaCurrent);
+  }
+  return result;
+}
+
+function rsi(candles, period = 14) {
+  const closes = candles.map(c => c.c);
+  const changes = [];
+  for (let i = 1; i < closes.length; i++) {
+    changes.push(closes[i] - closes[i - 1]);
+  }
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    const change = changes[i] || 0;
+    if (change > 0) avgGain += change;
+    else avgLoss -= change;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  const result = [];
+  result.push(Number.NaN);
+  for (let i = period; i < changes.length; i++) {
+    const change = changes[i];
+    if (change > 0) avgGain = (avgGain * (period - 1) + change) / period;
+    else avgLoss = (avgLoss * (period - 1) - change) / period;
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    result.push(100 - 100 / (1 + rs));
+  }
+  return result;
+}
+
+function macd(candles, fast = 12, slow = 26, signal = 9) {
+  const closes = candles.map(c => c.c);
+  const ema12 = ema(closes, fast);
+  const ema26 = ema(closes, slow);
+  const macdLine = ema12.map((v12, i) => {
+    const v26 = ema26[i];
+    return Number.isFinite(v12) && Number.isFinite(v26) ? v12 - v26 : Number.NaN;
+  });
+  const signalLine = ema(macdLine.filter(Number.isFinite), signal);
+  const histogram = macdLine.map((m, i) => {
+    const s = i >= macdLine.length - signalLine.length ? signalLine[i - (macdLine.length - signalLine.length)] : Number.NaN;
+    return Number.isFinite(m) && Number.isFinite(s) ? m - s : Number.NaN;
+  });
+  return { macdLine, signalLine, histogram };
+}
+
+function bollingerBands(candles, period = 20, stdDev = 2) {
+  const closes = candles.map(c => c.c);
+  const smLine = sma(closes, period);
+  const result = { upper: [], middle: [], lower: [], width: [] };
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) {
+      result.middle.push(Number.NaN);
+      result.upper.push(Number.NaN);
+      result.lower.push(Number.NaN);
+      result.width.push(Number.NaN);
+    } else {
+      const m = smLine[i];
+      const vals = closes.slice(i - period + 1, i + 1);
+      const variance = vals.reduce((sum, v) => sum + Math.pow(v - m, 2), 0) / period;
+      const std = Math.sqrt(variance);
+      const u = m + std * stdDev;
+      const l = m - std * stdDev;
+      result.middle.push(m);
+      result.upper.push(u);
+      result.lower.push(l);
+      result.width.push(((u - l) / m) * 100);
+    }
+  }
+  return result;
+}
+
+function findSupportResistance(candles, lookback = 20) {
+  if (candles.length < lookback * 2) return { support: [], resistance: [] };
+  const closes = candles.map(c => c.c);
+  const lows = candles.map(c => c.l);
+  const highs = candles.map(c => c.h);
+  const support = [], resistance = [];
+
+  for (let i = lookback; i < closes.length - lookback; i++) {
+    let isLocalLow = true, isLocalHigh = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i) {
+        if (lows[j] < lows[i]) isLocalLow = false;
+        if (highs[j] > highs[i]) isLocalHigh = false;
+      }
+    }
+    if (isLocalLow) support.push({ index: i, price: lows[i] });
+    if (isLocalHigh) resistance.push({ index: i, price: highs[i] });
+  }
+
+  const avgSupport = support.length ? support.slice(-3).reduce((s, p) => s + p.price, 0) / Math.min(3, support.length) : Number.NaN;
+  const avgResistance = resistance.length ? resistance.slice(-3).reduce((s, p) => s + p.price, 0) / Math.min(3, resistance.length) : Number.NaN;
+  return { avgSupport, avgResistance };
+}
+
+async function fetchXrplOrderbookDepth(network = "mainnet") {
+  try {
+    const walletState = getWalletState();
+    const net = walletState.network || network;
+    const cmd = {
+      command: "book_offers",
+      ledger_index: "validated",
+      taker_pays: { currency: "XRP" },
+      taker_gets: { currency: "USD", issuer: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B" },
+      limit: 20
+    };
+    const result = await requestXrplCommand(net, cmd);
+    const offers = Array.isArray(result?.offers) ? result.offers : [];
+    const bids = offers.filter(o => typeof o.TakerGets === "string").length;
+    const asks = offers.length - bids;
+    return { bids, asks, total: offers.length, bidAskRatio: asks > 0 ? bids / asks : 1 };
+  } catch {
+    return { bids: 0, asks: 0, total: 0, bidAskRatio: 1 };
+  }
+}
+
 // ── Kraken — XRP/USD OHLCV (CORS-friendly, no API key required) ─────
 // Used for XRP/USD chart and as the denominator when converting CoinGecko USD→XRP prices.
 async function fetchKrakenXrpOhlcv(krakenInterval, limit) {
@@ -1421,9 +1580,8 @@ async function fetchXrpChartPoints(timeframe) {
     timeframe === "30D" ? [240,  90 ] :
                           [1440, 120];
   const candles = await fetchKrakenXrpOhlcv(ki, limit);
-  const points = candles.map((c) => c.c);
-  if (!points.length) throw new Error("XRP chart data unavailable.");
-  return points;
+  if (!candles.length) throw new Error("XRP chart data unavailable.");
+  return candles;
 }
 
 function ledgerTransactionCount(ledgerResult = {}) {
@@ -1486,58 +1644,244 @@ async function fetchXrplNetworkMetrics() {
   };
 }
 
-function drawMarketChart(points) {
+function drawMarketChart(rawPoints) {
   const canvas = refs.marketChart;
-  if (!canvas || !points.length) return;
-
+  if (!canvas || !rawPoints?.length) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const width = canvas.width;
-  const height = canvas.height;
-  const padding = 24;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = Math.max(max - min, 0.00001);
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "rgba(9, 15, 33, 0.88)";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "rgba(104, 139, 197, 0.26)";
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 6; i += 1) {
-    const y = (height / 6) * i;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
+  // Sync canvas pixel buffer to its CSS display size for crisp rendering
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth  || 1200;
+  const cssH = canvas.clientHeight || 420;
+  if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+    canvas.width  = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.scale(dpr, dpr);
   }
 
-  const path = new Path2D();
-  points.forEach((price, index) => {
-    const x = padding + (index / (points.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((price - min) / range) * (height - padding * 2);
-    if (index === 0) {
-      path.moveTo(x, y);
-    } else {
-      path.lineTo(x, y);
-    }
+  // Normalize input — accept plain numbers or OHLCV objects
+  const candles = rawPoints.map((p) =>
+    typeof p === "object" && p !== null
+      ? p
+      : { t: 0, o: p, h: p, l: p, c: p, v: 0 }
+  );
+
+  const width  = cssW;
+  const height = cssH;
+  const padL = 58, padR = 16, padT = 16, padB = 28;
+  const chartW = width  - padL - padR;
+  const chartH = height - padT - padB;
+
+  const highs  = candles.map(c => c.h);
+  const lows   = candles.map(c => c.l);
+  const maxVal = Math.max(...highs);
+  const minVal = Math.min(...lows);
+  const range  = Math.max(maxVal - minVal, maxVal * 0.001);
+
+  const toX = (i) => padL + (i / (candles.length - 1 || 1)) * chartW;
+  const toY = (v) => padT + (1 - (v - minVal) / range) * chartH;
+
+  // ── Background ──────────────────────────────────────────────────
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(6, 11, 28, 0.96)";
+  ctx.fillRect(0, 0, width, height);
+
+  // ── Grid lines + Y-axis labels ──────────────────────────────────
+  const gridSteps = 5;
+  ctx.strokeStyle = "rgba(104, 139, 197, 0.18)";
+  ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(148, 163, 184, 0.55)";
+  ctx.font = `${Math.max(9, Math.round(height * 0.026))}px system-ui, sans-serif`;
+  ctx.textAlign = "right";
+
+  // Compute price grid only (need priceH for this, so we'll do it later)
+  const priceH_temp = chartH * 0.75;
+  const toYPrice_temp = (v) => padT + (1 - (v - minVal) / range) * priceH_temp;
+
+  for (let i = 0; i <= gridSteps; i++) {
+    const v = minVal + (range / gridSteps) * i;
+    const y = toYPrice_temp(v);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(width - padR, y);
+    ctx.stroke();
+    ctx.fillText(`$${v < 1 ? v.toFixed(4) : v.toFixed(2)}`, padL - 4, y + 3);
+  }
+
+  // ── X-axis time labels ──────────────────────────────────────────
+  const labelCount = Math.min(6, candles.length);
+  const step = Math.max(1, Math.floor(candles.length / labelCount));
+  ctx.fillStyle = "rgba(148, 163, 184, 0.45)";
+  ctx.textAlign = "center";
+  for (let i = 0; i < candles.length; i += step) {
+    if (!candles[i].t) continue;
+    const d = new Date(candles[i].t);
+    const label = candles.length <= 24
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString([], { month: "short", day: "numeric" });
+    ctx.fillText(label, toX(i), height - 6);
+  }
+
+  // ── Volume section & Support/Resistance  ─────────────────────────
+  const priceH = chartH * 0.75;
+  const volumeH = chartH - priceH;
+  const volumes = candles.map(c => c.v || 0);
+  const maxVol = Math.max(...volumes, 1);
+  const toYVolume = (v) => padT + priceH + ((v / maxVol) * volumeH);
+  const toYPrice = (v) => padT + (1 - (v - minVal) / range) * priceH;
+
+  // Volume bars
+  const candleW = Math.max(2, Math.min(14, Math.floor(chartW / candles.length) - 2));
+  candles.forEach((c, i) => {
+    const x = toX(i);
+    const bull = c.c >= c.o;
+    const volColor = bull ? "rgba(52, 211, 153, 0.35)" : "rgba(248, 113, 113, 0.35)";
+    const volH = volumes[i] > 0 ? (volumes[i] / maxVol) * volumeH : 1;
+    ctx.fillStyle = volColor;
+    ctx.fillRect(x - candleW / 2, toYPrice(minVal) + volumeH - volH, candleW, volH);
   });
 
-  ctx.strokeStyle = "rgba(66, 232, 213, 0.96)";
-  ctx.lineWidth = 2.4;
-  ctx.stroke(path);
+  // Volume divider
+  ctx.strokeStyle = "rgba(104, 139, 197, 0.1)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + priceH);
+  ctx.lineTo(width - padR, padT + priceH);
+  ctx.stroke();
 
-  const fill = new Path2D(path);
-  fill.lineTo(width - padding, height - padding);
-  fill.lineTo(padding, height - padding);
-  fill.closePath();
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, "rgba(66, 232, 213, 0.28)");
-  gradient.addColorStop(1, "rgba(66, 232, 213, 0.01)");
-  ctx.fillStyle = gradient;
-  ctx.fill(fill);
+  // Support/Resistance bands
+  const sr = findSupportResistance(candles, 10);
+  if (Number.isFinite(sr.avgSupport)) {
+    ctx.strokeStyle = "rgba(52, 211, 153, 0.15)";
+    ctx.setLineDash([5, 5]);
+    const y = toYPrice(sr.avgSupport);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(width - padR, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (Number.isFinite(sr.avgResistance)) {
+    ctx.strokeStyle = "rgba(248, 113, 113, 0.15)";
+    ctx.setLineDash([5, 5]);
+    const y = toYPrice(sr.avgResistance);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(width - padR, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const mode = state.marketChartType || "line";
+
+  if (mode === "candle") {
+    // ── Candlestick chart ─────────────────────────────────────────
+    candles.forEach((c, i) => {
+      const x    = toX(i);
+      const yO   = toYPrice(c.o);
+      const yC   = toYPrice(c.c);
+      const yH   = toYPrice(c.h);
+      const yL   = toYPrice(c.l);
+      const bull = c.c >= c.o;
+      const color = bull ? "rgba(52, 211, 153, 0.9)" : "rgba(248, 113, 113, 0.9)";
+
+      // Wick
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, yH);
+      ctx.lineTo(x, yL);
+      ctx.stroke();
+
+      // Body
+      const bodyTop  = Math.min(yO, yC);
+      const bodyH    = Math.max(1, Math.abs(yO - yC));
+      ctx.fillStyle = color;
+      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+    });
+  } else {
+    // ── Line chart with gradient fill ────────────────────────────
+    const closes = candles.map(c => c.c);
+    const isUp = closes[closes.length - 1] >= closes[0];
+    const lineColor = isUp ? "rgba(52, 211, 153, 0.95)" : "rgba(248, 113, 113, 0.95)";
+    const fillTop   = isUp ? "rgba(52, 211, 153, 0.22)" : "rgba(248, 113, 113, 0.22)";
+    const fillBot   = isUp ? "rgba(52, 211, 153, 0.01)" : "rgba(248, 113, 113, 0.01)";
+
+    const path = new Path2D();
+    closes.forEach((v, i) => {
+      const x = toX(i);
+      const y = toYPrice(v);
+      i === 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+    });
+
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.stroke(path);
+
+    const fill = new Path2D(path);
+    fill.lineTo(toX(closes.length - 1), toYPrice(minVal));
+    fill.lineTo(toX(0), toYPrice(minVal));
+    fill.closePath();
+    const grad = ctx.createLinearGradient(0, padT, 0, padT + priceH);
+    grad.addColorStop(0, fillTop);
+    grad.addColorStop(1, fillBot);
+    ctx.fillStyle = grad;
+    ctx.fill(fill);
+
+    // Current price dot
+    const lastX = toX(closes.length - 1);
+    const lastY = toYPrice(closes[closes.length - 1]);
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+  }
+
+  // ── Moving averages overlay ──────────────────────────────────────
+  const closes = candles.map(c => c.c);
+  const ma20 = sma(closes, 20);
+  const ma50 = sma(closes, 50);
+
+  // MA20
+  const maPath20 = new Path2D();
+  closes.forEach((v, i) => {
+    const m = ma20[i];
+    if (!Number.isFinite(m)) return;
+    const x = toX(i);
+    const y = toYPrice(m);
+    i === 0 || !Number.isFinite(ma20[i - 1]) ? maPath20.moveTo(x, y) : maPath20.lineTo(x, y);
+  });
+  ctx.strokeStyle = "rgba(66, 232, 213, 0.5)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke(maPath20);
+
+  // MA50
+  const maPath50 = new Path2D();
+  closes.forEach((v, i) => {
+    const m = ma50[i];
+    if (!Number.isFinite(m)) return;
+    const x = toX(i);
+    const y = toYPrice(m);
+    i === 0 || !Number.isFinite(ma50[i - 1]) ? maPath50.moveTo(x, y) : maPath50.lineTo(x, y);
+  });
+  ctx.strokeStyle = "rgba(233, 199, 122, 0.5)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke(maPath50);
+
+  // ── Legend ──────────────────────────────────────────────────────
+  ctx.fillStyle = "rgba(148, 163, 184, 0.4)";
+  ctx.font = "700 11px system-ui";
+  ctx.textAlign = "left";
+  ctx.fillText("MA20", padL + 4, padT + 14);
+  ctx.fillStyle = "rgba(66, 232, 213, 0.6)";
+  ctx.fillRect(padL - 2, padT + 6, 12, 2);
+
+  ctx.fillStyle = "rgba(148, 163, 184, 0.4)";
+  ctx.fillText("MA50", padL + 55, padT + 14);
+  ctx.fillStyle = "rgba(233, 199, 122, 0.6)";
+  ctx.fillRect(padL + 48, padT + 6, 12, 2);
 }
 
 function setSourceChip(el, label, status = "Loading") {
@@ -1613,6 +1957,64 @@ function renderMarketSnapshot(snapshot) {
       : changePercent >= 0 ? "var(--emerald)" : "var(--danger)";
   }
   renderMarketSourceStatus(snapshot);
+
+  // ── OHLC + Volatility from candles ─────────────────────────────────
+  const candles = snapshot.points;
+  if (Array.isArray(candles) && candles.length) {
+    const opens = candles.map(c => (typeof c === "object" ? c.o : c));
+    const closes = candles.map(c => (typeof c === "object" ? c.c : c));
+    const highs = candles.map(c => (typeof c === "object" ? c.h : c));
+    const lows = candles.map(c => (typeof c === "object" ? c.l : c));
+
+    const high = Math.max(...highs);
+    const low = Math.min(...lows);
+    const open = opens[0];
+    const close = closes[closes.length - 1];
+
+    if (refs.marketHigh) refs.marketHigh.textContent = `$${high.toFixed(4)}`;
+    if (refs.marketLow) refs.marketLow.textContent = `$${low.toFixed(4)}`;
+    if (refs.marketOpen) refs.marketOpen.textContent = `$${open.toFixed(4)}`;
+    if (refs.marketClose) refs.marketClose.textContent = `$${close.toFixed(4)}`;
+
+    // Volatility from Bollinger Bands
+    const bb = bollingerBands(candles, 20, 2);
+    const volatility = bb.width[bb.width.length - 1] || Number.NaN;
+    if (refs.marketVolatility) {
+      refs.marketVolatility.textContent = Number.isFinite(volatility) ? `${volatility.toFixed(1)}%` : "-";
+    }
+
+    // Calculate % changes for different periods
+    const pcts = {
+      "5m": closes.length > 1 ? ((close - closes[Math.max(0, closes.length - 2)]) / closes[Math.max(0, closes.length - 2)]) * 100 : 0,
+      "1h": closes.length > 6 ? ((close - closes[Math.max(0, closes.length - 7)]) / closes[Math.max(0, closes.length - 7)]) * 100 : 0,
+      "24h": ((close - open) / open) * 100,
+      "7d": closes.length > 1 ? ((close - closes[0]) / closes[0]) * 100 : 0
+    };
+
+    const renderPct = (refId, pct) => {
+      const ref = document.getElementById(refId);
+      if (!ref) return;
+      const cls = pct >= 0 ? "pct-pos" : "pct-neg";
+      const sign = pct >= 0 ? "+" : "";
+      ref.innerHTML = `<span class="${cls}">${sign}${pct.toFixed(2)}%</span>`;
+    };
+
+    renderPct("marketPct5m", pcts["5m"]);
+    renderPct("marketPct1h", pcts["1h"]);
+    renderPct("marketPct24h", pcts["24h"]);
+    renderPct("marketPct7d", pcts["7d"]);
+  }
+
+  // ── Orderbook depth (async, non-blocking) ──────────────────────────
+  void fetchXrplOrderbookDepth().then((depth) => {
+    if (!depth) return;
+    const ratio = depth.bids / Math.max(1, depth.asks);
+    const bidPct = Math.min(100, (depth.bids / Math.max(1, depth.bids + depth.asks)) * 100);
+    const askPct = 100 - bidPct;
+    if (refs.marketOBBids) refs.marketOBBids.style.width = `${bidPct}%`;
+    if (refs.marketOBAsk) refs.marketOBAsk.style.width = `${askPct}%`;
+    if (refs.marketOBRatio) refs.marketOBRatio.textContent = `${ratio.toFixed(2)}:1`;
+  });
 }
 
 // Account Intelligence
@@ -9278,8 +9680,27 @@ function initSafetyGuideAccordion() {
   });
 }
 
+function initSafetyGuideCollapse() {
+  const safetyWide = document.getElementById("commandSafetyWide");
+  const expandBtn = document.getElementById("safetyExpandBtn");
+  if (!safetyWide || !expandBtn) return;
+
+  const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+  if (isDesktop) {
+    safetyWide.classList.add("collapsed");
+    expandBtn.textContent = "Learn More";
+  }
+
+  expandBtn.addEventListener("click", () => {
+    const isCollapsed = safetyWide.classList.toggle("collapsed");
+    expandBtn.textContent = isCollapsed ? "Learn More" : "Show Less";
+  });
+}
+
+
 function initEventHandlers() {
   initSafetyGuideAccordion();
+  initSafetyGuideCollapse();
   bindClick(refs.lookupButton, onLookup);
   refs.networkSelect?.addEventListener("change", onNetworkChange);
   bindClick(refs.disconnectButton, onDisconnect);
@@ -9598,6 +10019,15 @@ function initEventHandlers() {
       button.classList.add("is-active");
       state.chartTimeframe = button.dataset.tf || "24H";
       void renderMarketOverview(true, { forceChart: true });
+    });
+  });
+
+  refs.chartTypeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      refs.chartTypeButtons.forEach((b) => b.classList.remove("is-active"));
+      button.classList.add("is-active");
+      state.marketChartType = button.dataset.ct || "line";
+      if (state.marketCache.points?.length) drawMarketChart(state.marketCache.points);
     });
   });
 

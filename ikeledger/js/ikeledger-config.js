@@ -10,13 +10,15 @@ export const NETWORKS = {
     key: "xrpl-testnet",
     label: "XRPL Testnet",
     endpoint: "wss://s.altnet.rippletest.net:51233",
+    endpoints: ["wss://s.altnet.rippletest.net:51233"],
     isMainnet: false,
     warning: "Learning mode recommended."
   },
   "xrpl-mainnet": {
     key: "xrpl-mainnet",
     label: "XRPL Mainnet",
-    endpoint: "wss://xrplcluster.com",
+    endpoint: "wss://s1.ripple.com",
+    endpoints: ["wss://s1.ripple.com", "wss://s2.ripple.com", "wss://xrplcluster.com"],
     isMainnet: true,
     warning: "Real assets may be involved."
   }
