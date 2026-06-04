@@ -609,13 +609,31 @@
               <h2>Wallet Status</h2>
               <p class="muted">Protected XRPL account with read-only exploration and Xaman signing.</p>
             </div>
+            <div class="portfolio-kpi-row" id="walletStatusKpis">
+              <div class="portfolio-kpi">
+                <span class="kpi-label">Account Status</span>
+                <span class="kpi-value" id="walletStatusHealth">-</span>
+              </div>
+              <div class="portfolio-kpi">
+                <span class="kpi-label">Ledger Index</span>
+                <span class="kpi-value" id="walletStatusLedgerIndex">-</span>
+              </div>
+              <div class="portfolio-kpi">
+                <span class="kpi-label">Fee Pressure</span>
+                <span class="kpi-value" id="walletStatusFeeLevel">-</span>
+              </div>
+              <div class="portfolio-kpi">
+                <span class="kpi-label">TPS</span>
+                <span class="kpi-value" id="walletStatusTps">-</span>
+              </div>
+            </div>
             <div class="card-grid overview-grid">
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <img class="card-visual" src="./ikeledger/assets/images/ikewallet.png" alt="Account overview" loading="lazy" />
                 <h3>Account Overview</h3>
                 <div id="walletPageSummary" class="card-content"></div>
               </article>
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <h3>XRPL Reserve System</h3>
                 <div class="card-content">
                   <p><strong>Base Reserve:</strong> 1 XRP <span class="muted">(lowered Dec 2024)</span></p>
@@ -625,7 +643,7 @@
                   <p class="muted">Owner reserve is returned when the object is deleted. Base reserve is only recovered by deleting the account.</p>
                 </div>
               </article>
-              <article class="glass-card">
+              <article class="glass-card card-account">
                 <h3>Connection Mode</h3>
                 <div class="card-content">
                   <p><strong>Provider:</strong> Xaman / Read-only</p>

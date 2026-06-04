@@ -376,6 +376,10 @@ const refs = {
   securityChipStat: document.getElementById("securityChipStat"),
   nftListingStatus: document.getElementById("nftListingStatus"),
   walletPageSummary: document.getElementById("walletPageSummary"),
+  walletStatusHealth: document.getElementById("walletStatusHealth"),
+  walletStatusLedgerIndex: document.getElementById("walletStatusLedgerIndex"),
+  walletStatusFeeLevel: document.getElementById("walletStatusFeeLevel"),
+  walletStatusTps: document.getElementById("walletStatusTps"),
   tokensPagePanel: document.getElementById("tokensPagePanel"),
   topIssuedTokensPanel: document.getElementById("topIssuedTokensPanel"),
   refreshTopIssuedTokensButton: document.getElementById("refreshTopIssuedTokensButton"),
@@ -8913,6 +8917,28 @@ async function onDexSignOffer() {
 function renderExtendedPanels(walletState) {
   if (refs.walletPageSummary) {
     refs.walletPageSummary.innerHTML = refs.walletStatus?.innerHTML || "<p>Wallet overview unavailable.</p>";
+  }
+
+  // Update wallet status KPIs
+  if (refs.walletStatusHealth) {
+    const accountFlags = walletState?.flags || 0;
+    const isReady = accountFlags === 0;
+    refs.walletStatusHealth.textContent = isReady ? "Healthy" : "Review flags";
+    refs.walletStatusHealth.style.color = isReady ? "rgba(52, 211, 153, 0.9)" : "rgba(248, 113, 113, 0.9)";
+  }
+
+  if (refs.walletStatusLedgerIndex) {
+    refs.walletStatusLedgerIndex.textContent = state.marketCache.snapshot?.ledgerIndex || "Loading...";
+  }
+
+  if (refs.walletStatusFeeLevel) {
+    const feeDrops = state.marketCache.snapshot?.feeDrops || "n/a";
+    const feeXrp = feeDrops !== "n/a" ? (Number(feeDrops) / 1_000_000).toFixed(4) : "n/a";
+    refs.walletStatusFeeLevel.textContent = `${feeXrp} XRP`;
+  }
+
+  if (refs.walletStatusTps) {
+    refs.walletStatusTps.textContent = state.marketCache.snapshot?.tps || "n/a";
   }
 
   if (refs.credentialsPagePanel) {
