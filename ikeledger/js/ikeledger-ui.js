@@ -7559,58 +7559,146 @@ async function fetchXrplDexHistory(token, tf) {
     const walletState = getWalletState();
     const network = walletState.network || DEFAULT_NETWORK;
 
-    // Query XRPL for recent PaymentChannelClaim or Payment transactions involving this token
+    console.log(`[DEX] Querying XRPL ledger for ${rawCurrency}/${issuer} history...`);
+
     const allTrades = [];
-    const maxFetch = 100; // Transactions to scan
+    let marker = undefined;
+    let pageCount = 0;
+    const maxPages = 50; // Fetch up to 50 pages (~5000 transactions)
 
-    const result = await requestXrplCommand(network, {
-      command: "account_tx",
-      account: issuer,
-      limit: maxFetch,
-      ledger_index_min: -1,
-      ledger_index_max: -1,
-      descending: true
-    });
+    // Fetch account_tx for the issuer to find all transactions
+    while (pageCount < maxPages) {
+      try {
+        const params = {
+          command: "account_tx",
+          account: issuer,
+          limit: 100, // Max allowed per page
+          ledger_index_min: -1,
+          ledger_index_max: -1,
+          descending: true
+        };
 
-    const txs = result?.transactions || [];
-    console.log(`[DEX] Fetched ${txs.length} transactions from issuer ${issuer}`);
+        if (marker) params.marker = marker;
 
-    for (const tx of txs) {
-      const meta = tx.meta || {};
-      if (meta.TransactionResult !== "tesSUCCESS") continue;
+        const result = await requestXrplCommand(network, params);
+        const txs = result?.transactions || [];
 
-      const txn = tx.tx || {};
-      if (txn.TransactionType !== "Payment") continue;
-
-      // Extract trade information from affected nodes
-      const nodes = meta.AffectedNodes || [];
-      let xrpAmount = 0;
-      let tokenAmount = 0;
-
-      for (const node of nodes) {
-        const obj = node.CreatedNode?.NewFields || node.ModifiedNode?.FinalFields || {};
-        if (obj.Balance && typeof obj.Balance === "object" && obj.Balance.currency === rawCurrency) {
-          tokenAmount = Number(obj.Balance.value) || 0;
+        if (!txs.length) {
+          console.log(`[DEX] Ledger: reached end after ${pageCount} pages`);
+          break;
         }
-        if (obj.Balance && typeof obj.Balance === "string") {
-          xrpAmount = Number(obj.Balance) / 1e6 || 0;
-        }
-      }
 
-      if (xrpAmount > 0 && tokenAmount > 0) {
-        allTrades.push({
-          t: (txn.date || 0) * 1000,
-          price: xrpAmount / tokenAmount,
-          volume: Math.abs(tokenAmount)
-        });
+        pageCount++;
+        console.log(`[DEX] Ledger page ${pageCount}: ${txs.length} transactions`);
+
+        // Extract trades from transactions
+        for (const tx of txs) {
+          const meta = tx.meta || {};
+          if (meta.TransactionResult !== "tesSUCCESS") continue;
+
+          const txn = tx.tx || {};
+          const txTime = (txn.date || 0) * 1000;
+          if (!txTime) continue;
+
+          let foundTrade = false;
+
+          // Type 1: OfferCreate — look for XRP/token pair matching
+          if (txn.TransactionType === "OfferCreate") {
+            const taker_gets = txn.TakerGets;
+            const taker_pays = txn.TakerPays;
+
+            // Check if this offer involves our token
+            if (
+              (typeof taker_gets === "object" && taker_gets.currency === rawCurrency && taker_gets.issuer === issuer) ||
+              (typeof taker_pays === "object" && taker_pays.currency === rawCurrency && taker_pays.issuer === issuer)
+            ) {
+              let xrpAmount = 0;
+              let tokenAmount = 0;
+
+              if (typeof taker_gets === "string") {
+                xrpAmount = Number(taker_gets) / 1e6 || 0;
+                tokenAmount = Number(taker_pays?.value) || 0;
+              } else if (typeof taker_pays === "string") {
+                xrpAmount = Number(taker_pays) / 1e6 || 0;
+                tokenAmount = Number(taker_gets?.value) || 0;
+              }
+
+              if (xrpAmount > 0 && tokenAmount > 0) {
+                allTrades.push({
+                  t: txTime,
+                  price: xrpAmount / tokenAmount,
+                  volume: Math.abs(tokenAmount)
+                });
+                foundTrade = true;
+              }
+            }
+          }
+
+          // Type 2: Payment — look for currency conversions
+          if (!foundTrade && txn.TransactionType === "Payment") {
+            const Amount = txn.Amount;
+            const SendMax = txn.SendMax;
+
+            // Check if sending or receiving the token
+            const hasToken = (amt) =>
+              typeof amt === "object" && amt.currency === rawCurrency && amt.issuer === issuer;
+
+            if (hasToken(Amount) || hasToken(SendMax)) {
+              const nodes = meta.AffectedNodes || [];
+
+              for (const node of nodes) {
+                const field = node.CreatedNode?.NewFields || node.ModifiedNode?.FinalFields || {};
+                const prev = node.ModifiedNode?.PreviousFields || {};
+
+                if (field.Balance || prev.Balance) {
+                  const balance = field.Balance || prev.Balance;
+
+                  if (typeof balance === "object" && balance.currency === rawCurrency && balance.issuer === issuer) {
+                    const tokenChange = Math.abs(Number(balance.value) || 0);
+                    if (tokenChange > 0) {
+                      allTrades.push({
+                        t: txTime,
+                        price: Number.NaN, // We don't have clear price info
+                        volume: tokenChange
+                      });
+                      foundTrade = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Check for marker (pagination)
+        marker = result?.marker;
+        if (!marker) {
+          console.log(`[DEX] Ledger: reached end (no marker) after ${pageCount} pages, ${allTrades.length} trades`);
+          break;
+        }
+      } catch (err) {
+        console.warn(`[DEX] Ledger page ${pageCount + 1} error: ${err?.message}`);
+        break;
       }
     }
 
-    if (!allTrades.length) return [];
-    console.log(`[DEX] XRPL ledger: ${allTrades.length} trades extracted`);
+    if (!allTrades.length) {
+      console.log(`[DEX] Ledger: no trades found`);
+      return [];
+    }
 
-    const points = allTrades.sort((a, b) => a.t - b.t);
-    return tradePointsToCandles(points, tf);
+    console.log(`[DEX] Ledger: ${allTrades.length} total trades from ${pageCount} pages`);
+
+    // Remove invalid prices and sort
+    const validTrades = allTrades.filter(t => Number.isFinite(t.price) && t.price > 0);
+    console.log(`[DEX] Ledger: ${validTrades.length} trades with valid prices`);
+
+    const points = validTrades.sort((a, b) => a.t - b.t);
+    const candles = tradePointsToCandles(points, tf);
+    console.log(`[DEX] Ledger: ${candles.length} candles aggregated`);
+
+    return candles;
   } catch (err) {
     console.warn(`[DEX] XRPL ledger history failed: ${err?.message}`);
     return [];
