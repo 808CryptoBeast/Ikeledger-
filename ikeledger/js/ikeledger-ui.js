@@ -7408,11 +7408,36 @@ async function fetchXrplToOhlc(token, tf) {
   const resolvedToken = await resolveXrplToTokenMetadata(token);
   const md5 = tokenXrplToMd5(resolvedToken);
   if (!md5) return [];
+
   const { interval, limit, aggregateMs } = xrplToOhlcParams(tf);
-  const url = `${XRPL_TO_OHLC_BASE_URL}/${encodeURIComponent(md5)}?interval=${encodeURIComponent(interval)}&limit=${limit}`;
-  const data = await fetchMarketJson(url);
-  const rows = Array.isArray(data?.ohlc) ? data.ohlc : Array.isArray(data) ? data : [];
-  return aggregateCandles(normalizeOhlcRows(rows), aggregateMs);
+
+  // Try paginated fetch first
+  const allCandles = [];
+  const pageLimit = 500; // Fetch in chunks to work around API limits
+  const maxPages = Math.ceil(limit / pageLimit);
+
+  for (let page = 0; page < maxPages; page++) {
+    try {
+      const start = page * pageLimit;
+      const url = `${XRPL_TO_OHLC_BASE_URL}/${encodeURIComponent(md5)}?interval=${encodeURIComponent(interval)}&limit=${pageLimit}&start=${start}`;
+      const data = await fetchMarketJson(url);
+      const rows = Array.isArray(data?.ohlc) ? data.ohlc : Array.isArray(data) ? data : [];
+
+      if (!rows.length) break; // No more data
+
+      console.log(`[DEX] XRPL.to OHLC page ${page + 1}: ${rows.length} candles`);
+      allCandles.push(...normalizeOhlcRows(rows));
+
+      if (rows.length < pageLimit) break; // Got less than a page, so we're done
+    } catch (err) {
+      if (page === 0) throw err; // Fail on first page
+      console.warn(`[DEX] XRPL.to OHLC pagination stopped at page ${page}: ${err?.message}`);
+      break;
+    }
+  }
+
+  console.log(`[DEX] XRPL.to OHLC total: ${allCandles.length} candles`);
+  return aggregateCandles(allCandles, aggregateMs);
 }
 
 function tradeAssetValue(asset = {}) {
