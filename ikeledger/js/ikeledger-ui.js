@@ -7551,6 +7551,72 @@ async function fetchSologenicOhlcv(token, tf) {
     .filter(c => c.c > 0);
 }
 
+async function fetchXrplDexHistory(token, tf) {
+  const { rawCurrency, issuer } = token;
+  if (!rawCurrency || !issuer) return [];
+
+  try {
+    const walletState = getWalletState();
+    const network = walletState.network || DEFAULT_NETWORK;
+
+    // Query XRPL for recent PaymentChannelClaim or Payment transactions involving this token
+    const allTrades = [];
+    const maxFetch = 100; // Transactions to scan
+
+    const result = await requestXrplCommand(network, {
+      command: "account_tx",
+      account: issuer,
+      limit: maxFetch,
+      ledger_index_min: -1,
+      ledger_index_max: -1,
+      descending: true
+    });
+
+    const txs = result?.transactions || [];
+    console.log(`[DEX] Fetched ${txs.length} transactions from issuer ${issuer}`);
+
+    for (const tx of txs) {
+      const meta = tx.meta || {};
+      if (meta.TransactionResult !== "tesSUCCESS") continue;
+
+      const txn = tx.tx || {};
+      if (txn.TransactionType !== "Payment") continue;
+
+      // Extract trade information from affected nodes
+      const nodes = meta.AffectedNodes || [];
+      let xrpAmount = 0;
+      let tokenAmount = 0;
+
+      for (const node of nodes) {
+        const obj = node.CreatedNode?.NewFields || node.ModifiedNode?.FinalFields || {};
+        if (obj.Balance && typeof obj.Balance === "object" && obj.Balance.currency === rawCurrency) {
+          tokenAmount = Number(obj.Balance.value) || 0;
+        }
+        if (obj.Balance && typeof obj.Balance === "string") {
+          xrpAmount = Number(obj.Balance) / 1e6 || 0;
+        }
+      }
+
+      if (xrpAmount > 0 && tokenAmount > 0) {
+        allTrades.push({
+          t: (txn.date || 0) * 1000,
+          price: xrpAmount / tokenAmount,
+          volume: Math.abs(tokenAmount)
+        });
+      }
+    }
+
+    if (!allTrades.length) return [];
+    console.log(`[DEX] XRPL ledger: ${allTrades.length} trades extracted`);
+
+    const points = allTrades.sort((a, b) => a.t - b.t);
+    return tradePointsToCandles(points, tf);
+  } catch (err) {
+    console.warn(`[DEX] XRPL ledger history failed: ${err?.message}`);
+    return [];
+  }
+}
+
 async function fetchDexChartData(token, tf = "1D") {
   const { krakenInterval, limit } = dexTfParams(tf);
 
@@ -7662,7 +7728,19 @@ async function fetchDexChartData(token, tf = "1D") {
     }
   }
 
-  // Source 5 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
+  // Source 5 — XRPL ledger transaction history (direct on-chain data)
+  try {
+    const candles = await fetchXrplDexHistory(token, tf);
+    if (candles.length) {
+      console.log(`[DEX] ✓ XRPL ledger tx history: ${candles.length} candles`);
+      return { candles, label: `${chartLabel} · XRPL ledger history`, source: "XRPL tx history" };
+    }
+    console.log(`[DEX] ✗ XRPL ledger tx history: no trades`);
+  } catch (err) {
+    console.warn(`[DEX] ✗ XRPL ledger tx history: ${err?.message}`);
+  }
+
+  // Source 6 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
   const livePrice = await fetchTokenSpotFromXrpl(token);
   if (livePrice > 0) {
     const now = Date.now();
