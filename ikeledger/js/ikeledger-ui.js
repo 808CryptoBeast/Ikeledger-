@@ -7310,12 +7310,12 @@ function dexTfParams(tf) {
 }
 
 function xrplToOhlcParams(tf) {
-  if (tf === "5M")  return { interval: "5m",  limit: 500, aggregateMs: 0 };
-  if (tf === "15M") return { interval: "15m", limit: 500, aggregateMs: 0 };
-  if (tf === "1H")  return { interval: "1h",  limit: 720, aggregateMs: 0 };
-  if (tf === "4H")  return { interval: "4h",  limit: 500, aggregateMs: 0 };
-  if (tf === "1W")  return { interval: "1d",  limit: 730, aggregateMs: 7 * 86_400_000 };
-  return                   { interval: "1d",  limit: 730, aggregateMs: 0 };
+  if (tf === "5M")  return { interval: "5m",  limit: 1000, aggregateMs: 0 };
+  if (tf === "15M") return { interval: "15m", limit: 1000, aggregateMs: 0 };
+  if (tf === "1H")  return { interval: "1h",  limit: 2000, aggregateMs: 0 };
+  if (tf === "4H")  return { interval: "4h",  limit: 1000, aggregateMs: 0 };
+  if (tf === "1W")  return { interval: "1d",  limit: 2000, aggregateMs: 7 * 86_400_000 };
+  return                   { interval: "1d",  limit: 2000, aggregateMs: 0 };
 }
 
 function tokenXrplToMd5(token = {}) {
@@ -7492,21 +7492,25 @@ async function fetchXrplToHistoryCandles(token, tf) {
 
   for (let page = 0; page < maxPages; page++) {
     try {
-      const url = `${XRPL_TO_HISTORY_BASE_URL}?md5=${encodeURIComponent(md5)}&limit=${pageLimit}&offset=${page * pageLimit}`;
+      const url = `${XRPL_TO_HISTORY_BASE_URL}?md5=${encodeURIComponent(md5)}&limit=${pageLimit}&start=${page * pageLimit}`;
       const data = await fetchMarketJson(url);
       const trades = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
 
       if (!trades.length) break; // No more data
       allTrades.push(...trades);
+      console.log(`[DEX] History page ${page + 1}: ${trades.length} trades`);
 
       if (trades.length < pageLimit) break; // Got less than a page, so we're at the end
     } catch (err) {
       if (page === 0) throw err; // Fail on first page
+      console.warn(`[DEX] History pagination stopped at page ${page}: ${err?.message}`);
       break; // Silently stop pagination on subsequent pages
     }
   }
 
+  console.log(`[DEX] Total trades fetched: ${allTrades.length}`);
   const points = allTrades.map((trade) => historyTradeToPoint(trade, token)).filter(Boolean);
+  console.log(`[DEX] Valid trade points: ${points.length}`);
   return tradePointsToCandles(points, tf);
 }
 
