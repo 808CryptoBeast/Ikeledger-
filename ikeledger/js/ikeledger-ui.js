@@ -7300,13 +7300,14 @@ function pctDistance(value, base) {
 // ── Trading chart — data fetching ─────────────────────────────────
 
 function dexTfParams(tf) {
-  // Each timeframe = candle period (TradingView convention), limit = bars fetched
-  if (tf === "5M")  return { krakenInterval: 5,     xrplPeriod: "5m",  limit: 500 };  // ~40h
-  if (tf === "15M") return { krakenInterval: 15,    xrplPeriod: "15m", limit: 500 };  // ~5 days
-  if (tf === "1H")  return { krakenInterval: 60,    xrplPeriod: "1h",  limit: 720 };  // 30 days
-  if (tf === "4H")  return { krakenInterval: 240,   xrplPeriod: "4h",  limit: 500 };  // ~80 days
-  if (tf === "1W")  return { krakenInterval: 10080, xrplPeriod: "1w",  limit: 200 };  // ~4 years
-  return                   { krakenInterval: 1440,  xrplPeriod: "1d",  limit: 730 };  // 1D: ~2 years
+  // Each timeframe = candle period, limit = bars fetched
+  // Increased limits to capture full history for tokens launched months/years ago
+  if (tf === "5M")  return { krakenInterval: 5,     xrplPeriod: "5m",  limit: 500 };   // ~40h
+  if (tf === "15M") return { krakenInterval: 15,    xrplPeriod: "15m", limit: 500 };   // ~5 days
+  if (tf === "1H")  return { krakenInterval: 60,    xrplPeriod: "1h",  limit: 1000 };  // ~40 days
+  if (tf === "4H")  return { krakenInterval: 240,   xrplPeriod: "4h",  limit: 1000 };  // ~165 days
+  if (tf === "1W")  return { krakenInterval: 10080, xrplPeriod: "1w",  limit: 500 };   // ~9.5 years
+  return                   { krakenInterval: 1440,  xrplPeriod: "1d",  limit: 1500 };  // 1D: ~4 years
 }
 
 function xrplToOhlcParams(tf) {
@@ -7524,12 +7525,13 @@ function sologenicPeriod(tf) {
 
 function sologenicFromTs(tf) {
   const now = Math.floor(Date.now() / 1000);
-  if (tf === "5M")  return now - 6   * 3600;
-  if (tf === "15M") return now - 24  * 3600;
-  if (tf === "1H")  return now - 7   * 86400;
-  if (tf === "4H")  return now - 30  * 86400;
-  if (tf === "1W")  return now - 365 * 86400;
-  return              now - 90  * 86400; // 1D
+  // Extended history windows to capture full token launch history
+  if (tf === "5M")  return now - 6   * 3600;        // 6 hours
+  if (tf === "15M") return now - 24  * 3600;        // 1 day
+  if (tf === "1H")  return now - 30  * 86400;       // 30 days
+  if (tf === "4H")  return now - 180 * 86400;       // 6 months
+  if (tf === "1W")  return now - 730 * 86400;       // 2 years
+  return              now - 1095 * 86400;           // 1D: 3 years (covers most token launches)
 }
 
 async function fetchSologenicOhlcv(token, tf) {
