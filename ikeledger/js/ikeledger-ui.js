@@ -7144,8 +7144,25 @@ function renderDexUnderConstruction() {
   if (refs.dexPagePanel) {
     refs.dexPagePanel.innerHTML = `
       <section class="dex-construction-panel" aria-label="DEX under construction">
-        <div class="dex-construction-panel__badge">Under Construction</div>
-        <h3>DEX Access Is Temporarily Paused</h3>
+        <img
+          class="dex-construction-panel__banner"
+          src="./ikeledger/assets/images/badges/uder-construction-banner.png"
+          alt="DEX under construction"
+          loading="lazy"
+        />
+        <div class="dex-construction-panel__headline">
+          <img
+            class="dex-construction-panel__icon"
+            src="./ikeledger/assets/images/badges/under-constuction.png"
+            alt=""
+            loading="lazy"
+            aria-hidden="true"
+          />
+          <div>
+            <div class="dex-construction-panel__badge">Under Construction</div>
+            <h3>DEX Access Is Temporarily Paused</h3>
+          </div>
+        </div>
         <p>
           IkeLedger's DEX workspace is being rebuilt so token lookup, order-book depth,
           chart history, risk checks, and Xumm signing work together without overloading
