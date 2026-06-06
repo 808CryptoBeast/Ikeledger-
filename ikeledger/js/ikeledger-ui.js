@@ -42,6 +42,7 @@ import {
 } from "./ikeledger-supabase.js";
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
+const DEX_UNDER_CONSTRUCTION = true;
 const MARKET_RESULT_LIMIT = 200;
 const MARKET_PAGE_SIZE    = 100;
 const MARKET_VISIBLE_STEP = 50;
@@ -1202,6 +1203,29 @@ function clearNftOfferState() {
   state.nftOfferLoading.clear();
 }
 
+function stopMarketOverviewTimer() {
+  if (!state.marketTimer) return;
+  clearInterval(state.marketTimer);
+  state.marketTimer = null;
+}
+
+function startMarketOverviewTimer() {
+  if (state.activePage === "dex" || state.marketTimer) return;
+  state.marketTimer = setInterval(() => {
+    if (state.activePage !== "dex") {
+      void renderMarketOverview(true, { forceChart: false });
+    }
+  }, 15000);
+}
+
+function syncMarketOverviewTimer() {
+  if (state.activePage === "dex") {
+    stopMarketOverviewTimer();
+    return;
+  }
+  startMarketOverviewTimer();
+}
+
 function setActivePage(page) {
   if (page === "nft-listings") {
     page = "nfts";
@@ -1221,6 +1245,7 @@ function setActivePage(page) {
   }
 
   state.activePage = page;
+  syncMarketOverviewTimer();
 
   refs.pageSections.forEach((section) => {
     section.classList.toggle("active", section.dataset.page === page);
@@ -1251,9 +1276,7 @@ function setActivePage(page) {
   }
 
   if (page === "dex") {
-    void loadTopIssuedAssets();
-    void loadDexOrderBook();
-    void loadDexChart();
+    renderDex();
   }
 
   if (page === "dashboard" || page === "amm") {
@@ -1288,9 +1311,27 @@ const _mjCache      = new Map(); // url → { data, ts }
 const _mjInFlight   = new Map(); // url → Promise
 const _domainTail   = new Map(); // hostname → tail of sequential queue (prevents burst)
 const _urlSkipUntil = new Map(); // url → timestamp: skip this exact URL until then (after 429)
+const _sourceSkipUntil = new Map(); // source key → timestamp
 const _cgIdCache    = new Map(); // symbol_lower → coingecko_id | null
+const _dexLedgerHistoryCache = new Map(); // network:issuer:currency → { points, ts, pageCount }
 const MJ_TTL = 120_000;          // 2-minute response cache
 const MARKET_FETCH_TIMEOUT_MS = 12_000;
+const DEX_LEDGER_HISTORY_CACHE_MS = 10 * 60 * 1000;
+const DEX_LEDGER_PAGE_DELAY_MS = 120;
+const DEX_LEDGER_INTERACTIVE_MAX_PAGES = 18;
+const DEX_LEDGER_INTERACTIVE_MAX_MS = 10_000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldSkipSource(key) {
+  return Date.now() < (_sourceSkipUntil.get(key) || 0);
+}
+
+function skipSourceFor(key, ms) {
+  _sourceSkipUntil.set(key, Date.now() + ms);
+}
 
 // Serialize requests to each host to prevent concurrent burst firing
 function _queuedFetch(url, fn) {
@@ -6676,6 +6717,10 @@ function applyDexToken(token) {
 }
 
 function selectNativeXrpDexChart() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   state.dex.selectedTokenId = "";
   state.dex.currency = "";
   state.dex.rawCurrency = "";
@@ -6694,6 +6739,10 @@ function selectNativeXrpDexChart() {
 }
 
 function selectDexToken(token, options = {}) {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   const merged = mergeDexToken(token);
   if (!merged) return;
   state.dex.selectedTokenId = merged.id;
@@ -6870,6 +6919,10 @@ async function fetchXrpScanDexLookup(query) {
 }
 
 async function onDexLookup() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   const query = refs.dexLookupInput?.value.trim() || "";
   const lowered = query.toLowerCase();
 
@@ -7046,6 +7099,111 @@ function renderDexTxPreview(preview, extraHtml = "") {
     </div>
     ${extraHtml}
   `;
+}
+
+function setDexControlsDisabled(disabled = false) {
+  [
+    refs.dexLookupInput,
+    refs.dexLookupButton,
+    refs.dexAssetSelect,
+    refs.dexSideSelect,
+    refs.dexCurrencyInput,
+    refs.dexIssuerInput,
+    refs.dexAmountInput,
+    refs.dexPriceInput,
+    refs.dexOrderStyleSelect,
+    refs.dexSlippageInput,
+    refs.dexStopLossInput,
+    refs.dexTakeProfitInput,
+    refs.dexAnalyzeButton,
+    refs.dexSignOfferButton,
+    refs.dexRefreshBookButton
+  ].forEach((el) => {
+    if (el) el.disabled = disabled;
+  });
+}
+
+function renderDexUnderConstruction() {
+  setDexControlsDisabled(true);
+  state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
+  state.dex.chart = {
+    ...state.dex.chart,
+    loading: false,
+    error: "DEX chart pipeline is under construction.",
+    status: "",
+    candles: [],
+    source: "Paused"
+  };
+  state.dex.latestTx = null;
+
+  if (refs.dexAccessBadge) {
+    refs.dexAccessBadge.textContent = "Under construction";
+    refs.dexAccessBadge.classList.remove("chip-safe");
+  }
+
+  if (refs.dexPagePanel) {
+    refs.dexPagePanel.innerHTML = `
+      <section class="dex-construction-panel" aria-label="DEX under construction">
+        <div class="dex-construction-panel__badge">Under Construction</div>
+        <h3>DEX Access Is Temporarily Paused</h3>
+        <p>
+          IkeLedger's DEX workspace is being rebuilt so token lookup, order-book depth,
+          chart history, risk checks, and Xumm signing work together without overloading
+          public XRPL or market-data APIs.
+        </p>
+        <div class="dex-construction-grid">
+          <article>
+            <h4>What the XRPL DEX is</h4>
+            <p>
+              The XRP Ledger has a native decentralized exchange built into the ledger itself.
+              Instead of sending orders to a centralized exchange, users create on-chain
+              <strong>OfferCreate</strong> transactions to trade XRP and issued tokens through
+              ledger order books and, where available, AMM liquidity.
+            </p>
+          </article>
+          <article>
+            <h4>What would make this interactive</h4>
+            <ul>
+              <li>Read-only token search with issuer verification and trust-line warnings.</li>
+              <li>Order-book depth, spread, and AMM liquidity previews before any trade action.</li>
+              <li>Chart history from a dedicated indexer instead of heavy browser ledger crawls.</li>
+              <li>A guided trade ticket that separates analysis, preview, and wallet signing.</li>
+              <li>Paper-trade mode so learners can practice without touching real assets.</li>
+            </ul>
+          </article>
+        </div>
+        <p class="dex-construction-panel__note">
+          Live DEX API calls are disabled on this page for now. Wallet, Tokens, AMM, NFTs,
+          and Account Intelligence can still use their own data flows.
+        </p>
+      </section>
+    `;
+  }
+
+  if (refs.dexStatsPanel) {
+    refs.dexStatsPanel.innerHTML = `<p class="muted">DEX order-book calls are paused while this workspace is rebuilt.</p>`;
+  }
+  if (refs.dexOrderBookPanel) {
+    refs.dexOrderBookPanel.innerHTML = `<p class="muted">Order book preview disabled during construction.</p>`;
+  }
+  if (refs.dexBookUpdated) refs.dexBookUpdated.textContent = "Paused";
+  if (refs.dexMarkPrice) refs.dexMarkPrice.textContent = "-";
+  if (refs.dexSpread) refs.dexSpread.textContent = "-";
+  if (refs.dexVolume) refs.dexVolume.textContent = "-";
+  if (refs.dexDepth) refs.dexDepth.textContent = "-";
+  if (refs.dexLookupResults) refs.dexLookupResults.innerHTML = `<p class="muted">Token lookup is paused for DEX construction mode.</p>`;
+  if (refs.dexRiskRewardPanel) refs.dexRiskRewardPanel.innerHTML = `<p class="muted">Risk/reward tools will return with the rebuilt DEX workflow.</p>`;
+  if (refs.dexInsightPanel) refs.dexInsightPanel.innerHTML = `<p class="muted">Chart intelligence is paused until the DEX data pipeline is rebuilt.</p>`;
+  if (refs.dexExecutionPlanPanel) refs.dexExecutionPlanPanel.innerHTML = `<p class="muted">Execution planning is paused. No DEX signing requests will be created.</p>`;
+  if (refs.dexSafetyPanel) {
+    refs.dexSafetyPanel.innerHTML = `
+      <p class="warning-inline">DEX trading involves issuer risk, liquidity risk, spread, slippage, and irreversible on-chain transactions.</p>
+      <p class="muted">The rebuilt DEX should keep these checks visible before any signing flow opens.</p>
+    `;
+  }
+  renderDexTxPreview(null);
+  setDexTicketStatus("DEX tools are under construction. Live DEX API calls are disabled for now.", true);
+  drawDexAnalysisChart();
 }
 
 function renderDexAccessPanel() {
@@ -7319,6 +7477,12 @@ function xrplToOhlcParams(tf) {
   return                   { interval: "1d",  limit: 2000, aggregateMs: 0 };
 }
 
+function minUsefulDexCandles(tf) {
+  if (tf === "5M" || tf === "15M") return 30;
+  if (tf === "1H" || tf === "4H") return 24;
+  return 20;
+}
+
 function tokenXrplToMd5(token = {}) {
   const md5 = String(token.md5 || token._id || "").trim();
   if (/^[a-f0-9]{32}$/i.test(md5)) return md5;
@@ -7373,17 +7537,38 @@ async function resolveXrplToTokenMetadata(token = {}) {
 
 function normalizeOhlcRows(rows = []) {
   return rows
-    .filter((row) => Array.isArray(row) && row.length >= 5)
-    .map(([t, o, h, l, c, v = 0]) => ({
-      t: Number(t) || 0,
-      o: Number(o) || 0,
-      h: Number(h) || 0,
-      l: Number(l) || 0,
-      c: Number(c) || 0,
-      v: Number(v) || 0
-    }))
+    .map((row) => {
+      if (Array.isArray(row) && row.length >= 5) {
+        const [t, o, h, l, c, v = 0] = row;
+        return { t: normalizeMarketTimestamp(t), o: Number(o) || 0, h: Number(h) || 0, l: Number(l) || 0, c: Number(c) || 0, v: Number(v) || 0 };
+      }
+
+      if (row && typeof row === "object") {
+        const t = row.t ?? row.time ?? row.timestamp ?? row.date ?? row.dateon ?? row.close_time ?? row.closeTime;
+        const o = row.o ?? row.open;
+        const h = row.h ?? row.high;
+        const l = row.l ?? row.low;
+        const c = row.c ?? row.close ?? row.price;
+        const v = row.v ?? row.volume ?? row.vol ?? row.baseVolume ?? 0;
+        return { t: normalizeMarketTimestamp(t), o: Number(o) || 0, h: Number(h) || 0, l: Number(l) || 0, c: Number(c) || 0, v: Number(v) || 0 };
+      }
+
+      return null;
+    })
+    .filter(Boolean)
     .filter((candle) => candle.t > 0 && candle.c > 0 && candle.h > 0 && candle.l > 0)
     .sort((a, b) => a.t - b.t);
+}
+
+function normalizeMarketTimestamp(value) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string" && Number.isNaN(Number(value))) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  const n = Number(value) || 0;
+  if (!n) return 0;
+  return n > 1e12 ? n : n * 1000;
 }
 
 function aggregateCandles(candles = [], bucketMs = 0) {
@@ -7459,7 +7644,7 @@ function tradeAssetMatchesToken(asset = {}, token = {}) {
 function historyTradeToPoint(trade = {}, token = {}) {
   const paid = trade.paid || {};
   const got = trade.got || {};
-  const time = toFiniteNumber(trade.time, 0);
+  const time = normalizeMarketTimestamp(trade.time ?? trade.t ?? trade.timestamp ?? trade.date ?? trade.dateon);
   if (!time) return null;
 
   let price = Number.NaN;
@@ -7504,6 +7689,106 @@ function tradePointsToCandles(points = [], tf = "1D") {
     candle.v += point.volume || 0;
   });
   return [...buckets.values()].sort((a, b) => a.t - b.t);
+}
+
+function xrplMetaNodes(meta = {}) {
+  return Array.isArray(meta.AffectedNodes) ? meta.AffectedNodes : [];
+}
+
+function nodePayload(node = {}) {
+  return node.ModifiedNode || node.DeletedNode || node.CreatedNode || null;
+}
+
+function offerFieldsFromPayload(payload = {}) {
+  return payload.FinalFields || payload.NewFields || {};
+}
+
+function offerPreviousFieldsFromPayload(payload = {}) {
+  return payload.PreviousFields || {};
+}
+
+function amountAssetValue(amount) {
+  if (typeof amount === "string") {
+    const drops = Number(amount);
+    return Number.isFinite(drops) ? drops / 1_000_000 : Number.NaN;
+  }
+  if (amount && typeof amount === "object") {
+    return toFiniteNumber(amount.value, Number.NaN);
+  }
+  return Number.NaN;
+}
+
+function amountAssetIsXrp(amount) {
+  return typeof amount === "string";
+}
+
+function amountAssetMatchesToken(amount, token = {}) {
+  if (!amount || typeof amount !== "object") return false;
+  return tradeAssetMatchesToken(amount, token);
+}
+
+function offerDelta(previous, finalValue) {
+  const before = amountAssetValue(previous);
+  const after = amountAssetValue(finalValue);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return Number.NaN;
+  return Math.abs(before - after);
+}
+
+function zeroLikeAmount(amount) {
+  if (typeof amount === "string") return "0";
+  if (amount && typeof amount === "object") {
+    return { ...amount, value: "0" };
+  }
+  return 0;
+}
+
+function extractDexTradesFromOfferMetadata(txItem = {}, token = {}) {
+  const meta = txItem.meta || txItem.metaData || {};
+  const tx = txItem.tx || txItem.tx_json || {};
+  if (meta.TransactionResult && meta.TransactionResult !== "tesSUCCESS") return [];
+
+  const t = normalizeMarketTimestamp(tx.date ? (tx.date + 946684800) : tx.close_time_iso || txItem.close_time_iso || txItem.date);
+  if (!t) return [];
+
+  const trades = [];
+  xrplMetaNodes(meta).forEach((node) => {
+    const payload = nodePayload(node);
+    if (!payload || payload.LedgerEntryType !== "Offer") return;
+    if (node.DeletedNode && tx.TransactionType === "OfferCancel") return;
+
+    const finalFields = offerFieldsFromPayload(payload);
+    const previousFields = offerPreviousFieldsFromPayload(payload);
+    if (!finalFields.TakerGets || !finalFields.TakerPays) return;
+
+    const prevGets = previousFields.TakerGets || (node.DeletedNode ? finalFields.TakerGets : null);
+    const prevPays = previousFields.TakerPays || (node.DeletedNode ? finalFields.TakerPays : null);
+    const finalGets = finalFields.TakerGets;
+    const finalPays = finalFields.TakerPays;
+    const nextGets = node.DeletedNode && !previousFields.TakerGets ? zeroLikeAmount(finalGets) : finalGets;
+    const nextPays = node.DeletedNode && !previousFields.TakerPays ? zeroLikeAmount(finalPays) : finalPays;
+    if (!prevGets || !prevPays) return;
+
+    let xrpDelta = Number.NaN;
+    let tokenDelta = Number.NaN;
+
+    if (amountAssetIsXrp(prevGets) && amountAssetMatchesToken(prevPays, token)) {
+      xrpDelta = offerDelta(prevGets, nextGets);
+      tokenDelta = offerDelta(prevPays, nextPays);
+    } else if (amountAssetIsXrp(prevPays) && amountAssetMatchesToken(prevGets, token)) {
+      xrpDelta = offerDelta(prevPays, nextPays);
+      tokenDelta = offerDelta(prevGets, nextGets);
+    }
+
+    if (xrpDelta > 0 && tokenDelta > 0) {
+      trades.push({
+        t,
+        price: xrpDelta / tokenDelta,
+        volume: tokenDelta
+      });
+    }
+  });
+
+  return trades;
 }
 
 async function fetchXrplToHistoryCandles(token, tf) {
@@ -7585,15 +7870,23 @@ async function fetchXrplDexHistory(token, tf) {
   try {
     const walletState = getWalletState();
     const network = walletState.network || DEFAULT_NETWORK;
+    const cacheKey = `${network}:${issuer}:${rawCurrency}`;
+    const cached = _dexLedgerHistoryCache.get(cacheKey);
+    if (cached?.points?.length && Date.now() - cached.ts < DEX_LEDGER_HISTORY_CACHE_MS) {
+      console.log(`[DEX] Ledger cache hit: ${cached.points.length} trades from ${cached.pageCount || "cached"} pages`);
+      return tradePointsToCandles(cached.points.slice(), tf);
+    }
 
     console.log(`[DEX] Querying XRPL ledger for ${rawCurrency}/${issuer} history...`);
 
     const allTrades = [];
     let marker = undefined;
     let pageCount = 0;
-    const maxPages = 50; // Fetch up to 50 pages (~5000 transactions)
+    let serverLoadRetries = 0;
+    const startedAt = Date.now();
+    const maxPages = DEX_LEDGER_INTERACTIVE_MAX_PAGES;
 
-    // Fetch account_tx for the issuer to find all transactions
+    // Fetch account_tx for the issuer and reconstruct DEX fills from tx metadata.
     while (pageCount < maxPages) {
       try {
         const params = {
@@ -7602,7 +7895,7 @@ async function fetchXrplDexHistory(token, tf) {
           limit: 100, // Max allowed per page
           ledger_index_min: -1,
           ledger_index_max: -1,
-          descending: true
+          forward: false
         };
 
         if (marker) params.marker = marker;
@@ -7616,20 +7909,28 @@ async function fetchXrplDexHistory(token, tf) {
         }
 
         pageCount++;
+        serverLoadRetries = 0;
         console.log(`[DEX] Ledger page ${pageCount}: ${txs.length} transactions`);
 
         // Extract trades from transactions
         for (const tx of txs) {
-          const meta = tx.meta || {};
+          const meta = tx.meta || tx.metaData || {};
           if (meta.TransactionResult !== "tesSUCCESS") continue;
 
-          const txn = tx.tx || {};
-          const txTime = (txn.date || 0) * 1000;
+          const txn = tx.tx || tx.tx_json || {};
+          const txTime = normalizeMarketTimestamp(txn.date ? (txn.date + 946684800) : tx.close_time_iso || tx.date);
           if (!txTime) continue;
+
+          const metadataTrades = extractDexTradesFromOfferMetadata(tx, token);
+          if (metadataTrades.length) {
+            allTrades.push(...metadataTrades);
+            continue;
+          }
 
           let foundTrade = false;
 
-          // Type 1: OfferCreate — look for XRP/token pair matching
+          // Fallback: OfferCreate intent. This is less accurate than metadata fills,
+          // but gives a last-resort point when the API omits offer deltas.
           if (txn.TransactionType === "OfferCreate") {
             const taker_gets = txn.TakerGets;
             const taker_pays = txn.TakerPays;
@@ -7704,7 +8005,22 @@ async function fetchXrplDexHistory(token, tf) {
           console.log(`[DEX] Ledger: reached end (no marker) after ${pageCount} pages, ${allTrades.length} trades`);
           break;
         }
+
+        if (Date.now() - startedAt >= DEX_LEDGER_INTERACTIVE_MAX_MS) {
+          console.log(`[DEX] Ledger: interactive budget reached after ${pageCount} pages, ${allTrades.length} trades`);
+          break;
+        }
+
+        await sleep(DEX_LEDGER_PAGE_DELAY_MS);
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err || "");
+        if (/too much load|slow down|rate|busy/i.test(message) && serverLoadRetries < 3) {
+          serverLoadRetries += 1;
+          const waitMs = 1500 * serverLoadRetries;
+          console.warn(`[DEX] Ledger page ${pageCount + 1} throttled; retrying in ${waitMs}ms (${serverLoadRetries}/3).`);
+          await sleep(waitMs);
+          continue;
+        }
         console.warn(`[DEX] Ledger page ${pageCount + 1} error: ${err?.message}`);
         break;
       }
@@ -7722,6 +8038,13 @@ async function fetchXrplDexHistory(token, tf) {
     console.log(`[DEX] Ledger: ${validTrades.length} trades with valid prices`);
 
     const points = validTrades.sort((a, b) => a.t - b.t);
+    if (points.length) {
+      _dexLedgerHistoryCache.set(cacheKey, {
+        points: points.slice(),
+        ts: Date.now(),
+        pageCount
+      });
+    }
     const candles = tradePointsToCandles(points, tf);
     console.log(`[DEX] Ledger: ${candles.length} candles aggregated`);
 
@@ -7734,6 +8057,15 @@ async function fetchXrplDexHistory(token, tf) {
 
 async function fetchDexChartData(token, tf = "1D") {
   const { krakenInterval, limit } = dexTfParams(tf);
+  const minCandles = minUsefulDexCandles(tf);
+  let bestThinResult = null;
+
+  const rememberThinResult = (candles, label, source) => {
+    if (!Array.isArray(candles) || !candles.length) return;
+    if (!bestThinResult || candles.length > bestThinResult.candles.length) {
+      bestThinResult = { candles, label, source };
+    }
+  };
 
   if (!token) {
     // XRP/USD — Kraken public API (CORS-friendly, XRP is native so not on xrpl.to)
@@ -7750,40 +8082,81 @@ async function fetchDexChartData(token, tf = "1D") {
   // Source 1 — XRPL.to indexed OHLCV by token md5. This is the broadest XRPL-native chart source.
   try {
     const candles = await fetchXrplToOhlc(token, tf);
-    if (candles.length) {
+    if (candles.length >= minCandles) {
       console.log(`[DEX] ✓ XRPL.to OHLC: ${candles.length} candles`);
       return { candles, label: `${chartLabel} · XRPL.to OHLC`, source: "XRPL.to OHLC" };
     }
-    console.log(`[DEX] ✗ XRPL.to OHLC: no data`);
+    rememberThinResult(candles, `${chartLabel} · XRPL.to OHLC`, "XRPL.to OHLC");
+    if (candles.length) {
+      console.log(`[DEX] ~ XRPL.to OHLC thin: ${candles.length} candles; trying deeper sources`);
+    } else {
+      console.log(`[DEX] ✗ XRPL.to OHLC: no data`);
+    }
   } catch (err) {
     console.warn(`[DEX] ✗ XRPL.to OHLC: ${err?.message}`);
   }
 
   // Source 2 — XRPL.to trade history, aggregated locally into candles.
-  try {
-    const candles = await fetchXrplToHistoryCandles(token, tf);
-    if (candles.length) {
-      console.log(`[DEX] ✓ XRPL.to history: ${candles.length} candles from trades`);
-      return { candles, label: `${chartLabel} · XRPL.to trades`, source: "XRPL.to history" };
+  const xrplToHistorySkipKey = `xrplto-history:${tokenXrplToMd5(token) || issuer}:${tf}`;
+  if (shouldSkipSource(xrplToHistorySkipKey)) {
+    console.log("[DEX] XRPL.to history temporarily skipped after rate limit.");
+  } else {
+    try {
+      const candles = await fetchXrplToHistoryCandles(token, tf);
+      if (candles.length >= minCandles) {
+        console.log(`[DEX] ✓ XRPL.to history: ${candles.length} candles from trades`);
+        return { candles, label: `${chartLabel} · XRPL.to trades`, source: "XRPL.to history" };
+      }
+      rememberThinResult(candles, `${chartLabel} · XRPL.to trades`, "XRPL.to history");
+      if (candles.length) {
+        console.log(`[DEX] ~ XRPL.to history thin: ${candles.length} candles; trying deeper sources`);
+      } else {
+        console.log(`[DEX] ✗ XRPL.to history: no trades`);
+      }
+    } catch (err) {
+      const status = err?.status;
+      if (status === 429 || /429|rate/i.test(err?.message || "")) {
+        skipSourceFor(xrplToHistorySkipKey, 60_000);
+      }
+      console.warn(`[DEX] ✗ XRPL.to history: ${err?.message}`);
     }
-    console.log(`[DEX] ✗ XRPL.to history: no trades`);
-  } catch (err) {
-    console.warn(`[DEX] ✗ XRPL.to history: ${err?.message}`);
   }
 
-  // Source 3 — Sologenic DEX OHLCV (XRPL-native prices in XRP)
+  // Source 3 — XRPL ledger transaction history (direct DEX metadata reconstruction)
+  try {
+    const candles = await fetchXrplDexHistory(token, tf);
+    if (candles.length >= minCandles) {
+      console.log(`[DEX] ✓ XRPL ledger tx history: ${candles.length} candles`);
+      return { candles, label: `${chartLabel} · XRPL ledger history`, source: "XRPL tx history" };
+    }
+    rememberThinResult(candles, `${chartLabel} · XRPL ledger history`, "XRPL tx history");
+    if (candles.length) {
+      console.log(`[DEX] ~ XRPL ledger tx history thin: ${candles.length} candles`);
+    } else {
+      console.log(`[DEX] ✗ XRPL ledger tx history: no trades`);
+    }
+  } catch (err) {
+    console.warn(`[DEX] ✗ XRPL ledger tx history: ${err?.message}`);
+  }
+
+  // Source 4 — Sologenic DEX OHLCV (XRPL-native prices in XRP)
   try {
     const candles = await fetchSologenicOhlcv(token, tf);
-    if (candles.length) {
+    if (candles.length >= minCandles) {
       console.log(`[DEX] ✓ Sologenic: ${candles.length} candles`);
       return { candles, label: `${chartLabel} · Sologenic`, source: "Sologenic OHLC" };
     }
-    console.log(`[DEX] ✗ Sologenic: no data`);
+    rememberThinResult(candles, `${chartLabel} · Sologenic`, "Sologenic OHLC");
+    if (candles.length) {
+      console.log(`[DEX] ~ Sologenic thin: ${candles.length} candles; trying deeper sources`);
+    } else {
+      console.log(`[DEX] ✗ Sologenic: no data`);
+    }
   } catch (err) {
     console.warn(`[DEX] ✗ Sologenic: ${err?.message}`);
   }
 
-  // Source 4 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
+  // Source 5 — CoinGecko OHLCV, converted from USD to XRP using Kraken XRP/USD history
   const cgSymbol = symbol || currency;
   if (cgSymbol) {
     try {
@@ -7821,20 +8194,24 @@ async function fetchDexChartData(token, tf = "1D") {
                   if (!xrp || xrp <= 0) return null;
                   return { t: c.t, o: c.o / xrp, h: c.h / xrp, l: c.l / xrp, c: c.c / xrp, v: c.v };
                 }).filter(Boolean);
-                if (converted.length) {
+                if (converted.length >= minCandles) {
                   console.log(`[DEX] ✓ CoinGecko+Kraken: ${converted.length} candles (converted USD→XRP)`);
                   return { candles: converted, label: `${chartLabel} · CoinGecko converted`, source: "CoinGecko + Kraken" };
                 }
+                rememberThinResult(converted, `${chartLabel} · CoinGecko converted`, "CoinGecko + Kraken");
               }
             } catch (err) {
               console.warn(`[DEX] ✗ CoinGecko conversion failed: ${err?.message}`);
             }
-            console.log(`[DEX] ✓ CoinGecko USD: ${usdCandles.length} candles (fallback, USD prices)`);
-            return {
-              candles: usdCandles,
-              label: `${symbol || currency} / USD — ${tf} · CoinGecko`,
-              source: "CoinGecko USD"
-            };
+            if (usdCandles.length >= minCandles) {
+              console.log(`[DEX] ✓ CoinGecko USD: ${usdCandles.length} candles (fallback, USD prices)`);
+              return {
+                candles: usdCandles,
+                label: `${symbol || currency} / USD — ${tf} · CoinGecko`,
+                source: "CoinGecko USD"
+              };
+            }
+            rememberThinResult(usdCandles, `${symbol || currency} / USD — ${tf} · CoinGecko`, "CoinGecko USD");
           }
         }
       }
@@ -7843,16 +8220,9 @@ async function fetchDexChartData(token, tf = "1D") {
     }
   }
 
-  // Source 5 — XRPL ledger transaction history (direct on-chain data)
-  try {
-    const candles = await fetchXrplDexHistory(token, tf);
-    if (candles.length) {
-      console.log(`[DEX] ✓ XRPL ledger tx history: ${candles.length} candles`);
-      return { candles, label: `${chartLabel} · XRPL ledger history`, source: "XRPL tx history" };
-    }
-    console.log(`[DEX] ✗ XRPL ledger tx history: no trades`);
-  } catch (err) {
-    console.warn(`[DEX] ✗ XRPL ledger tx history: ${err?.message}`);
+  if (bestThinResult) {
+    console.log(`[DEX] Returning best thin history: ${bestThinResult.candles.length} candles from ${bestThinResult.source}`);
+    return bestThinResult;
   }
 
   // Source 6 — XRPL ledger live price via amm_info + book_offers (no OHLCV history)
@@ -7916,6 +8286,10 @@ async function fetchTokenSpotFromXrpl(token) {
 let _dexChartLoadId = 0; // incremented on every load; stale results are discarded
 
 async function loadDexChart(force = false) {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   const token = getDexChartToken();
   const tokenId = token?.id || "";
   const tf = state.dex.chart.timeframe;
@@ -7938,6 +8312,7 @@ async function loadDexChart(force = false) {
   state.dex.chart.loading = true;
   state.dex.chart.error = "";
   state.dex.chart.source = "";
+  state.dex.chart.status = token ? "Checking indexed and native XRPL DEX history..." : "Loading XRP/USD market history...";
   state.dex.chart.cacheKey = cacheKey;
   state.dex.chart.tokenId = tokenId;
   drawDexAnalysisChart();
@@ -7952,16 +8327,18 @@ async function loadDexChart(force = false) {
       source,
       loading: false,
       error: "",
+      status: "",
       cacheKey,
       tokenId,
       fetchedAt: Date.now()
     };
-    dexChartBarsVis = Math.min(80, candles.length);
+    dexChartBarsVis = token ? (candles.length || 60) : Math.min(80, candles.length);
     dexChartOffset  = 0;
   } catch (err) {
     if (myId !== _dexChartLoadId) return;
     state.dex.chart.loading = false;
     state.dex.chart.error = err instanceof Error ? err.message : "Chart unavailable.";
+    state.dex.chart.status = "";
     state.dex.chart.candles = [];
     state.dex.chart.source = "";
   }
@@ -8276,7 +8653,7 @@ function drawDexAnalysisChart() {
   updateDexIndicatorsToolbar();
   updateDexChartLegend();
 
-  const { loading, error, label } = state.dex.chart;
+  const { loading, error, label, status } = state.dex.chart;
 
   // ── Viewport: slice candles based on zoom + pan ───────────────
   const allCandles = state.dex.chart.candles;
@@ -8361,7 +8738,9 @@ function drawDexAnalysisChart() {
     ctx.fillStyle = C.axisText;
     ctx.font = "13px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("Loading chart data…", (plotL + plotR) / 2, mainTop + MAIN / 2);
+    ctx.fillText(status || "Loading chart data...", (plotL + plotR) / 2, mainTop + MAIN / 2);
+    ctx.font = "10px system-ui";
+    ctx.fillText("Native ledger sampling is capped so the chart can render quickly.", (plotL + plotR) / 2, mainTop + MAIN / 2 + 18);
     return;
   }
   if (!candles.length) {
@@ -9147,6 +9526,12 @@ function renderDexInsightPanel() {
 }
 
 function renderDex() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
+
+  setDexControlsDisabled(false);
   populateDexAssetSelect();
   renderDexLookupResults();
   renderDexAccessPanel();
@@ -9162,6 +9547,10 @@ function renderDex() {
 }
 
 async function loadDexOrderBook(force = false) {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   const { currency, rawCurrency, issuer } = state.dex;
   if (!currency || !issuer) {
     if (force) setDexTicketStatus("Select an asset or enter currency and issuer before refreshing.", true);
@@ -9208,6 +9597,10 @@ async function loadDexOrderBook(force = false) {
 }
 
 function onDexAssetChange() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   const id = refs.dexAssetSelect?.value || "";
   state.dex.selectedTokenId = id;
   const token = getDexSelectedToken();
@@ -9223,6 +9616,10 @@ function onDexAssetChange() {
 }
 
 function onDexInputChange() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   syncDexStateFromInputs();
   state.dex.latestTx = null;
 
@@ -9248,6 +9645,10 @@ function onDexInputChange() {
 }
 
 function onDexAnalyze() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   syncDexStateFromInputs();
   const { currency, issuer, amount, price } = state.dex;
   if (!currency) { setDexTicketStatus("Enter a currency code.", true); return; }
@@ -9270,6 +9671,10 @@ function onDexAnalyze() {
 }
 
 async function onDexSignOffer() {
+  if (DEX_UNDER_CONSTRUCTION) {
+    renderDexUnderConstruction();
+    return;
+  }
   if (!hasSigningWallet()) {
     openAuthModal();
     return;
@@ -9445,7 +9850,9 @@ function renderAll() {
   renderSecurity();
   renderAvatarStatus(walletState);
   renderFundWalletCard(walletState);
-  void renderMarketOverview();
+  if (state.activePage !== "dex") {
+    void renderMarketOverview();
+  }
   renderExtendedPanels(walletState);
   renderDex();
 }
@@ -10840,12 +11247,7 @@ function boot() {
   closeAuthModal();
   closeSignGateModal();
   switchHeroTab("overview");
-  if (state.marketTimer) {
-    clearInterval(state.marketTimer);
-  }
-  state.marketTimer = setInterval(() => {
-    void renderMarketOverview(true, { forceChart: false });
-  }, 15000);
+  syncMarketOverviewTimer();
   renderAll();
   void resumeMobileXummReturn();
 }
