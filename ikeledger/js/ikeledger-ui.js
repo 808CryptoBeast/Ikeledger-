@@ -43,6 +43,7 @@ import {
 
 const BUILDER_ADMIN_CODE = "ike-builder-2026";
 const DEX_UNDER_CONSTRUCTION = true;
+const DEX_CONSTRUCTION_SHOW_XRP_CHART = true;
 const MARKET_RESULT_LIMIT = 200;
 const MARKET_PAGE_SIZE    = 100;
 const MARKET_VISIBLE_STEP = 50;
@@ -7123,16 +7124,27 @@ function setDexControlsDisabled(disabled = false) {
   });
 }
 
+function setDexConstructionMode(active = false) {
+  refs.dexPagePanel
+    ?.closest('[data-page="dex"]')
+    ?.classList.toggle("dex-construction-mode", active);
+}
+
 function renderDexUnderConstruction() {
+  setDexConstructionMode(true);
   setDexControlsDisabled(true);
+  state.dex.selectedTokenId = "";
+  state.dex.currency = "";
+  state.dex.rawCurrency = "";
+  state.dex.issuer = "";
   state.dex.orderBook = { loading: false, error: "", bids: [], asks: [], updatedAt: 0 };
   state.dex.chart = {
     ...state.dex.chart,
     loading: false,
-    error: "DEX chart pipeline is under construction.",
+    error: DEX_CONSTRUCTION_SHOW_XRP_CHART ? "" : "DEX chart pipeline is under construction.",
     status: "",
-    candles: [],
-    source: "Paused"
+    candles: DEX_CONSTRUCTION_SHOW_XRP_CHART ? state.dex.chart.candles : [],
+    source: DEX_CONSTRUCTION_SHOW_XRP_CHART ? state.dex.chart.source : "Paused"
   };
   state.dex.latestTx = null;
 
@@ -7189,9 +7201,31 @@ function renderDexUnderConstruction() {
             </ul>
           </article>
         </div>
+        <div class="dex-construction-roadmap" aria-label="What is coming to the educational DEX">
+          <article>
+            <span>01</span>
+            <h4>Read-Only DEX Explorer</h4>
+            <p>Inspect issuers, token pairs, spreads, AMM presence, trust-line signals, and risk notes without creating offers.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h4>Backend History Indexer</h4>
+            <p>Move issued-token candle building to a cached server route so the browser does not crawl public XRPL nodes.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h4>Paper Trade Simulator</h4>
+            <p>Let learners practice limit orders, slippage, position sizing, and exits before any wallet-signing flow returns.</p>
+          </article>
+        </div>
+        <div class="dex-education-strip">
+          <strong>Educational mode:</strong>
+          <span>No DEX signing, token history crawling, or order-book API calls are active here. The next version should teach how the DEX works before it lets anyone act.</span>
+        </div>
         <p class="dex-construction-panel__note">
-          Live DEX API calls are disabled on this page for now. Wallet, Tokens, AMM, NFTs,
-          and Account Intelligence can still use their own data flows.
+          Live DEX token, order-book, issuer-history, and signing calls are disabled on this
+          page for now. The XRP/USD chart remains live as a safe market reference while the
+          trading workflow is rebuilt.
         </p>
       </section>
     `;
@@ -7210,7 +7244,7 @@ function renderDexUnderConstruction() {
   if (refs.dexDepth) refs.dexDepth.textContent = "-";
   if (refs.dexLookupResults) refs.dexLookupResults.innerHTML = `<p class="muted">Token lookup is paused for DEX construction mode.</p>`;
   if (refs.dexRiskRewardPanel) refs.dexRiskRewardPanel.innerHTML = `<p class="muted">Risk/reward tools will return with the rebuilt DEX workflow.</p>`;
-  if (refs.dexInsightPanel) refs.dexInsightPanel.innerHTML = `<p class="muted">Chart intelligence is paused until the DEX data pipeline is rebuilt.</p>`;
+  if (refs.dexInsightPanel && !DEX_CONSTRUCTION_SHOW_XRP_CHART) refs.dexInsightPanel.innerHTML = `<p class="muted">Chart intelligence is paused until the DEX data pipeline is rebuilt.</p>`;
   if (refs.dexExecutionPlanPanel) refs.dexExecutionPlanPanel.innerHTML = `<p class="muted">Execution planning is paused. No DEX signing requests will be created.</p>`;
   if (refs.dexSafetyPanel) {
     refs.dexSafetyPanel.innerHTML = `
@@ -8303,11 +8337,11 @@ async function fetchTokenSpotFromXrpl(token) {
 let _dexChartLoadId = 0; // incremented on every load; stale results are discarded
 
 async function loadDexChart(force = false) {
-  if (DEX_UNDER_CONSTRUCTION) {
+  const token = getDexChartToken();
+  if (DEX_UNDER_CONSTRUCTION && !(DEX_CONSTRUCTION_SHOW_XRP_CHART && !token)) {
     renderDexUnderConstruction();
     return;
   }
-  const token = getDexChartToken();
   const tokenId = token?.id || "";
   const tf = state.dex.chart.timeframe;
   const cacheKey = `${tokenId}:${tf}`;
@@ -9545,9 +9579,13 @@ function renderDexInsightPanel() {
 function renderDex() {
   if (DEX_UNDER_CONSTRUCTION) {
     renderDexUnderConstruction();
+    if (DEX_CONSTRUCTION_SHOW_XRP_CHART) {
+      void loadDexChart(true);
+    }
     return;
   }
 
+  setDexConstructionMode(false);
   setDexControlsDisabled(false);
   populateDexAssetSelect();
   renderDexLookupResults();

@@ -9603,6 +9603,28 @@ button.primary-action:hover {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+.dex-construction-mode .dex-command-card > .section-visual,
+.dex-construction-mode .dex-command-card > .section-top,
+.dex-construction-mode .dex-stats-header,
+.dex-construction-mode .dex-trading-layout,
+.dex-construction-mode .dex-risk-reward-card,
+.dex-construction-mode .dex-preview-card,
+.dex-construction-mode .dex-execution-card,
+.dex-construction-mode .dex-safety-card,
+.dex-construction-mode .dex-insight-panel {
+  display: none;
+}
+
+.dex-construction-mode .dex-analysis-card .section-top p::after {
+  content: " DEX token/order-book calls are paused; this chart uses live XRP/USD market data only.";
+}
+
+.dex-construction-mode .dex-asset-picker-group,
+.dex-construction-mode .dex-ctrl-divider:first-of-type {
+  display: none;
+}
+
 .dex-access-panel {
   padding: 0.75rem 0;
 }
@@ -9693,6 +9715,48 @@ button.primary-action:hover {
   line-height: 1.45;
 }
 
+.dex-construction-roadmap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.dex-construction-roadmap article {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(233, 199, 122, 0.18);
+  border-radius: 10px;
+  background: rgba(233, 199, 122, 0.06);
+}
+
+.dex-construction-roadmap span {
+  width: fit-content;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  color: rgba(10, 16, 28, 0.95);
+  background: rgba(233, 199, 122, 0.92);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.dex-education-strip {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.85rem;
+  border: 1px solid rgba(70, 188, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(70, 188, 255, 0.07);
+  color: rgba(226, 232, 240, 0.84);
+  line-height: 1.5;
+}
+
+.dex-education-strip strong {
+  color: rgba(99, 183, 255, 0.95);
+  white-space: nowrap;
+}
+
 .dex-construction-panel__note {
   padding-top: 0.85rem;
   border-top: 1px solid rgba(99, 183, 255, 0.15);
@@ -9716,6 +9780,14 @@ button.primary-action:hover {
 
   .dex-construction-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dex-construction-roadmap {
+    grid-template-columns: 1fr;
+  }
+
+  .dex-education-strip {
+    display: grid;
   }
 }
 
