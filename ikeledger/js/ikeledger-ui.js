@@ -7176,13 +7176,16 @@ function renderDexUnderConstruction() {
           </div>
         </div>
         <p>
-          IkeLedger's DEX workspace is being rebuilt so token lookup, order-book depth,
-          chart history, risk checks, and Xumm signing work together without overloading
-          public XRPL or market-data APIs.
+          IkeLedger's DEX workspace is being rebuilt as a guided learning experience so token lookup,
+          order-book depth, chart history, risk checks, and Xumm signing can be taught before they
+          are used with real assets.
         </p>
         <div class="dex-construction-grid">
           <article>
-            <h4>What the XRPL DEX is</h4>
+            <h4>
+              What the XRPL DEX is
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: XRPL DEX orders live directly on the ledger until they fill, expire, or are cancelled.">?</span>
+            </h4>
             <p>
               The XRP Ledger has a native decentralized exchange built into the ledger itself.
               Instead of sending orders to a centralized exchange, users create on-chain
@@ -7191,7 +7194,10 @@ function renderDexUnderConstruction() {
             </p>
           </article>
           <article>
-            <h4>What would make this interactive</h4>
+            <h4>
+              What would make this interactive
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Interactivity should start read-only, then add simulation, then only later enable wallet signing.">?</span>
+            </h4>
             <ul>
               <li>Read-only token search with issuer verification and trust-line warnings.</li>
               <li>Order-book depth, spread, and AMM liquidity previews before any trade action.</li>
@@ -7201,22 +7207,64 @@ function renderDexUnderConstruction() {
             </ul>
           </article>
         </div>
+        <div class="dex-learning-path" aria-label="DEX learning path">
+          <article>
+            <span>Learn</span>
+            <h4>
+              Issuers & Trust Lines
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Issued tokens are tied to an issuer account. A trust line controls which issued assets your wallet can hold.">?</span>
+            </h4>
+            <p>Compare currency codes, issuer addresses, domain clues, and trust-line risk before treating two similar tickers as the same asset.</p>
+          </article>
+          <article>
+            <span>Practice</span>
+            <h4>
+              Order Books & AMMs
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Order books show resting offers. AMMs are liquidity pools. Both can affect the price you actually receive.">?</span>
+            </h4>
+            <p>Read best bid, best ask, spread, depth, and available liquidity as a market-quality lesson before placing any simulated order.</p>
+          </article>
+          <article>
+            <span>Review</span>
+            <h4>
+              Slippage & Signing
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Slippage is the difference between expected and executed price. Signing should come after previewing every field.">?</span>
+            </h4>
+            <p>Walk through amount, limit price, expected fill, fees, and payload fields in plain language before a wallet request is ever created.</p>
+          </article>
+        </div>
         <div class="dex-construction-roadmap" aria-label="What is coming to the educational DEX">
           <article>
             <span>01</span>
-            <h4>Read-Only DEX Explorer</h4>
+            <h4>
+              Read-Only DEX Explorer
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Read-only mode lets learners inspect DEX data without creating wallet prompts or ledger offers.">?</span>
+            </h4>
             <p>Inspect issuers, token pairs, spreads, AMM presence, trust-line signals, and risk notes without creating offers.</p>
           </article>
           <article>
             <span>02</span>
-            <h4>Backend History Indexer</h4>
+            <h4>
+              Backend History Indexer
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: The backend indexer can cache historical candles so the browser does not repeatedly crawl XRPL nodes.">?</span>
+            </h4>
             <p>Move issued-token candle building to a cached server route so the browser does not crawl public XRPL nodes.</p>
           </article>
           <article>
             <span>03</span>
-            <h4>Paper Trade Simulator</h4>
+            <h4>
+              Paper Trade Simulator
+              <span class="dex-learn-tip" tabindex="0" aria-label="Tip: Paper trading teaches position sizing and exits with fake balances before any real wallet signing.">?</span>
+            </h4>
             <p>Let learners practice limit orders, slippage, position sizing, and exits before any wallet-signing flow returns.</p>
           </article>
+        </div>
+        <div class="dex-chart-learning" aria-label="Live XRP chart learning guide">
+          <div>
+            <strong>Live chart lesson</strong>
+            <span>The XRP/USD chart stays active so learners can practice reading candles, timeframes, moving averages, volume, RSI, and trend changes with a high-liquidity reference market.</span>
+          </div>
+          <span class="dex-learn-tip dex-learn-tip--wide" tabindex="0" aria-label="Tip: Use the chart as a market-reading sandbox. Issued-token history will return after it is served by the backend indexer.">?</span>
         </div>
         <div class="dex-education-strip">
           <strong>Educational mode:</strong>
@@ -9935,25 +9983,27 @@ function closeSettingsDrawer() {
 
 function openProfileSettingsDrawer() {
   if (!hasXrplAccount()) {
-    setFeedback("Connect Xaman or load an XRPL account before editing profile settings.", true);
-    return;
+    setFeedback("Profile settings are available on the Profile page. Connect Xaman or load an XRPL account to populate wallet-backed details.", true);
   }
   if (state.activePage !== "profile") {
     setActivePage("profile");
   }
   if (state.activePage !== "profile") return;
-  refs.portfolioStudioCard?.classList.add("open");
+  refs.portfolioStudioCard?.classList.add("open", "is-focused");
   refs.portfolioStudioCard?.setAttribute("aria-hidden", "false");
   syncProfileEditor(getWalletState().profile || getProfileFields());
   renderPortfolioStudioWallet(getWalletState());
   renderProfileBadgeManager(getWalletState());
   updateProfileSharePanel(getWalletState());
+  refs.portfolioStudioCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => refs.portfolioStudioCard?.classList.remove("is-focused"), 1300);
   if (window.innerWidth <= 1100) closeSidebarPanel();
 }
 
 function closeProfileSettingsDrawer() {
-  refs.portfolioStudioCard?.classList.remove("open");
-  refs.portfolioStudioCard?.setAttribute("aria-hidden", "true");
+  refs.portfolioStudioCard?.classList.remove("open", "is-focused");
+  refs.portfolioStudioCard?.setAttribute("aria-hidden", "false");
+  document.getElementById("profileWalletCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function showProfileSavedEffect() {

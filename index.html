@@ -1194,15 +1194,15 @@
           <section class="page-section" data-page="profile">
             <article class="glass-card portfolio-unified-card">
               <div class="portfolio-unified-layout">
-                <aside class="profile-card profile-settings-card portfolio-studio-card" aria-hidden="true">
+                <section class="profile-card profile-settings-card portfolio-studio-card" aria-label="Profile settings">
               <div class="section-top">
                 <div>
                   <h2>Profile Settings</h2>
-                  <p class="muted">Edit the same identity, wallet view, and profile styling shown in the portfolio overview.</p>
+                  <p class="muted">Edit identity, profile media, wallet visibility, badge display, and portfolio styling directly on this page.</p>
                 </div>
                 <div class="button-row">
                   <button id="saveProfileButton" type="button">Save Settings</button>
-                  <button id="closeProfileSettingsButton" type="button" class="ghost">Close</button>
+                  <button id="closeProfileSettingsButton" type="button" class="ghost">View Portfolio</button>
                 </div>
               </div>
               <div class="profile-layout">
@@ -1467,7 +1467,7 @@
                   </details>
                 </div>
               </div>
-                </aside>
+                </section>
 
                 <section class="portfolio-primary-card" id="profileWalletCard">
               <div class="section-top">
@@ -1645,20 +1645,53 @@
             <div class="page-hero">
               <img class="page-visual" src="./ikeledger/assets/images/settings.png" alt="IkeLedger settings" loading="lazy" />
               <h2>Settings</h2>
-              <p class="muted">Customize your IkeLedger experience — appearance, privacy, and network preferences.</p>
+              <p class="muted">Control app appearance, session safety, network routing, and data services. Profile identity lives on the Profile page.</p>
             </div>
-            <div class="card-grid overview-grid">
-              <article class="glass-card">
-                <h3>Appearance</h3>
+            <div class="settings-page-grid">
+              <article class="glass-card settings-group settings-feature-card">
+                <div class="section-top compact">
+                  <div>
+                    <h3>App Appearance</h3>
+                    <p class="muted">Global interface theme and accent controls.</p>
+                  </div>
+                  <span class="mode-pill">App UI</span>
+                </div>
                 <div class="card-content">
-                  <p>Change theme, accent color, and display preferences in the settings drawer.</p>
+                  <p>Use the drawer for quick theme changes that affect the whole workspace, not just your public profile design.</p>
                   <div class="button-row">
                     <button id="settingsPageOpenDrawerButton" type="button">Open Settings Drawer</button>
+                    <button type="button" class="ghost profile-wallet-nav-btn" data-nav="profile">Edit Profile Style</button>
                   </div>
                 </div>
               </article>
-              <article class="glass-card">
-                <h3>Privacy &amp; Security</h3>
+              <article class="glass-card settings-group settings-feature-card">
+                <div class="section-top compact">
+                  <div>
+                    <h3>Profile Settings</h3>
+                    <p class="muted">Identity, avatar, banner, badges, sharing, and portfolio layout.</p>
+                  </div>
+                  <span class="mode-pill">Profile page</span>
+                </div>
+                <div class="card-content">
+                  <p>Profile-specific controls moved out of global Settings so the Profile page is the single place to edit what your portfolio shows.</p>
+                  <div class="settings-check-list">
+                    <span>Display name, handle, realm, and bio</span>
+                    <span>Avatar, banner, badge stack, and share URL</span>
+                    <span>Portfolio colors, layout, privacy preview, and section order</span>
+                  </div>
+                  <div class="button-row">
+                    <button type="button" class="profile-wallet-nav-btn" data-nav="profile">Open Profile Settings</button>
+                  </div>
+                </div>
+              </article>
+              <article class="glass-card settings-group settings-feature-card">
+                <div class="section-top compact">
+                  <div>
+                    <h3>Privacy &amp; Session</h3>
+                    <p class="muted">Local browser data, wallet connection state, and safety resets.</p>
+                  </div>
+                  <span class="mode-pill">Local only</span>
+                </div>
                 <div class="card-content">
                   <p><strong>No private keys:</strong> IkeLedger never requests or stores your seed phrase or secret key.</p>
                   <p><strong>Local storage only:</strong> Session data lives in your browser — not on any server.</p>
@@ -1669,22 +1702,39 @@
                   </div>
                 </div>
               </article>
-              <article class="glass-card">
-                <h3>Network Info</h3>
+              <article class="glass-card settings-group settings-feature-card">
+                <div class="section-top compact">
+                  <div>
+                    <h3>Network Routing</h3>
+                    <p class="muted">Understand which XRPL network the workspace is reading from.</p>
+                  </div>
+                  <span class="mode-pill">XRPL</span>
+                </div>
                 <div class="card-content">
                   <p><strong>Mainnet:</strong> Real XRP, real assets. Use with care.</p>
                   <p><strong>Testnet:</strong> Safe environment for learning and testing.</p>
                   <p class="muted">Switch networks via the selector in the top navigation bar.</p>
                 </div>
               </article>
-              <article class="glass-card">
-                <h3>Market Proxy</h3>
+              <article class="glass-card settings-group settings-feature-card wide">
+                <div class="section-top compact">
+                  <div>
+                    <h3>Data Services</h3>
+                    <p class="muted">Optional proxy/cache endpoints for market data and the future DEX indexer.</p>
+                  </div>
+                  <span class="mode-pill">Backend</span>
+                </div>
                 <div class="card-content">
                   <p>Optional cache/proxy endpoint for XRPL.to, CoinGecko, and token images.</p>
                   <label>
                     <span>Proxy Base URL</span>
                     <input id="marketProxyUrlInput" type="url" placeholder="http://127.0.0.1:8788" autocomplete="off" />
                   </label>
+                  <div class="settings-check-list">
+                    <span><strong>/market</strong> caches market and token API responses</span>
+                    <span><strong>/image</strong> proxies remote token artwork safely</span>
+                    <span><strong>/dex-history</strong> is ready for server-side issued-token candles</span>
+                  </div>
                   <div class="button-row">
                     <button id="saveMarketProxyButton" type="button">Save Proxy</button>
                     <button id="clearMarketProxyButton" type="button" class="ghost">Use Direct APIs</button>
