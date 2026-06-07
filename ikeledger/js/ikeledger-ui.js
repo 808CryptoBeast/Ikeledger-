@@ -209,6 +209,7 @@ const state = {
   selectedNftId: "",
   topIssuedFilter: "",
   topAmmFilter: "",
+  learningMode: true,
   topIssuedVisibleCount: MARKET_VISIBLE_STEP,
   topAmmVisibleCount: MARKET_VISIBLE_STEP,
   topIssuedTab: "all",
@@ -320,6 +321,8 @@ const refs = {
   themeToggleButton: document.getElementById("themeToggleButton"),
   profileButton: document.getElementById("profileButton"),
   saveProfileButton: document.getElementById("saveProfileButton"),
+  onboardingPathPanel: document.getElementById("onboardingPathPanel"),
+  learningModeToggle: document.getElementById("learningModeToggle"),
   themeSelect: document.getElementById("themeSelect"),
   accentSelect: document.getElementById("accentSelect"),
   walletConnectionChip: document.getElementById("walletConnectionChip"),
@@ -384,6 +387,7 @@ const refs = {
   walletStatusLedgerIndex: document.getElementById("walletStatusLedgerIndex"),
   walletStatusFeeLevel: document.getElementById("walletStatusFeeLevel"),
   walletStatusTps: document.getElementById("walletStatusTps"),
+  walletHealthPanel: document.getElementById("walletHealthPanel"),
   trackerHealthScore: document.getElementById("trackerHealthScore"),
   trackerRiskLevel: document.getElementById("trackerRiskLevel"),
   trackerAssetCount: document.getElementById("trackerAssetCount"),
@@ -514,6 +518,11 @@ const refs = {
   marketProxyStatus: document.getElementById("marketProxyStatus"),
   securityEventLog: document.getElementById("securityEventLog"),
   settingsPageOpenDrawerButton: document.getElementById("settingsPageOpenDrawerButton"),
+  settingsPageProfileStyleButton: document.getElementById("settingsPageProfileStyleButton"),
+  settingsPageProfileSettingsButton: document.getElementById("settingsPageProfileSettingsButton"),
+  settingsLearningModeToggle: document.getElementById("settingsLearningModeToggle"),
+  drawerLearningModeToggle: document.getElementById("drawerLearningModeToggle"),
+  settingsBackendStatusPanel: document.getElementById("settingsBackendStatusPanel"),
   settingsPageClearButton: document.getElementById("settingsPageClearButton"),
   settingsPageDisconnectButton: document.getElementById("settingsPageDisconnectButton"),
   heroAvatarPill: document.getElementById("heroAvatarPill"),
@@ -1191,6 +1200,18 @@ function applyAccent(mode = "aqua") {
   document.body.classList.toggle("accent-emerald", accent === "emerald");
   localStorage.setItem(STORAGE_KEYS.accent, accent);
   if (refs.accentSelect) refs.accentSelect.value = accent;
+}
+
+function applyLearningMode(enabled = true) {
+  const active = enabled !== false;
+  state.learningMode = active;
+  document.body.classList.toggle("learning-mode", active);
+  localStorage.setItem(STORAGE_KEYS.learningMode, active ? "true" : "false");
+  [refs.learningModeToggle, refs.settingsLearningModeToggle, refs.drawerLearningModeToggle].forEach((input) => {
+    if (input) input.checked = active;
+  });
+  renderOnboardingPaths(getWalletState());
+  renderSettingsStatus(getWalletState());
 }
 
 function cycleTheme() {
@@ -3034,6 +3055,146 @@ function renderReminders() {
   refs.safetyReminders.innerHTML = reminders.map((line) => `<li>${line}</li>`).join("");
 }
 
+function renderOnboardingPaths(walletState = getWalletState()) {
+  if (!refs.onboardingPathPanel) return;
+  const hasAccount = Boolean(walletState.publicAddress);
+  const hasSnapshot = Boolean(walletState.snapshot);
+  const canSign = hasSigningWallet();
+  const learningLabel = state.learningMode ? "Guided" : "Fast";
+  const paths = [
+    {
+      step: "01",
+      title: "Learn XRPL Safely",
+      copy: "Start with wallet rules, reserves, issuer risk, trust lines, AMMs, and the DEX Lab simulator.",
+      action: "Open DEX Lab",
+      page: "dex",
+      status: `${learningLabel} mode`
+    },
+    {
+      step: "02",
+      title: "Track A Wallet",
+      copy: hasAccount ? "Refresh the loaded address, then review reserve pressure, trust-line exposure, and recent activity." : "Load a public address or connect Xaman to unlock wallet-backed pages.",
+      action: hasAccount ? "Wallet Health" : "Connect Wallet",
+      page: hasAccount ? "wallet" : "",
+      auth: !hasAccount,
+      status: hasSnapshot ? "Verified" : hasAccount ? "Address loaded" : "Not connected"
+    },
+    {
+      step: "03",
+      title: "Use Signing Carefully",
+      copy: canSign ? "Preview every transaction field before sending a request to Xaman." : "Signing stays disabled until a Xaman-backed wallet is connected.",
+      action: canSign ? "Send XRP" : "Sign In / Connect",
+      page: canSign ? "wallet" : "",
+      auth: !canSign,
+      status: canSign ? "Signer ready" : "Read-only"
+    },
+    {
+      step: "04",
+      title: "Create A Wallet",
+      copy: "Generate a browser-only test wallet after reading the private-key checklist and activation steps.",
+      action: "Create Wallet",
+      page: "create-wallet",
+      status: "Safety gate"
+    }
+  ];
+
+  refs.onboardingPathPanel.innerHTML = paths.map((path) => `
+    <article class="onboarding-path-card">
+      <span>${escapeHtml(path.step)}</span>
+      <h4>${escapeHtml(path.title)}</h4>
+      <p>${escapeHtml(path.copy)}</p>
+      <div class="onboarding-path-footer">
+        <em>${escapeHtml(path.status)}</em>
+        <button type="button" class="ghost" ${path.auth ? "data-auth-trigger" : `data-onboarding-page="${escapeHtml(path.page)}"`}>${escapeHtml(path.action)}</button>
+      </div>
+    </article>
+  `).join("");
+
+  refs.onboardingPathPanel.querySelectorAll("[data-onboarding-page]").forEach((button) => {
+    button.addEventListener("click", () => setActivePage(button.dataset.onboardingPage || "dashboard"));
+  });
+  refs.onboardingPathPanel.querySelectorAll("[data-auth-trigger]").forEach((button) => {
+    button.addEventListener("click", openAuthModal);
+  });
+}
+
+function getWalletHealthSummary(walletState = getWalletState()) {
+  const account = walletState.snapshot?.account;
+  const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+  if (!walletState.publicAddress) {
+    return {
+      score: 0,
+      tone: "medium",
+      label: "No wallet loaded",
+      checks: [
+        { label: "Public address", value: "Missing", tone: "warn" },
+        { label: "On-chain data", value: "Not loaded", tone: "warn" },
+        { label: "Signing mode", value: "Read-only", tone: "info" }
+      ],
+      advice: "Connect Xaman or load a public XRPL address to begin the wallet health check."
+    };
+  }
+
+  if (!account) {
+    return {
+      score: 42,
+      tone: "low",
+      label: "Address loaded",
+      checks: [
+        { label: "Public address", value: "Loaded", tone: "ok" },
+        { label: "On-chain data", value: "Refresh needed", tone: "warn" },
+        { label: "Network", value: network.label, tone: network.isMainnet ? "warn" : "ok" }
+      ],
+      advice: "Refresh the account to verify balances, reserves, trust lines, NFTs, and owned objects."
+    };
+  }
+
+  let score = 100;
+  const ownerCount = Number(account.ownerCount || 0);
+  const trustLines = Number(account.trustLines || 0);
+  const available = Number(account.availableXrp || 0);
+  const recentTx = Number(account.recentActivityCount || 0);
+  if (network.isMainnet) score -= 8;
+  if (available < 2) score -= 18;
+  if (ownerCount > 20) score -= 10;
+  if (trustLines > 12) score -= 10;
+  if (recentTx > 40) score -= 6;
+  score = Math.max(25, Math.min(100, Math.round(score)));
+  const tone = score >= 82 ? "safe" : score >= 62 ? "low" : "medium";
+  const label = score >= 82 ? "Healthy" : score >= 62 ? "Review suggested" : "Needs attention";
+  const checks = [
+    { label: "Available XRP", value: `${safeNumber(account.availableXrp, 2)} XRP`, tone: available >= 2 ? "ok" : "warn" },
+    { label: "Reserve load", value: `${ownerCount} objects`, tone: ownerCount > 20 ? "warn" : "ok" },
+    { label: "Trust lines", value: `${trustLines} lines`, tone: trustLines > 12 ? "warn" : "ok" },
+    { label: "Network", value: network.label, tone: network.isMainnet ? "warn" : "ok" }
+  ];
+  const advice = score >= 82
+    ? "Wallet posture looks ready. Continue reviewing issuer, AMM, and signing context before acting."
+    : "Review reserve pressure, trust lines, and recent activity before using DEX, AMM, or signing flows.";
+  return { score, tone, label, checks, advice };
+}
+
+function renderWalletHealth(walletState = getWalletState()) {
+  if (!refs.walletHealthPanel) return;
+  const health = getWalletHealthSummary(walletState);
+  refs.walletHealthPanel.innerHTML = `
+    <div class="wallet-health-score ${escapeHtml(health.tone)}">
+      <strong>${health.score}</strong>
+      <span>${escapeHtml(health.label)}</span>
+    </div>
+    <div class="wallet-health-checks">
+      ${health.checks.map((check) => `
+        <div class="wallet-health-check ${escapeHtml(check.tone)}">
+          <span>${escapeHtml(check.label)}</span>
+          <strong>${escapeHtml(check.value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+    <p class="muted">${escapeHtml(health.advice)}</p>
+  `;
+  if (refs.walletStatusHealth) refs.walletStatusHealth.textContent = health.label;
+}
+
 function renderChips(walletState) {
   if (!refs.chips) return;
   const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
@@ -3041,7 +3202,8 @@ function renderChips(walletState) {
     { label: walletState.status, risk: assessRisk("wallet_connect") },
     { label: walletState.mode || (sessionStorage.getItem("ike_wallet_provider") === "xaman" ? "Xaman Mode" : "Read-only Mode"), risk: RISK_LEVELS.SAFE },
     { label: network.label, risk: network.isMainnet ? RISK_LEVELS.HIGH : RISK_LEVELS.LOW },
-    { label: walletState.snapshot ? "Wallet Verified" : "Read-only Exploration", risk: walletState.snapshot ? RISK_LEVELS.SAFE : RISK_LEVELS.LOW }
+    { label: walletState.snapshot ? "Wallet Verified" : "Read-only Exploration", risk: walletState.snapshot ? RISK_LEVELS.SAFE : RISK_LEVELS.LOW },
+    { label: state.learningMode ? "Learning Mode" : "Fast Mode", risk: state.learningMode ? RISK_LEVELS.LOW : RISK_LEVELS.SAFE }
   ];
 
   refs.chips.innerHTML = chips.map((chip) => `<span class="${chipClass(chip.risk)}">${chip.label}</span>`).join("");
@@ -7172,11 +7334,11 @@ function renderDexUnderConstruction() {
           />
           <div>
             <div class="dex-construction-panel__badge">Under Construction</div>
-            <h3>DEX Access Is Temporarily Paused</h3>
+            <h3>DEX Lab Is In Learning Mode</h3>
           </div>
         </div>
         <p>
-          IkeLedger's DEX workspace is being rebuilt as a guided learning experience so token lookup,
+          IkeLedger's DEX workspace is being rebuilt as a guided DEX Lab so token lookup,
           order-book depth, chart history, risk checks, and Xumm signing can be taught before they
           are used with real assets.
         </p>
@@ -9933,10 +10095,12 @@ function renderSecurity() {
 function renderAll() {
   const walletState = getWalletState();
   renderCommandCenterAuth();
+  renderOnboardingPaths(walletState);
   renderChips(walletState);
   renderConnectionMeta(walletState);
   renderPortfolioSummary(walletState);
   renderWalletStatus(walletState);
+  renderWalletHealth(walletState);
   renderMana(walletState);
   renderProfile(walletState);
   renderProofLearning(walletState);
@@ -9953,6 +10117,7 @@ function renderAll() {
   renderSecurity();
   renderAvatarStatus(walletState);
   renderFundWalletCard(walletState);
+  renderSettingsStatus(walletState);
   if (state.activePage !== "dex") {
     void renderMarketOverview();
   }
@@ -9983,7 +10148,7 @@ function closeSettingsDrawer() {
 
 function openProfileSettingsDrawer() {
   if (!hasXrplAccount()) {
-    setFeedback("Profile settings are available on the Profile page. Connect Xaman or load an XRPL account to populate wallet-backed details.", true);
+    setFeedback("Profile settings opened. Connect Xaman or load an XRPL account to populate wallet-backed details.", true);
   }
   if (state.activePage !== "profile") {
     setActivePage("profile");
@@ -9995,15 +10160,13 @@ function openProfileSettingsDrawer() {
   renderPortfolioStudioWallet(getWalletState());
   renderProfileBadgeManager(getWalletState());
   updateProfileSharePanel(getWalletState());
-  refs.portfolioStudioCard?.scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => refs.portfolioStudioCard?.classList.remove("is-focused"), 1300);
   if (window.innerWidth <= 1100) closeSidebarPanel();
 }
 
 function closeProfileSettingsDrawer() {
   refs.portfolioStudioCard?.classList.remove("open", "is-focused");
-  refs.portfolioStudioCard?.setAttribute("aria-hidden", "false");
-  document.getElementById("profileWalletCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  refs.portfolioStudioCard?.setAttribute("aria-hidden", "true");
 }
 
 function showProfileSavedEffect() {
@@ -10538,6 +10701,35 @@ function setMarketProxyStatus(text, isError = false) {
   if (!refs.marketProxyStatus) return;
   refs.marketProxyStatus.textContent = text;
   refs.marketProxyStatus.style.color = isError ? "#ffb9c3" : "#a9ffe6";
+  renderSettingsStatus(getWalletState());
+}
+
+function renderSettingsStatus(walletState = getWalletState()) {
+  const proxyBase = (localStorage.getItem(STORAGE_KEYS.marketProxyBaseUrl) || "").trim();
+  const network = NETWORKS[walletState.network] || NETWORKS[DEFAULT_NETWORK];
+  if (refs.settingsBackendStatusPanel) {
+    refs.settingsBackendStatusPanel.innerHTML = `
+      <div class="settings-status-pill ${proxyBase ? "online" : "direct"}">
+        <span>Market Proxy</span>
+        <strong>${proxyBase ? "Configured" : "Direct APIs"}</strong>
+      </div>
+      <div class="settings-status-pill standby">
+        <span>DEX Indexer</span>
+        <strong>${proxyBase ? "/dex-history ready" : "Backend optional"}</strong>
+      </div>
+      <div class="settings-status-pill ${network.isMainnet ? "warn" : "online"}">
+        <span>Network</span>
+        <strong>${escapeHtml(network.label)}</strong>
+      </div>
+      <div class="settings-status-pill ${state.learningMode ? "online" : "direct"}">
+        <span>Learning Mode</span>
+        <strong>${state.learningMode ? "On" : "Off"}</strong>
+      </div>
+    `;
+  }
+  [refs.learningModeToggle, refs.settingsLearningModeToggle, refs.drawerLearningModeToggle].forEach((input) => {
+    if (input) input.checked = state.learningMode;
+  });
 }
 
 function onSaveMarketProxy() {
@@ -10553,6 +10745,7 @@ function onSaveMarketProxy() {
     if (!/^https?:$/.test(url.protocol)) throw new Error("Use http or https.");
     localStorage.setItem(STORAGE_KEYS.marketProxyBaseUrl, url.href.replace(/\/$/, ""));
     setMarketProxyStatus("Market proxy saved. Refresh market tables to use it.");
+    renderSettingsStatus(getWalletState());
   } catch {
     setMarketProxyStatus("Enter a valid proxy URL, for example http://127.0.0.1:8788", true);
   }
@@ -10562,6 +10755,7 @@ function onClearMarketProxy() {
   localStorage.removeItem(STORAGE_KEYS.marketProxyBaseUrl);
   if (refs.marketProxyUrlInput) refs.marketProxyUrlInput.value = "";
   setMarketProxyStatus("Direct public APIs enabled.");
+  renderSettingsStatus(getWalletState());
 }
 
 // In-memory only — NEVER persisted to localStorage or any storage
@@ -10982,6 +11176,8 @@ function initEventHandlers() {
   bindClick(refs.settingsDisconnectButton, onDisconnect);
   bindClick(refs.settingsClearSessionButton, onClearSession);
   bindClick(refs.settingsPageOpenDrawerButton, openSettingsDrawer);
+  bindClick(refs.settingsPageProfileStyleButton, openProfileSettingsDrawer);
+  bindClick(refs.settingsPageProfileSettingsButton, openProfileSettingsDrawer);
   bindClick(refs.settingsPageClearButton, onClearSession);
   bindClick(refs.settingsPageDisconnectButton, onDisconnect);
 
@@ -11152,6 +11348,11 @@ function initEventHandlers() {
   refs.accentSelect?.addEventListener("change", (event) => {
     applyAccent(event.target.value || "aqua");
   });
+  [refs.learningModeToggle, refs.settingsLearningModeToggle, refs.drawerLearningModeToggle].forEach((input) => {
+    input?.addEventListener("change", (event) => {
+      applyLearningMode(Boolean(event.target.checked));
+    });
+  });
   bindClick(refs.profileButton, () => setActivePage("profile"));
   // Hero button row wires into inline tabs
   bindClick(refs.sendButton,   openHeroSend);
@@ -11321,6 +11522,7 @@ function boot() {
   loadTrackerWallets();
   applyTheme(localStorage.getItem(STORAGE_KEYS.theme) || "dark");
   applyAccent(localStorage.getItem(STORAGE_KEYS.accent) || "aqua");
+  applyLearningMode(localStorage.getItem(STORAGE_KEYS.learningMode) !== "false");
   setActivePage(state.sharedProfile ? "profile" : "dashboard");
 
   if (refs.networkSelect) refs.networkSelect.value = walletState.network;

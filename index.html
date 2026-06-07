@@ -79,7 +79,7 @@
             <div class="nav-section-label">Markets</div>
             <button class="sidebar-btn" data-page="tokens" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/tokens.png" alt="" /></span>Tokens</button>
             <button class="sidebar-btn" data-page="nfts" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikenft.png" alt="" /></span>NFTs & Listings</button>
-            <button class="sidebar-btn" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikedex.png" alt="" /></span>DEX Access</button>
+            <button class="sidebar-btn" data-page="dex" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikedex.png" alt="" /></span>DEX Lab</button>
             <button class="sidebar-btn" data-page="amm" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/ikeamm.png" alt="" /></span>AMM / LP</button>
             <button class="sidebar-btn" data-page="activity" type="button"><span class="nav-icon"><img src="./ikeledger/assets/images/activity.png" alt="" /></span>Activity</button>
 
@@ -264,6 +264,20 @@
                 </div>
               </div>
             </article>
+
+            <section class="glass-card command-onboarding-card" aria-label="IkeLedger onboarding">
+              <div class="section-top">
+                <div>
+                  <h3>Start Here</h3>
+                  <p class="muted">Choose a path through IkeLedger based on what you want to do first.</p>
+                </div>
+                <label class="learning-mode-toggle">
+                  <input id="learningModeToggle" type="checkbox" />
+                  <span>Learning Mode</span>
+                </label>
+              </div>
+              <div id="onboardingPathPanel" class="onboarding-path-grid"></div>
+            </section>
 
             <section id="commandOverviewCards" class="card-grid overview-grid">
               <article class="glass-card command-bg-card wallet-connection-card">
@@ -627,6 +641,16 @@
                 <span class="kpi-value" id="walletStatusTps">-</span>
               </div>
             </div>
+            <article class="glass-card wallet-health-card">
+              <div class="section-top">
+                <div>
+                  <h3>Wallet Health Checkup</h3>
+                  <p class="muted">A quick readiness score based on account loading, reserve pressure, owned objects, trust lines, and network risk.</p>
+                </div>
+                <span class="mode-pill">Daily check</span>
+              </div>
+              <div id="walletHealthPanel" class="wallet-health-panel"></div>
+            </article>
             <div class="card-grid overview-grid">
               <article class="glass-card card-account">
                 <img class="card-visual" src="./ikeledger/assets/images/ikewallet.png" alt="Account overview" loading="lazy" />
@@ -701,8 +725,8 @@
           <section class="page-section" data-page="dex">
             <div class="page-hero">
               <img class="page-visual" src="./ikeledger/assets/images/ikedex.png" alt="DEX access" loading="lazy" />
-              <h2>DEX Access</h2>
-              <p class="muted">Under construction while the XRPL DEX workflow is rebuilt for safer, quieter data loading.</p>
+              <h2>DEX Lab</h2>
+              <p class="muted">Educational DEX simulator preview with live XRP/USD chart context while issued-token trading is rebuilt.</p>
             </div>
             <div class="card-grid structured-grid dex-grid">
               <article class="glass-card wide dex-command-card">
@@ -1194,15 +1218,15 @@
           <section class="page-section" data-page="profile">
             <article class="glass-card portfolio-unified-card">
               <div class="portfolio-unified-layout">
-                <section class="profile-card profile-settings-card portfolio-studio-card" aria-label="Profile settings">
+                <aside class="profile-card profile-settings-card portfolio-studio-card" aria-hidden="true" aria-label="Profile settings panel">
               <div class="section-top">
                 <div>
                   <h2>Profile Settings</h2>
-                  <p class="muted">Edit identity, profile media, wallet visibility, badge display, and portfolio styling directly on this page.</p>
+                  <p class="muted">Edit identity, profile media, wallet visibility, badge display, and portfolio styling without changing the public profile view.</p>
                 </div>
                 <div class="button-row">
                   <button id="saveProfileButton" type="button">Save Settings</button>
-                  <button id="closeProfileSettingsButton" type="button" class="ghost">View Portfolio</button>
+                  <button id="closeProfileSettingsButton" type="button" class="ghost">Close</button>
                 </div>
               </div>
               <div class="profile-layout">
@@ -1467,7 +1491,7 @@
                   </details>
                 </div>
               </div>
-                </section>
+                </aside>
 
                 <section class="portfolio-primary-card" id="profileWalletCard">
               <div class="section-top">
@@ -1652,15 +1676,22 @@
                 <div class="section-top compact">
                   <div>
                     <h3>App Appearance</h3>
-                    <p class="muted">Global interface theme and accent controls.</p>
+                    <p class="muted">Global interface theme, accent controls, and guided learning overlays.</p>
                   </div>
                   <span class="mode-pill">App UI</span>
                 </div>
                 <div class="card-content">
                   <p>Use the drawer for quick theme changes that affect the whole workspace, not just your public profile design.</p>
+                  <label class="settings-toggle-row">
+                    <input id="settingsLearningModeToggle" type="checkbox" />
+                    <span>
+                      <strong>Learning Mode</strong>
+                      <em>Show more guided explanations, safety nudges, and simulator-first language.</em>
+                    </span>
+                  </label>
                   <div class="button-row">
                     <button id="settingsPageOpenDrawerButton" type="button">Open Settings Drawer</button>
-                    <button type="button" class="ghost profile-wallet-nav-btn" data-nav="profile">Edit Profile Style</button>
+                    <button id="settingsPageProfileStyleButton" type="button" class="ghost">Edit Profile Style</button>
                   </div>
                 </div>
               </article>
@@ -1670,17 +1701,17 @@
                     <h3>Profile Settings</h3>
                     <p class="muted">Identity, avatar, banner, badges, sharing, and portfolio layout.</p>
                   </div>
-                  <span class="mode-pill">Profile page</span>
+                  <span class="mode-pill">Editor panel</span>
                 </div>
                 <div class="card-content">
-                  <p>Profile-specific controls moved out of global Settings so the Profile page is the single place to edit what your portfolio shows.</p>
+                  <p>Open the dedicated editor panel when you want to change what your portfolio shows, while keeping the Profile page focused on the public-facing view.</p>
                   <div class="settings-check-list">
                     <span>Display name, handle, realm, and bio</span>
                     <span>Avatar, banner, badge stack, and share URL</span>
                     <span>Portfolio colors, layout, privacy preview, and section order</span>
                   </div>
                   <div class="button-row">
-                    <button type="button" class="profile-wallet-nav-btn" data-nav="profile">Open Profile Settings</button>
+                    <button id="settingsPageProfileSettingsButton" type="button">Open Profile Settings</button>
                   </div>
                 </div>
               </article>
@@ -1735,6 +1766,7 @@
                     <span><strong>/image</strong> proxies remote token artwork safely</span>
                     <span><strong>/dex-history</strong> is ready for server-side issued-token candles</span>
                   </div>
+                  <div id="settingsBackendStatusPanel" class="settings-backend-status" aria-live="polite"></div>
                   <div class="button-row">
                     <button id="saveMarketProxyButton" type="button">Save Proxy</button>
                     <button id="clearMarketProxyButton" type="button" class="ghost">Use Direct APIs</button>
@@ -1788,6 +1820,13 @@
                 <option value="gold">Mana Gold</option>
                 <option value="emerald">Emerald</option>
               </select>
+            </label>
+            <label class="settings-toggle-row">
+              <input id="drawerLearningModeToggle" type="checkbox" />
+              <span>
+                <strong>Learning Mode</strong>
+                <em>Extra guidance and safety-first explanations.</em>
+              </span>
             </label>
           </div>
         </section>

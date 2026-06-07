@@ -69,7 +69,8 @@ export const STORAGE_KEYS = {
   portfolioPublicPreview: "ikeledger.portfolioPublicPreview",
   tokenWatchlist: "ikeledger.tokenWatchlist",
   ammWatchlist: "ikeledger.ammWatchlist",
-  marketProxyBaseUrl: "ikeledger.marketProxyBaseUrl"
+  marketProxyBaseUrl: "ikeledger.marketProxyBaseUrl",
+  learningMode: "ikeledger.learningMode"
 };
 
 export const RISK_LEVELS = {
